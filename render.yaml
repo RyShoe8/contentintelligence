@@ -3,8 +3,8 @@ services:
     name: content-resourcer-worker
     runtime: node
     plan: starter
-    buildCommand: npm install && npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/worker
-    startCommand: npm run start -w @content-resourcer/worker
+    buildCommand: npm install && npm run build:worker
+    startCommand: npm start
     envVars:
       - key: NODE_VERSION
         value: "20"

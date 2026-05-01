@@ -80,6 +80,8 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 
 **Render (`apps/worker`)**
 
+If you create the web service manually (not from [`render.yaml`](render.yaml)), set **Build Command** to `npm install && npm run build:worker` and **Start Command** to `npm start` (or `yarn start`; the repo root defines `start`). Set **`NODE_VERSION`** to `20` in the service environment so Render does not pick a newer Node from defaults.
+
 | Variable | Description |
 |----------|-------------|
 | `MONGODB_URI` | Same as above |
