@@ -31,13 +31,13 @@ export default async function LoginPage({
 
   return (
     <div className="mx-auto max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 shadow-md">
-      <div className="mb-6 flex flex-col items-center text-center">
+      <div className="mb-4 flex flex-col items-center text-center">
         <Image
           src="/logo.png"
           alt="ContentIntelligence"
-          width={260}
-          height={94}
-          className="h-14 w-auto"
+          width={300}
+          height={108}
+          className="h-16 w-auto"
           priority
         />
         <p className="mt-3 text-sm font-medium text-[var(--muted)]">Content Resourcer · Sign in</p>

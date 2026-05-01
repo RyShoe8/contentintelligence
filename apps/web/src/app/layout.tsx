@@ -28,18 +28,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen antialiased">
         <Providers>
           <header className="border-b border-[var(--header-border)] bg-[var(--card)]/90 shadow-sm backdrop-blur-sm">
-            <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-3">
+            <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-2">
               <div className="flex flex-wrap items-center gap-4">
-                <Link href="/feed" className="flex items-center gap-3 shrink-0">
+                <Link href="/feed" className="flex shrink-0 items-center gap-2">
                   <Image
                     src="/logo.png"
                     alt="ContentIntelligence"
-                    width={220}
-                    height={80}
-                    className="h-11 w-auto"
+                    width={280}
+                    height={102}
+                    className="h-14 w-auto"
                     priority
                   />
-                  <span className="hidden sm:inline border-l border-[var(--border)] pl-3 text-sm font-medium text-[var(--muted)]">
+                  <span className="hidden sm:inline border-l border-[var(--border)] pl-2 text-sm font-medium text-[var(--muted)]">
                     Content Resourcer
                   </span>
                 </Link>
