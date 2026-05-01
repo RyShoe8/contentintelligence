@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import { google } from "googleapis";
 import cron from "node-cron";
 import { env } from "./env.js";
+import { ingestLog } from "./ingest-log.js";
 import { runIngest } from "./ingest.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 
@@ -70,18 +71,43 @@ async function main(): Promise<void> {
 
   app.post("/ingest", async (req, reply) => {
     const body = req.headers["x-ingest-secret"];
+    const secretRequired = Boolean(env.ingestSecret);
+    const secretMatched = !env.ingestSecret || body === env.ingestSecret;
+    ingestLog("ingest_request", {
+      source: "http_post",
+      secretRequired,
+      secretHeaderPresent: body !== undefined && body !== "",
+      secretMatched,
+    });
     if (env.ingestSecret && body !== env.ingestSecret) {
+      ingestLog("ingest_reject", { reason: "unauthorized" });
       return reply.code(401).send({ error: "unauthorized" });
     }
-    const stats = await runIngest();
-    return stats;
+    try {
+      const stats = await runIngest();
+      ingestLog("ingest_response", { source: "http_post", ...stats });
+      return stats;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      ingestLog("ingest_fatal", { source: "http_post", message });
+      throw e;
+    }
   });
 
   const port = env.port;
   await app.listen({ port, host: "0.0.0.0" });
 
   cron.schedule(env.ingestCron, () => {
-    runIngest().catch((e) => app.log.error(e));
+    ingestLog("ingest_cron_tick", { cron: env.ingestCron });
+    runIngest()
+      .then((stats) => {
+        ingestLog("ingest_response", { source: "cron", ...stats });
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : String(e);
+        ingestLog("ingest_fatal", { source: "cron", message });
+        app.log.error(e);
+      });
   });
 
   const shutdown = async () => {

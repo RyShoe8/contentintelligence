@@ -100,6 +100,7 @@ If you create the web service manually (not from [`render.yaml`](render.yaml)), 
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
 | `INGEST_CRON` | Cron expression (default `*/15 * * * *`) |
 | `INGEST_SECRET` | Optional; required header `x-ingest-secret` for `POST /ingest` |
+| `INGEST_LOG_VERBOSE` | Optional; set to `true` or `1` for per-message `[ingest]` JSON logs (noisy; unset in steady state) |
 | `PORT` | Default `8787` |
 
 ## Local development (optional)
