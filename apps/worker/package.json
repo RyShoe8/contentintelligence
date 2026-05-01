@@ -9,7 +9,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "@content-resourcer/db": "workspace:*",
+    "@content-resourcer/db": "*",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "googleapis": "^144.0.0",
