@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ensureIndexes, getSignalItem } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 
+export const dynamic = "force-dynamic";
+
 export default async function SignalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = await connectMongo();

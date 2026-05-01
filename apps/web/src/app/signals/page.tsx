@@ -2,6 +2,8 @@ import { ensureIndexes, listInputSignals, listVerticals } from "@content-resourc
 import { connectMongo } from "@/lib/mongo";
 import { deleteSignalAction, saveSignalAction } from "./actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function SignalsPage() {
   const db = await connectMongo();
   await ensureIndexes(db);

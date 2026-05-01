@@ -2,6 +2,8 @@ import { ensureIndexes, listVerticals } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 import { deleteVerticalAction, saveVerticalAction, toggleVerticalAction } from "./actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function VerticalsPage() {
   const db = await connectMongo();
   await ensureIndexes(db);

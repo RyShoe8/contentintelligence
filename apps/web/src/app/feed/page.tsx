@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ensureIndexes, listSignalItems, listVerticals } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 
+export const dynamic = "force-dynamic";
+
 export default async function FeedPage({
   searchParams,
 }: {
