@@ -33,6 +33,32 @@ Only if you cannot set Root Directory to `apps/web`: in the dashboard set **Buil
 
 Environment variables for the web app are listed below.
 
+### Two different Google OAuth clients (do not mix)
+
+| Where | Purpose | Google Console redirect URI pattern |
+|-------|---------|-------------------------------------|
+| **Vercel (Next.js)** | Staff sign-in to the Content Resourcer UI ([Auth.js](https://authjs.dev)) | `https://<your-vercel-host>/api/auth/callback/google` |
+| **Render (worker)** | Gmail API token for ingestion only | `https://<your-render-host>/oauth/google/callback` |
+
+Use **separate** OAuth clients in Google Cloud (or the same client only if you add **both** redirect URIs to that client—usually clearer to keep two clients).
+
+### Auth.js on Vercel (staff login)
+
+Set on **Vercel** for `apps/web`:
+
+| Variable | Description |
+|----------|-------------|
+| `AUTH_GOOGLE_ID` | Google OAuth Web client **Client ID** (Vercel app) |
+| `AUTH_GOOGLE_SECRET` | Google OAuth **Client secret** |
+| `AUTH_SECRET` | Random long string used to sign sessions (required in production) |
+| `AUTH_URL` | Site origin, e.g. `https://contentintelligence-mu.vercel.app` (no trailing slash) |
+| `AUTH_TRUST_HOST` | Set `true` on Vercel so callback URLs resolve correctly |
+
+Google Cloud → **Authorized JavaScript origins:** your Vercel origin.  
+**Authorized redirect URIs:** `https://<vercel-host>/api/auth/callback/google`.
+
+First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Google sign-in; others default to **`member`** until promoted in **Admin → Users**.
+
 ## Prerequisites (optional local use)
 
 - Node 20+
@@ -46,14 +72,18 @@ Environment variables for the web app are listed below.
 |----------|-------------|
 | `MONGODB_URI` | Atlas connection string |
 | `MONGODB_DB_NAME` | Optional database name (default `content_resourcer`) |
-| `INTERNAL_UI_SECRET` | Optional; if set, cookie login at `/login` |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID (Auth.js / staff login) |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
+| `AUTH_SECRET` | Session signing secret |
+| `AUTH_URL` | Public site URL (see Auth.js section above) |
+| `AUTH_TRUST_HOST` | `true` on Vercel |
 
 **Render (`apps/worker`)**
 
 | Variable | Description |
 |----------|-------------|
 | `MONGODB_URI` | Same as above |
-| `GMAIL_CLIENT_ID` | OAuth client ID |
+| `GMAIL_CLIENT_ID` | OAuth client ID (**Gmail worker**; not `AUTH_GOOGLE_*`) |
 | `GMAIL_CLIENT_SECRET` | OAuth client secret |
 | `GMAIL_REDIRECT_URI` | Must match Google console (Render service URL + `/oauth/google/callback`) |
 | `OPENAI_API_KEY` | Optional; summaries skipped if unset |
@@ -94,4 +124,5 @@ npm run build
 
 ## OAuth notes
 
-Use a Google Cloud **OAuth Web** client. Authorized redirect URI must exactly match `GMAIL_REDIRECT_URI`. The first successful consent must request offline access so a **refresh token** is returned.
+- **Vercel (Auth.js):** Web client redirect must be `…/api/auth/callback/google` on your Vercel domain.
+- **Render (Gmail):** Redirect must exactly match `GMAIL_REDIRECT_URI` (worker `/oauth/google/callback`). The first successful consent should request offline access so a **refresh token** is returned for ingestion.

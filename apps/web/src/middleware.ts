@@ -1,24 +1,23 @@
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
-export function middleware(req: NextRequest) {
-  const secret = process.env.INTERNAL_UI_SECRET;
-  if (!secret) return NextResponse.next();
-
-  const path = req.nextUrl.pathname;
-  if (path === "/login" || path.startsWith("/login/")) {
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
-
-  const token = req.cookies.get("cr_auth")?.value;
-  if (token === secret) return NextResponse.next();
-
-  const url = req.nextUrl.clone();
-  url.pathname = "/login";
-  url.searchParams.set("next", path);
-  return NextResponse.redirect(url);
-}
+  if (pathname === "/login") {
+    return NextResponse.next();
+  }
+  if (!req.auth) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+  return NextResponse.next();
+});
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

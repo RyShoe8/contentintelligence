@@ -1,6 +1,7 @@
 import Image from "next/image";
+import { auth } from "@/auth";
+import { GoogleSignIn } from "@/components/google-sign-in";
 import { redirect } from "next/navigation";
-import { loginAction } from "./actions";
 
 export default async function LoginPage({
   searchParams,
@@ -8,9 +9,25 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const sp = await searchParams;
-  if (!process.env.INTERNAL_UI_SECRET) {
-    redirect("/feed");
+  const session = await auth();
+  if (session?.user) {
+    redirect(sp.next?.startsWith("/") ? sp.next : "/feed");
   }
+
+  if (!process.env.AUTH_GOOGLE_ID) {
+    return (
+      <div className="mx-auto max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 shadow-md">
+        <p className="text-sm text-[var(--muted)]">
+          Sign-in is not configured. Set <code className="text-[var(--fg)]">AUTH_GOOGLE_ID</code>,{" "}
+          <code className="text-[var(--fg)]">AUTH_GOOGLE_SECRET</code>,{" "}
+          <code className="text-[var(--fg)]">AUTH_SECRET</code>, and{" "}
+          <code className="text-[var(--fg)]">AUTH_URL</code> on Vercel.
+        </p>
+      </div>
+    );
+  }
+
+  const next = sp.next?.startsWith("/") ? sp.next : "/feed";
 
   return (
     <div className="mx-auto max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-8 shadow-md">
@@ -27,26 +44,11 @@ export default async function LoginPage({
       </div>
       <h1 className="sr-only">Sign in</h1>
       {sp.error ? (
-        <p className="mb-4 text-sm text-red-400">Invalid credentials.</p>
+        <p className="mb-4 text-sm text-red-400">Sign-in failed. Try again.</p>
       ) : null}
-      <form action={loginAction} className="flex flex-col gap-4">
-        <input type="hidden" name="next" value={sp.next ?? "/feed"} />
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Internal password</span>
-          <input
-            type="password"
-            name="password"
-            required
-            className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-md bg-gradient-to-r from-[var(--accent)] to-[var(--accent-bright)] px-4 py-2 font-medium text-white shadow-sm hover:opacity-95"
-        >
-          Continue
-        </button>
-      </form>
+      <div className="flex justify-center">
+        <GoogleSignIn callbackUrl={next} />
+      </div>
     </div>
   );
 }
