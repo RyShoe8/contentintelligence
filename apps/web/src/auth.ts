@@ -1,17 +1,16 @@
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+import authConfig from "./auth.config";
 import clientPromise from "@/lib/mongo-auth-adapter";
 
 const FIRST_ADMIN_EMAIL = "ryanschumacher@themediashop.co";
 const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  trustHost: true,
+  ...authConfig,
   adapter: MongoDBAdapter(clientPromise, { databaseName: dbName }),
-  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
-  providers: [Google],
   callbacks: {
+    ...authConfig.callbacks,
     async jwt({ token, user }) {
       if (user?.email) {
         const client = await clientPromise;
@@ -25,13 +24,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = role;
       }
       return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = (token.sub as string) ?? session.user.email ?? "";
-        session.user.role = (token.role as "admin" | "member") ?? "member";
-      }
-      return session;
     },
   },
   events: {
