@@ -6,6 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "vercel-build": "npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/web",
     "build": "npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/worker && npm run build -w @content-resourcer/web",
     "dev": "npm run build -w @content-resourcer/db && npm run dev -w @content-resourcer/web",
     "dev:worker": "npm run dev -w @content-resourcer/worker",

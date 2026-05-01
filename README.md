@@ -12,10 +12,24 @@ This repo uses **npm workspaces** so hosted builds (`npm install` at the repo ro
 
 ## Vercel (Next.js)
 
-Configure the Vercel project **once**:
+### Required: Root Directory
 
-1. **Root Directory** → `apps/web` (required so Next.js and `apps/web/vercel.json` are used).
-2. Leave install/build empty in the dashboard so `apps/web/vercel.json` runs (`npm install` from repo root, then builds `@content-resourcer/db` and `@content-resourcer/web`).
+In the Vercel project, set **Settings → General → Root Directory** to **`apps/web`** and redeploy.
+
+If Root Directory stays at the **repository root** (`.`), the default `npm run build` compiles Next into **`apps/web/.next`**, but Vercel’s Next integration looks for **`.next` next to the project root** (e.g. `/vercel/path0/.next`). That mismatch produces:
+
+`The Next.js output directory ".next" was not found at "/vercel/path0/.next"`.
+
+With **Root Directory = `apps/web`**:
+
+- The app root is where `next.config.ts` and `.next` are written.
+- [`apps/web/vercel.json`](apps/web/vercel.json) applies: install from the monorepo root (`cd ../.. && npm install`), then build only **`@content-resourcer/db`** and **`@content-resourcer/web`** (not the Render worker).
+
+Leave **Install Command** and **Build Command** empty in the dashboard unless you know you need overrides.
+
+### Optional: monorepo root as Vercel root
+
+Only if you cannot set Root Directory to `apps/web`: in the dashboard set **Build Command** to `npm run vercel-build` (web + db only) and **Output Directory** to `apps/web/.next`. Next.js on Vercel may still expect a subdirectory root; prefer **`apps/web`** as Root Directory when possible.
 
 Environment variables for the web app are listed below.
 
