@@ -8,9 +8,20 @@ Monorepo: **Next.js** UI on Vercel, **Node worker** on Render (Gmail + optional 
 - `apps/worker` — health, Gmail OAuth, cron ingest, pipeline
 - `packages/db` — Zod schemas, Mongo helpers, indexes
 
-## Prerequisites
+This repo uses **npm workspaces** so hosted builds (`npm install` at the repo root) resolve `@content-resourcer/db` correctly. You do not need to run installs locally to deploy.
 
-- Node 20+, pnpm 9 (`corepack enable`)
+## Vercel (Next.js)
+
+Configure the Vercel project **once**:
+
+1. **Root Directory** → `apps/web` (required so Next.js and `apps/web/vercel.json` are used).
+2. Leave install/build empty in the dashboard so `apps/web/vercel.json` runs (`npm install` from repo root, then builds `@content-resourcer/db` and `@content-resourcer/web`).
+
+Environment variables for the web app are listed below.
+
+## Prerequisites (optional local use)
+
+- Node 20+
 - MongoDB Atlas cluster
 
 ## Environment variables
@@ -37,14 +48,14 @@ Monorepo: **Next.js** UI on Vercel, **Node worker** on Render (Gmail + optional 
 | `INGEST_SECRET` | Optional; required header `x-ingest-secret` for `POST /ingest` |
 | `PORT` | Default `8787` |
 
-## Local development
+## Local development (optional)
 
 ```bash
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
-This builds `packages/db` once, then runs the web app (port 3000) and worker (port 8787) in parallel.
+Use `npm run dev:worker` in another terminal for the ingest service.
 
 1. Point `GMAIL_REDIRECT_URI` to `http://localhost:8787/oauth/google/callback` for local OAuth.
 2. Open `http://localhost:8787/oauth/google/start` to connect Gmail; tokens are stored in Mongo.
@@ -55,7 +66,7 @@ This builds `packages/db` once, then runs the web app (port 3000) and worker (po
 
 ```bash
 set SEED_GMAIL_ADDRESS=you@gmail.com
-pnpm --filter @content-resourcer/db seed
+npm run seed
 ```
 
 Creates the **Gambling** vertical and a sample Gmail signal (labels: `Casinos`). Adjust `SEED_GMAIL_ADDRESS` to your inbox.
@@ -63,7 +74,8 @@ Creates the **Gambling** vertical and a sample Gmail signal (labels: `Casinos`).
 ## Production builds
 
 ```bash
-pnpm run build
+npm install
+npm run build
 ```
 
 ## OAuth notes

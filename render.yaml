@@ -3,8 +3,8 @@ services:
     name: content-resourcer-worker
     runtime: node
     plan: starter
-    buildCommand: corepack enable && pnpm install && pnpm --filter @content-resourcer/db build && pnpm --filter @content-resourcer/worker build
-    startCommand: pnpm --filter @content-resourcer/worker start
+    buildCommand: npm install && npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/worker
+    startCommand: npm run start -w @content-resourcer/worker
     envVars:
       - key: NODE_VERSION
         value: "20"
