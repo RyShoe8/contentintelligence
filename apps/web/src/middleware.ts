@@ -9,13 +9,17 @@ export default auth((req) => {
   if (pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
+  if (pathname === "/api/gmail/oauth/callback") {
+    return NextResponse.next();
+  }
   if (pathname === "/login") {
     return NextResponse.next();
   }
   if (!req.auth) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    const nextPath = `${pathname}${req.nextUrl.search}`;
+    url.searchParams.set("next", nextPath);
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

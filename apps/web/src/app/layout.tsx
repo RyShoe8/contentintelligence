@@ -44,6 +44,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   </span>
                 </Link>
                 <nav className="flex flex-wrap gap-4 text-sm font-medium text-[var(--muted)]">
+                  <Link className="transition-colors hover:text-[var(--accent)]" href="/getting-started">
+                    Getting started
+                  </Link>
                   <Link className="transition-colors hover:text-[var(--accent)]" href="/verticals">
                     Verticals
                   </Link>

@@ -33,14 +33,17 @@ Only if you cannot set Root Directory to `apps/web`: in the dashboard set **Buil
 
 Environment variables for the web app are listed below.
 
-### Two different Google OAuth clients (do not mix)
+### Google OAuth: staff login vs Gmail ingestion
 
-| Where | Purpose | Google Console redirect URI pattern |
-|-------|---------|-------------------------------------|
-| **Vercel (Next.js)** | Staff sign-in to the Content Resourcer UI ([Auth.js](https://authjs.dev)) | `https://<your-vercel-host>/api/auth/callback/google` |
-| **Render (worker)** | Gmail API token for ingestion only | `https://<your-render-host>/oauth/google/callback` |
+| Where | Purpose | Google Console redirect URI |
+|-------|---------|-----------------------------|
+| **Vercel (Next.js)** | Staff sign-in ([Auth.js](https://authjs.dev)) | `https://<your-vercel-host>/api/auth/callback/google` |
+| **Vercel (Next.js)** | **In-app Gmail connect** (read-only mail for ingestion) | `https://<your-vercel-host>/api/gmail/oauth/callback` |
+| **Render (worker)** | Legacy Gmail OAuth (optional; same Mongo tokens) | `https://<your-render-host>/oauth/google/callback` |
 
-Use **separate** OAuth clients in Google Cloud (or the same client only if you add **both** redirect URIs to that client—usually clearer to keep two clients).
+Use **one Gmail-capable OAuth client** with **both** Vercel Gmail redirect URIs if you use in-app connect, or separate clients—**do not** reuse `AUTH_GOOGLE_*` for Gmail API: Gmail needs its own client (or the same client ID with Gmail scopes and the correct redirect for that flow).
+
+**Recommended:** Configure **Gmail** `GMAIL_*` on **Vercel** with redirect `…/api/gmail/oauth/callback` so users never visit the worker to connect. Keep worker `GMAIL_*` aligned with the **same** Google client if the worker still runs OAuth for debugging.
 
 ### Auth.js on Vercel (staff login)
 
@@ -77,6 +80,11 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 | `AUTH_SECRET` | Session signing secret |
 | `AUTH_URL` | Public site URL (see Auth.js section above) |
 | `AUTH_TRUST_HOST` | `true` on Vercel |
+| `GMAIL_CLIENT_ID` | Gmail OAuth client ID (in-app **Connect Gmail**; not `AUTH_GOOGLE_*`) |
+| `GMAIL_CLIENT_SECRET` | Gmail OAuth client secret |
+| `GMAIL_REDIRECT_URI` | Must exactly match Google console: `https://<vercel-host>/api/gmail/oauth/callback` |
+| `WORKER_URL` | Render worker base URL, no trailing slash (e.g. `https://contentintelligence.onrender.com`) — enables **Sync now** in the UI |
+| `INGEST_SECRET` | Optional; if set on the worker, set the **same** value on Vercel so **Sync now** can call `POST /ingest` |
 
 **Render (`apps/worker`)**
 
@@ -103,10 +111,10 @@ npm run dev
 
 Use `npm run dev:worker` in another terminal for the ingest service.
 
-1. Point `GMAIL_REDIRECT_URI` to `http://localhost:8787/oauth/google/callback` for local OAuth.
-2. Open `http://localhost:8787/oauth/google/start` to connect Gmail; tokens are stored in Mongo.
+1. For **in-app Gmail connect** locally, set `GMAIL_REDIRECT_URI` to `http://localhost:3000/api/gmail/oauth/callback` (Next dev port) and add it in Google Cloud. Alternatively use the worker: `http://localhost:8787/oauth/google/callback` with worker `GMAIL_REDIRECT_URI`.
+2. Open **Getting started** or **Email signals** in the web UI and use **Connect Gmail**, or use `http://localhost:8787/oauth/google/start` for worker-only OAuth; tokens are stored in Mongo.
 3. Create verticals and signals in the web UI (`http://localhost:3000`).
-4. Trigger ingest: wait for cron or `POST http://localhost:8787/ingest` with optional `x-ingest-secret`.
+4. Trigger ingest: **Sync now** on Email signals / Getting started (requires `WORKER_URL` on `.env.local`), wait for worker cron, or `POST http://localhost:8787/ingest` with optional `x-ingest-secret`.
 
 ## Seed example vertical
 
@@ -126,5 +134,6 @@ npm run build
 
 ## OAuth notes
 
-- **Vercel (Auth.js):** Web client redirect must be `…/api/auth/callback/google` on your Vercel domain.
-- **Render (Gmail):** Redirect must exactly match `GMAIL_REDIRECT_URI` (worker `/oauth/google/callback`). The first successful consent should request offline access so a **refresh token** is returned for ingestion.
+- **Vercel (Auth.js):** Redirect must be `…/api/auth/callback/google` on your Vercel domain.
+- **Vercel (Gmail in app):** Redirect must be `…/api/gmail/oauth/callback` and match `GMAIL_REDIRECT_URI`. Users connect from **Getting started** or **Email signals**; scope is read-only Gmail.
+- **Render (Gmail, optional):** Redirect `…/oauth/google/callback` if you still use worker-hosted OAuth. First consent should use **offline** access so a **refresh token** is stored.

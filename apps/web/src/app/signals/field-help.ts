@@ -4,7 +4,7 @@ export const SIGNAL_FIELD_TIPS = {
     "Which vertical this rule belongs to. That vertical’s default keywords are merged with signal keywords for the post-fetch keyword check.",
   name: "A label for you in the UI only; it is not sent to Gmail.",
   email_address:
-    "The Gmail address for this rule. It must match the account you authorized with OAuth on the Render worker (tokens are stored per inbox).",
+    "The Gmail address for this rule. It must match the inbox you connect with Connect Gmail in this app (or legacy worker OAuth); tokens are stored per inbox in Mongo.",
   labels:
     "Optional Gmail label names, one per line. Narrows the Gmail search with label: filters (several lines are OR’d). Spelling and spaces must match Gmail.",
   sender_addresses:

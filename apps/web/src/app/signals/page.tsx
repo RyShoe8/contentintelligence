@@ -1,25 +1,130 @@
-import { ensureIndexes, listInputSignals, listVerticals } from "@content-resourcer/db";
+import { ensureIndexes, getGmailOAuth, listInputSignals, listVerticals } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { deleteSignalAction, saveSignalAction } from "./actions";
 import { SIGNAL_FIELD_TIPS } from "./field-help";
 import { LabelWithTip } from "./label-with-tip";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignalsPage() {
+function gmailErrorMessage(code: string) {
+  switch (code) {
+    case "invalid_state":
+      return "The sign-in link expired or was invalid. Use Connect Gmail again.";
+    case "missing_code":
+      return "Google did not return an authorization code. Try again.";
+    case "missing_refresh_token":
+      return "Google did not return a refresh token. Try Connect again and accept access (you may need to remove the app in Google Account permissions first).";
+    case "missing_email":
+      return "Could not read your Gmail address from Google.";
+    case "server_config":
+      return "Gmail OAuth is not configured on the server.";
+    case "token_exchange_failed":
+      return "Could not exchange the authorization code with Google.";
+    default:
+      return `Something went wrong (${code}).`;
+  }
+}
+
+export default async function SignalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ gmail?: string; email?: string; gmail_error?: string }>;
+}) {
+  const sp = await searchParams;
   const db = await connectMongo();
   await ensureIndexes(db);
   const verticals = await listVerticals(db);
   const signals = await listInputSignals(db);
+
+  const gmailOAuthConfigured = !!(
+    process.env.GMAIL_CLIENT_ID &&
+    process.env.GMAIL_CLIENT_SECRET &&
+    process.env.GMAIL_REDIRECT_URI
+  );
+  const workerIngestConfigured = !!process.env.WORKER_URL;
+
+  const inboxEmails = [...new Set(signals.map((s) => s.config.email_address))].filter(Boolean).sort();
+  const inboxStatus = await Promise.all(
+    inboxEmails.map(async (email) => {
+      const doc = await getGmailOAuth(db, email);
+      return { email, connected: !!doc?.refresh_token };
+    }),
+  );
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Gmail input signals</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Each signal is a Gmail ingestion rule. OAuth is completed on the Render worker URL.
+          Each signal is a Gmail ingestion rule. Connect the inbox here so the worker can read mail from Mongo-stored
+          tokens.
         </p>
       </div>
+
+      {sp.gmail === "ok" && sp.email ? (
+        <p className="rounded-md border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-200">
+          Gmail connected for <strong>{sp.email}</strong>. You can run a sync below or wait for the worker schedule.
+        </p>
+      ) : null}
+      {sp.gmail_error ? (
+        <p className="rounded-md border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-200">
+          {gmailErrorMessage(sp.gmail_error)}
+        </p>
+      ) : null}
+
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+        <h2 className="mb-2 text-lg font-medium">Gmail inboxes</h2>
+        <p className="mb-4 text-sm text-[var(--muted)]">
+          Each address below appears on at least one signal. Connect grants read-only Gmail access for ingestion.
+        </p>
+        {!gmailOAuthConfigured ? (
+          <p className="text-sm text-amber-200/90">
+            Gmail OAuth is not configured on this deployment (set{" "}
+            <code className="text-[var(--fg)]">GMAIL_CLIENT_ID</code>,{" "}
+            <code className="text-[var(--fg)]">GMAIL_CLIENT_SECRET</code>, and{" "}
+            <code className="text-[var(--fg)]">GMAIL_REDIRECT_URI</code> on Vercel).
+          </p>
+        ) : inboxStatus.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">Save a signal with a Gmail address to see connection status here.</p>
+        ) : (
+          <ul className="divide-y divide-[var(--border)] rounded-md border border-[var(--border)] text-sm">
+            {inboxStatus.map(({ email, connected }) => (
+              <li key={email} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+                <span className="font-medium text-[var(--fg)]">{email}</span>
+                <span className={connected ? "text-green-400" : "text-amber-200"}>
+                  {connected ? "Connected" : "Not connected"}
+                </span>
+                {!connected ? (
+                  <a
+                    className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                    href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                  >
+                    Connect Gmail
+                  </a>
+                ) : (
+                  <a
+                    className="text-xs text-[var(--accent)] hover:underline"
+                    href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                  >
+                    Re-connect
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <p className="mb-2 text-sm text-[var(--muted)]">Pull new messages once (calls the Render worker).</p>
+          <GmailSyncButton disabled={!workerIngestConfigured} />
+          {!workerIngestConfigured ? (
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable (your Render service URL,
+              no trailing slash).
+            </p>
+          ) : null}
+        </div>
+      </section>
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
         <h2 className="mb-4 text-lg font-medium">Add signal</h2>
