@@ -2,12 +2,20 @@ import { z } from "zod";
 
 export const SOURCE_TYPE_EMAIL_GMAIL = "email_gmail" as const;
 
+/** Mongo often stores explicit null; Zod optional arrays reject null without preprocess. */
+function optionalStringArray() {
+  return z.preprocess(
+    (val) => (val == null ? undefined : val),
+    z.array(z.string()).optional(),
+  );
+}
+
 export const gmailInputConfigSchema = z.object({
   email_address: z.string().email(),
-  labels: z.array(z.string()).optional(),
-  sender_addresses: z.array(z.string()).optional(),
-  sender_domains: z.array(z.string()).optional(),
-  subject_keywords: z.array(z.string()).optional(),
+  labels: optionalStringArray(),
+  sender_addresses: optionalStringArray(),
+  sender_domains: optionalStringArray(),
+  subject_keywords: optionalStringArray(),
   scan_body: z.boolean().default(true),
   lookback_window_hours: z.number().int().positive().max(24 * 90).default(168),
 });
