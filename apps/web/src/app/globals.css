@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Palette aligned with ContentIntelligence logo: navy, cyan/teal accents, pale blue canvas */
+  --bg-top: #eef6fc;
+  --bg-bottom: #f8fafc;
+  --fg: #1a2744;
+  --muted: #5c6b82;
+  --card: #ffffff;
+  --input-bg: #ffffff;
+  --border: #c9dae9;
+  --accent: #1e6bb8;
+  --accent-bright: #22b8cf;
+  --header-border: rgba(30, 107, 184, 0.15);
+}
+
+body {
+  color: var(--fg);
+  background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  min-height: 100vh;
+}
