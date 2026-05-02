@@ -21,4 +21,5 @@ export const env = {
   maxBodyChars: num("MAX_BODY_CHARS", 12000),
   maxAiInputChars: num("MAX_AI_INPUT_CHARS", 8000),
   maxTokensSummary: num("MAX_TOKENS_SUMMARY", 200),
+  maxTokensDeal: num("MAX_TOKENS_DEAL", 250),
 };

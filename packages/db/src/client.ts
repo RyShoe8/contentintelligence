@@ -43,6 +43,8 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { created_at: -1 } },
     { key: { external_id: 1 }, unique: true, sparse: true },
     { key: { relevance_score: -1 } },
+    { key: { "deal_metrics.effective_savings_pct": -1 }, sparse: true },
+    { key: { "deal_metrics.confidence": -1 }, sparse: true },
   ]);
   await db.collection(COLLECTIONS.gmail_oauth).createIndexes([
     { key: { email_address: 1 }, unique: true },

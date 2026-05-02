@@ -1,6 +1,6 @@
 import { convert } from "html-to-text";
 import { randomUUID } from "node:crypto";
-import type { GmailInputConfig, InputSignal, SignalItem, Vertical } from "@content-resourcer/db";
+import type { DealMetrics, GmailInputConfig, InputSignal, SignalItem, Vertical } from "@content-resourcer/db";
 import { SOURCE_TYPE_EMAIL_GMAIL } from "@content-resourcer/db";
 import { env } from "./env.js";
 import type { NormalizedMessage } from "./gmail-client.js";
@@ -204,12 +204,13 @@ export function buildFullSignalItem(
   normalized: NormalizedMessage,
   extractedText: string,
   aiSummary: string,
+  deal_metrics?: DealMetrics,
 ): SignalItem {
   const kws = mergeKeywords(vertical, signal);
   const detected = detectKeywords(extractedText, kws);
   const relevance = computeRelevanceScore(extractedText, kws, normalized.dateMs);
   const trimmed = aiSummary.trim();
-  return {
+  const base: SignalItem = {
     id: randomUUID(),
     vertical_id: vertical.id,
     input_signal_id: signal.id,
@@ -227,4 +228,5 @@ export function buildFullSignalItem(
     skip_reason: null,
     created_at: new Date(),
   };
+  return deal_metrics ? { ...base, deal_metrics } : base;
 }

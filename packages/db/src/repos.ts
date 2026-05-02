@@ -133,25 +133,51 @@ export type SignalFeedQuery = {
   vertical_id?: string;
   keyword?: string;
   min_score?: number;
-  sort: "created_at" | "relevance_score";
+  /** Minimum deal strength 0–1 (matches `deal_metrics.effective_savings_pct`). */
+  min_effective_savings_pct?: number;
+  /** Minimum extraction confidence 0–1. */
+  min_confidence?: number;
+  /** When true, only rows with `deal_metrics` present. */
+  has_deal_metrics?: boolean;
+  sort: "created_at" | "relevance_score" | "deal_savings";
   order: "asc" | "desc";
   limit?: number;
 };
 
 export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<SignalItem[]> {
-  const filter: Record<string, unknown> = {};
-  if (q.vertical_id) filter.vertical_id = q.vertical_id;
-  if (q.min_score !== undefined) filter.relevance_score = { $gte: q.min_score };
+  const clauses: Record<string, unknown>[] = [];
+  if (q.vertical_id) clauses.push({ vertical_id: q.vertical_id });
+  if (q.min_score !== undefined) clauses.push({ relevance_score: { $gte: q.min_score } });
   if (q.keyword) {
     const kw = escapeRegex(q.keyword);
-    filter.$or = [
-      { title: { $regex: kw, $options: "i" } },
-      { extracted_text: { $regex: kw, $options: "i" } },
-      { detected_keywords: { $regex: kw, $options: "i" } },
-    ];
+    clauses.push({
+      $or: [
+        { title: { $regex: kw, $options: "i" } },
+        { extracted_text: { $regex: kw, $options: "i" } },
+        { detected_keywords: { $regex: kw, $options: "i" } },
+      ],
+    });
   }
+  if (q.min_effective_savings_pct !== undefined) {
+    clauses.push({ "deal_metrics.effective_savings_pct": { $gte: q.min_effective_savings_pct } });
+  }
+  if (q.min_confidence !== undefined) {
+    clauses.push({ "deal_metrics.confidence": { $gte: q.min_confidence } });
+  }
+  if (q.has_deal_metrics) {
+    clauses.push({
+      deal_metrics: { $exists: true, $ne: null },
+      "deal_metrics.effective_savings_pct": { $exists: true },
+    });
+  }
+
+  const filter: Record<string, unknown> =
+    clauses.length === 0 ? {} : clauses.length === 1 ? (clauses[0] as Record<string, unknown>) : { $and: clauses };
+
+  const sortField =
+    q.sort === "deal_savings" ? "deal_metrics.effective_savings_pct" : q.sort === "relevance_score" ? "relevance_score" : "created_at";
   const sort: Record<string, 1 | -1> = {
-    [q.sort]: q.order === "asc" ? 1 : -1,
+    [sortField]: q.order === "asc" ? 1 : -1,
   };
   const cursor = signalItems(db).find(filter).sort(sort).limit(q.limit ?? 200);
   const docs = await cursor.toArray();

@@ -18,7 +18,12 @@ import {
   extractAndTruncate,
   prefilter,
 } from "./pipeline.js";
-import { summarizeEmailBody } from "./summarize.js";
+import {
+  extractDealMetricsRegex,
+  mergeDealExtractions,
+  type DealMetricsLlmPartial,
+} from "./deal-metrics.js";
+import { extractDealMetricsWithLlm, summarizeEmailBody } from "./summarize.js";
 
 export type IngestStats = {
   signals: number;
@@ -197,7 +202,18 @@ export async function runIngest(): Promise<IngestStats> {
           }
         }
 
-        const full = buildFullSignalItem(vertical, signal, normalized, extracted, summary);
+        let dealLlm: DealMetricsLlmPartial | null = null;
+        if (env.openaiApiKey) {
+          try {
+            dealLlm = await extractDealMetricsWithLlm(extracted);
+          } catch (e) {
+            console.error("[ingest] deal metrics LLM failed", e);
+          }
+        }
+        const dealRegex = extractDealMetricsRegex(normalized.subject, extracted);
+        const deal_metrics = mergeDealExtractions(dealLlm, dealRegex);
+
+        const full = buildFullSignalItem(vertical, signal, normalized, extracted, summary, deal_metrics);
         try {
           await insertSignalItem(db, full);
           stats.storedFull++;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureIndexes, getSignalItem } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { formatDealDetail } from "@/lib/deal-display";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,17 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
           <h2 className="text-sm font-medium text-[var(--muted)]">AI summary</h2>
           <p className="mt-2 whitespace-pre-wrap">{item.ai_summary}</p>
+        </section>
+      ) : null}
+
+      {item.deal_metrics ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Deal metrics</h2>
+          <p className="mt-2 text-sm">{formatDealDetail(item.deal_metrics)}</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Estimates from email text (regex and, when configured, LLM). Not financial advice; marketing copy can inflate
+            &quot;value&quot;.
+          </p>
         </section>
       ) : null}
 

@@ -48,6 +48,39 @@ export const inputSignalSchema = z.object({
 
 export type InputSignal = z.infer<typeof inputSignalSchema>;
 
+export const dealMetricsModeSchema = z.enum([
+  "retail_list_vs_sale",
+  "pay_vs_credited_value",
+  "unknown",
+]);
+
+export type DealMetricsMode = z.infer<typeof dealMetricsModeSchema>;
+
+export const dealMetricsSourceSchema = z.enum(["regex", "llm", "merged", "none"]);
+
+export type DealMetricsSource = z.infer<typeof dealMetricsSourceSchema>;
+
+export const dealMetricsSchema = z.object({
+  mode: dealMetricsModeSchema,
+  you_pay: z.number().optional(),
+  baseline_value: z.number().optional(),
+  /** Portion saved vs baseline: 1 - you_pay / baseline_value (0–1). */
+  effective_savings_pct: z.number(),
+  /** baseline_value / you_pay when both defined. */
+  value_ratio: z.number().optional(),
+  confidence: z.number().min(0).max(1),
+  source: dealMetricsSourceSchema,
+});
+
+export type DealMetrics = z.infer<typeof dealMetricsSchema>;
+
+function optionalDealMetrics() {
+  return z.preprocess(
+    (val) => (val == null ? undefined : val),
+    dealMetricsSchema.optional(),
+  );
+}
+
 export const signalItemSchema = z.object({
   id: z.string().uuid(),
   vertical_id: z.string().uuid(),
@@ -64,6 +97,7 @@ export const signalItemSchema = z.object({
   ai_summary: z.string().nullable().optional(),
   ai_processed: z.boolean().default(false),
   skip_reason: z.string().nullable().optional(),
+  deal_metrics: optionalDealMetrics(),
   created_at: z.coerce.date(),
 });
 
