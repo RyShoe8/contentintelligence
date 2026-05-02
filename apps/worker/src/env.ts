@@ -7,6 +7,15 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function bool(name: string, fallback: boolean): boolean {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  const t = v.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(t)) return true;
+  if (["0", "false", "no", "off"].includes(t)) return false;
+  return fallback;
+}
+
 export const env = {
   port: num("PORT", 8787),
   mongodbUri: process.env.MONGODB_URI ?? "",
@@ -24,4 +33,8 @@ export const env = {
   maxTokensDeal: num("MAX_TOKENS_DEAL", 250),
   /** Minimum lookback window (hours) when using gap since last ingest (avoids zero-width double-sync). */
   ingestMinGapHours: num("INGEST_MIN_GAP_HOURS", 5 / 60),
+  /** When true, ingest fetches hotlinked https img URLs (SSRF-guarded) into email_images. */
+  emailImageFetchRemote: bool("EMAIL_IMAGE_FETCH_REMOTE", true),
+  emailImageFetchTimeoutMs: num("EMAIL_IMAGE_FETCH_TIMEOUT_MS", 10_000),
+  emailImageFetchMaxBytes: num("EMAIL_IMAGE_FETCH_MAX_BYTES", 500_000),
 };

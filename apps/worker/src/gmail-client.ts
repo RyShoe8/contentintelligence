@@ -127,6 +127,20 @@ function extractBodies(part: gmail_v1.Schema$MessagePart | undefined): {
   return { text, html };
 }
 
+/** Concatenated HTML bodies from a Gmail message part tree (for img src parsing). */
+export function extractHtmlFromPayload(part: gmail_v1.Schema$MessagePart | undefined): string {
+  if (!part) return "";
+  let html = "";
+  const mime = part.mimeType ?? "";
+  if (mime === "text/html" && part.body?.data) {
+    html += decodeBase64Url(part.body.data);
+  }
+  for (const p of part.parts ?? []) {
+    html += extractHtmlFromPayload(p);
+  }
+  return html;
+}
+
 function decodeBase64Url(data: string): string {
   const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(b64, "base64").toString("utf8");
