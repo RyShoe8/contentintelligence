@@ -5,6 +5,31 @@ import { SOURCE_TYPE_EMAIL_GMAIL } from "@content-resourcer/db";
 import { env } from "./env.js";
 import type { NormalizedMessage } from "./gmail-client.js";
 
+const EMAIL_HTML_PREVIEW_MAX = 120_000;
+
+/** Bracketed image URLs left by html-to-text / ESP markup (marketing noise). */
+function stripStandaloneBracketedImageUrls(text: string): string {
+  return text.replace(
+    /\s*\[https?:\/\/[^\]\s]+\.(?:png|jpe?g|gif|webp)(?:\?[^\]\s]*)?\]/gi,
+    "",
+  );
+}
+
+/** Remove common semantic footer blocks before text conversion or preview storage. */
+function stripHtmlFooterBlocks(html: string): string {
+  return html
+    .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, "")
+    .replace(/<section\b[^>]*\brole=["']contentinfo["'][^>]*>[\s\S]*?<\/section>/gi, "");
+}
+
+/** Truncate HTML for optional `email_html_preview` (Mongo size). */
+export function trimEmailHtmlPreview(html: string): string | undefined {
+  const stripped = stripHtmlFooterBlocks(html);
+  const t = stripped.trim();
+  if (!t) return undefined;
+  return t.length > EMAIL_HTML_PREVIEW_MAX ? t.slice(0, EMAIL_HTML_PREVIEW_MAX) : t;
+}
+
 const PROMO_PHRASES = [
   "bonus",
   "free spins",
@@ -84,16 +109,24 @@ function senderMatches(fromHeader: string, config: GmailInputConfig): boolean {
 
 export function extractAndTruncate(raw: string, scanBody: boolean): string {
   const htmlMatch = raw.includes("<html") || raw.includes("<HTML") || /<[a-z][\s\S]*>/i.test(raw);
-  let text = raw;
+  const rawForConvert = htmlMatch || raw.includes("<") ? stripHtmlFooterBlocks(raw) : raw;
+  let text = rawForConvert;
   if (htmlMatch || raw.includes("<")) {
     try {
-      text = convert(raw, { wordwrap: false, selectors: [{ selector: "a", options: { ignoreHref: true } }] });
+      text = convert(rawForConvert, {
+        wordwrap: false,
+        selectors: [
+          { selector: "a", options: { ignoreHref: true } },
+          { selector: "img", format: "skip" },
+        ],
+      });
     } catch {
-      text = quickPlainText(raw);
+      text = quickPlainText(rawForConvert);
     }
   } else {
-    text = quickPlainText(raw);
+    text = quickPlainText(rawForConvert);
   }
+  text = stripStandaloneBracketedImageUrls(text);
   text = stripTrackingNoise(text);
   if (!scanBody) {
     const lines = text.split("\n");
@@ -102,19 +135,54 @@ export function extractAndTruncate(raw: string, scanBody: boolean): string {
   return text.slice(0, env.maxBodyChars);
 }
 
+/** ESP / legal footer markers; cut at earliest match in the tail of the body. */
+const FOOTER_PATTERNS: RegExp[] = [
+  /unsubscribe/gi,
+  /to unsubscribe/gi,
+  /view in browser/gi,
+  /view this email in your browser/gi,
+  /privacy policy/gi,
+  /you received this email/gi,
+  /you are receiving this/gi,
+  /why am i receiving/gi,
+  /why you're receiving/gi,
+  /manage your preferences/gi,
+  /update your preferences/gi,
+  /email preferences/gi,
+  /all rights reserved/gi,
+  /registered address/gi,
+  /registered office/gi,
+  /incorporated in/gi,
+  /company number/gi,
+  /this is an automated/gi,
+  /automated message/gi,
+  /please don['’]t reply/gi,
+  /do not reply to this email/gi,
+  /terms of service/gi,
+  /terms and conditions/gi,
+  /sweepstakes rules/gi,
+  /void where prohibited/gi,
+  /no purchase necessary/gi,
+  /add our email to your address book/gi,
+];
+
 function stripTrackingNoise(text: string): string {
   let t = text;
-  const footerPatterns = [
-    /unsubscribe/gi,
-    /view in browser/gi,
-    /privacy policy/gi,
-    /you received this email/gi,
-  ];
-  for (const p of footerPatterns) {
+  const len = t.length;
+  if (len < 120) return t.replace(/\s+/g, " ").trim();
+
+  const minStart = Math.max(200, Math.floor(len * 0.45));
+  let cutAt = len;
+  for (const p of FOOTER_PATTERNS) {
+    p.lastIndex = 0;
     const idx = t.search(p);
-    if (idx > 200 && idx < t.length * 0.85) {
-      t = t.slice(0, idx);
+    if (idx === -1) continue;
+    if (idx >= minStart && idx < cutAt) {
+      cutAt = idx;
     }
+  }
+  if (cutAt < len) {
+    t = t.slice(0, cutAt);
   }
   return t.replace(/\s+/g, " ").trim();
 }
@@ -180,11 +248,15 @@ export function buildMinimalSignalItem(
   signal: InputSignal,
   normalized: NormalizedMessage,
   skipReason: string,
+  emailHtmlPreview?: string | null,
 ): SignalItem {
   const extracted = extractAndTruncate(normalized.raw_content, signal.config.scan_body).slice(0, 2000);
   const kws = mergeKeywords(vertical, signal);
   const detected = detectKeywords(extracted, kws);
-  return {
+  const email_sent_at =
+    Number.isFinite(normalized.dateMs) && normalized.dateMs > 0 ? new Date(normalized.dateMs) : undefined;
+  const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
+  const base: SignalItem = {
     id: randomUUID(),
     vertical_id: vertical.id,
     input_signal_id: signal.id,
@@ -202,7 +274,10 @@ export function buildMinimalSignalItem(
     ai_processed: false,
     skip_reason: skipReason,
     created_at: new Date(),
+    ...(email_sent_at ? { email_sent_at } : {}),
+    ...(preview ? { email_html_preview: preview } : {}),
   };
+  return base;
 }
 
 export function buildFullSignalItem(
@@ -213,11 +288,15 @@ export function buildFullSignalItem(
   aiSummary: string,
   deal_metrics?: DealMetrics,
   email_images?: EmailImage[],
+  emailHtmlPreview?: string | null,
 ): SignalItem {
   const kws = mergeKeywords(vertical, signal);
   const detected = detectKeywords(extractedText, kws);
   const relevance = computeRelevanceScore(extractedText, kws, normalized.dateMs);
   const trimmed = aiSummary.trim();
+  const email_sent_at =
+    Number.isFinite(normalized.dateMs) && normalized.dateMs > 0 ? new Date(normalized.dateMs) : undefined;
+  const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
   const base: SignalItem = {
     id: randomUUID(),
     vertical_id: vertical.id,
@@ -236,6 +315,8 @@ export function buildFullSignalItem(
     ai_processed: Boolean(trimmed),
     skip_reason: null,
     created_at: new Date(),
+    ...(email_sent_at ? { email_sent_at } : {}),
+    ...(preview ? { email_html_preview: preview } : {}),
   };
   const withDeal = deal_metrics ? { ...base, deal_metrics } : base;
   return email_images?.length ? { ...withDeal, email_images } : withDeal;

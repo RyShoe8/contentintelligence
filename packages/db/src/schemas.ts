@@ -117,7 +117,7 @@ export type EmailImage = z.infer<typeof emailImageSchema>;
 function optionalEmailImages() {
   return z.preprocess(
     (val) => (val == null ? undefined : val),
-    z.array(emailImageSchema).max(5).optional(),
+    z.array(emailImageSchema).max(25).optional(),
   );
 }
 
@@ -168,6 +168,13 @@ const signalItemShape = z.object({
   deal_metrics: optionalDealMetrics(),
   /** Ingested image attachments (capped count/size at ingest). */
   email_images: optionalEmailImages(),
+  /** Message Date header (when known). */
+  email_sent_at: z.coerce.date().optional(),
+  /** Truncated HTML body for sanitized preview in the web app. */
+  email_html_preview: z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    z.string().max(150_000).optional(),
+  ),
   created_at: z.coerce.date(),
 });
 

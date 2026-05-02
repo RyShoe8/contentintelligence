@@ -5,10 +5,6 @@ import { env } from "./env.js";
 import { extractHtmlFromPayload } from "./gmail-client.js";
 import { ingestLog, ingestVerbose } from "./ingest-log.js";
 
-const MAX_IMAGES = 5;
-/** Max stored base64 length per image (roughly < 300KB binary). */
-const MAX_B64_PER_IMAGE = 400_000;
-const MAX_TOTAL_B64 = 1_400_000;
 const MAX_REDIRECTS = 8;
 
 const ALLOWED = new Map<string, EmailImage["mime"]>([
@@ -20,6 +16,18 @@ const ALLOWED = new Map<string, EmailImage["mime"]>([
 ]);
 
 const IMAGE_PATH_EXT = /\.(png|jpe?g|gif|webp)(\?|#|$)/i;
+
+function maxImages(): number {
+  return Math.max(1, Math.min(25, env.emailImageMaxCount));
+}
+
+function maxB64PerImage(): number {
+  return Math.max(10_000, env.emailImageMaxB64PerImage);
+}
+
+function maxTotalB64(): number {
+  return Math.max(50_000, env.emailImageMaxTotalB64);
+}
 
 function urlSafeB64ToStandard(b64: string): string {
   const std = b64.replace(/-/g, "+").replace(/_/g, "/");
@@ -129,28 +137,55 @@ function normalizeHtmlAttrUrl(s: string): string {
   return s.replace(/&amp;/gi, "&").replace(/&#38;/g, "&").trim();
 }
 
-function extractHttpsImageUrlsFromHtml(html: string): string[] {
+function pushHttpsImgUrl(seen: Set<string>, ordered: string[], raw: string): void {
+  const norm = normalizeHtmlAttrUrl(raw);
+  if (!norm.toLowerCase().startsWith("https://")) return;
+  let u: URL;
+  try {
+    u = new URL(norm);
+  } catch {
+    return;
+  }
+  if (u.protocol !== "https:") return;
+  const href = u.href;
+  if (seen.has(href)) return;
+  seen.add(href);
+  ordered.push(href);
+}
+
+/** Ordered unique https image URLs from img src (quoted + unquoted) and background-image (extension paths only). */
+function extractHttpsImageUrlsFromHtml(html: string): { withExt: string[]; probeMime: string[] } {
   const seen = new Set<string>();
-  const out: string[] = [];
-  const re = /<img\b[^>]*\bsrc\s*=\s*(["'])([^"']*)\1/gi;
+  const ordered: string[] = [];
+
+  const reQuoted = /<img\b[^>]*\bsrc\s*=\s*(["'])(https:\/\/[^"']+)\1/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    const raw = normalizeHtmlAttrUrl(m[2] ?? "");
-    if (!raw.toLowerCase().startsWith("https://")) continue;
-    let u: URL;
+  while ((m = reQuoted.exec(html)) !== null) {
+    pushHttpsImgUrl(seen, ordered, m[2] ?? "");
+  }
+
+  const reUnquoted = /<img\b[^>]*\bsrc\s*=\s*(https:\/\/[^\s>"']+)/gi;
+  while ((m = reUnquoted.exec(html)) !== null) {
+    pushHttpsImgUrl(seen, ordered, m[1] ?? "");
+  }
+
+  const reBg = /url\s*\(\s*["']?(https:\/\/[^"')]+\.(?:png|jpe?g|gif|webp)[^"')]*)["']?\s*\)/gi;
+  while ((m = reBg.exec(html)) !== null) {
+    pushHttpsImgUrl(seen, ordered, m[1] ?? "");
+  }
+
+  const withExt: string[] = [];
+  const probeMime: string[] = [];
+  for (const href of ordered) {
     try {
-      u = new URL(raw);
+      const p = new URL(href).pathname;
+      if (IMAGE_PATH_EXT.test(p)) withExt.push(href);
+      else probeMime.push(href);
     } catch {
       continue;
     }
-    if (u.protocol !== "https:") continue;
-    const href = u.href;
-    if (seen.has(href)) continue;
-    if (!IMAGE_PATH_EXT.test(u.pathname)) continue;
-    seen.add(href);
-    out.push(href);
   }
-  return out;
+  return { withExt, probeMime };
 }
 
 function mimeFromContentTypeHeader(ct: string | null): string | undefined {
@@ -184,13 +219,39 @@ async function readResponseBodyWithLimit(res: Response, maxBytes: number): Promi
   return out.buffer;
 }
 
-async function fetchRemoteImageAsEmailImage(urlStr: string): Promise<EmailImage | null> {
+function canonicalFromPathname(pathname: string): EmailImage["mime"] | undefined {
+  const p = pathname.toLowerCase();
+  if (p.endsWith(".png")) return "image/png";
+  if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return "image/jpeg";
+  if (p.endsWith(".gif")) return "image/gif";
+  if (p.endsWith(".webp")) return "image/webp";
+  return undefined;
+}
+
+/**
+ * Fetch remote image. When trustMimeTypeOnly, path may lack extension; MIME must come from Content-Type.
+ */
+async function fetchRemoteImageAsEmailImage(
+  urlStr: string,
+  trustMimeTypeOnly: boolean,
+): Promise<EmailImage | null> {
   const timeoutMs = Math.max(1000, env.emailImageFetchTimeoutMs);
   const maxBytes = Math.max(1024, env.emailImageFetchMaxBytes);
+  const perB64 = maxB64PerImage();
   let current = urlStr;
 
   for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
     await assertUrlSafeForFetch(current);
+    const pathname = (() => {
+      try {
+        return new URL(current).pathname;
+      } catch {
+        return "";
+      }
+    })();
+    let expectedMime = canonicalFromPathname(pathname);
+    if (!expectedMime && !trustMimeTypeOnly) return null;
+
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
@@ -226,23 +287,13 @@ async function fetchRemoteImageAsEmailImage(urlStr: string): Promise<EmailImage 
 
     const ct = mimeFromContentTypeHeader(res.headers.get("content-type"));
     let canonical = ct ? ALLOWED.get(ct) : undefined;
-    if (!canonical) {
-      try {
-        const path = new URL(current).pathname.toLowerCase();
-        if (path.endsWith(".png")) canonical = "image/png";
-        else if (path.endsWith(".jpg") || path.endsWith(".jpeg")) canonical = "image/jpeg";
-        else if (path.endsWith(".gif")) canonical = "image/gif";
-        else if (path.endsWith(".webp")) canonical = "image/webp";
-      } catch {
-        return null;
-      }
-    }
+    if (!canonical && expectedMime) canonical = expectedMime;
     if (!canonical) return null;
 
     const buf = await readResponseBodyWithLimit(res, maxBytes);
     if (!buf || buf.byteLength === 0) return null;
     const rawB64 = Buffer.from(buf).toString("base64");
-    if (rawB64.length > MAX_B64_PER_IMAGE) return null;
+    if (rawB64.length > perB64) return null;
 
     return {
       mime: canonical,
@@ -255,8 +306,10 @@ async function fetchRemoteImageAsEmailImage(urlStr: string): Promise<EmailImage 
 }
 
 function pushIfFits(out: EmailImage[], totalB64: { n: number }, img: EmailImage): boolean {
-  if (img.data_base64.length > MAX_B64_PER_IMAGE) return false;
-  if (totalB64.n + img.data_base64.length > MAX_TOTAL_B64) return false;
+  const per = maxB64PerImage();
+  const cap = maxTotalB64();
+  if (img.data_base64.length > per) return false;
+  if (totalB64.n + img.data_base64.length > cap) return false;
   out.push(img);
   totalB64.n += img.data_base64.length;
   return true;
@@ -271,6 +324,7 @@ export async function fetchEmailImageAttachments(
   messageId: string,
   payload: gmail_v1.Schema$MessagePart | undefined,
 ): Promise<EmailImage[]> {
+  const capN = maxImages();
   const attachmentRefs: { attachmentId: string; mime: string; filename?: string }[] = [];
   collectAttachmentImageParts(payload, attachmentRefs);
 
@@ -284,7 +338,7 @@ export async function fetchEmailImageAttachments(
   let fromRemote = 0;
 
   for (const ref of attachmentRefs) {
-    if (out.length >= MAX_IMAGES) break;
+    if (out.length >= capN) break;
     const canonical = ALLOWED.get(ref.mime.toLowerCase());
     if (!canonical) continue;
 
@@ -308,7 +362,7 @@ export async function fetchEmailImageAttachments(
   }
 
   for (const ref of inlineRefs) {
-    if (out.length >= MAX_IMAGES) break;
+    if (out.length >= capN) break;
     const canonical = ALLOWED.get(ref.mime.toLowerCase());
     if (!canonical) continue;
     let rawB64: string;
@@ -323,15 +377,17 @@ export async function fetchEmailImageAttachments(
     }
   }
 
-  if (env.emailImageFetchRemote && out.length < MAX_IMAGES && totalB64.n < MAX_TOTAL_B64) {
+  if (env.emailImageFetchRemote && out.length < capN && totalB64.n < maxTotalB64()) {
     const html = extractHtmlFromPayload(payload);
-    const urls = extractHttpsImageUrlsFromHtml(html);
-    for (const url of urls) {
-      if (out.length >= MAX_IMAGES) break;
-      if (totalB64.n >= MAX_TOTAL_B64) break;
+    const { withExt, probeMime } = extractHttpsImageUrlsFromHtml(html);
+    const remoteUrls = [...withExt, ...probeMime];
+    for (const url of remoteUrls) {
+      if (out.length >= capN) break;
+      if (totalB64.n >= maxTotalB64()) break;
+      const trustMime = probeMime.includes(url);
       let img: EmailImage | null = null;
       try {
-        img = await fetchRemoteImageAsEmailImage(url);
+        img = await fetchRemoteImageAsEmailImage(url, trustMime);
       } catch {
         img = null;
       }

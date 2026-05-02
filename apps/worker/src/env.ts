@@ -37,4 +37,10 @@ export const env = {
   emailImageFetchRemote: bool("EMAIL_IMAGE_FETCH_REMOTE", true),
   emailImageFetchTimeoutMs: num("EMAIL_IMAGE_FETCH_TIMEOUT_MS", 10_000),
   emailImageFetchMaxBytes: num("EMAIL_IMAGE_FETCH_MAX_BYTES", 500_000),
+  /** Max images stored per signal item (attachments + inline + remote). */
+  emailImageMaxCount: num("EMAIL_IMAGE_MAX_COUNT", 15),
+  /** Max total base64 payload across all images (Mongo size guard). */
+  emailImageMaxTotalB64: num("EMAIL_IMAGE_MAX_TOTAL_B64", 2_500_000),
+  /** Max base64 length per single image. */
+  emailImageMaxB64PerImage: num("EMAIL_IMAGE_MAX_B64_PER_IMAGE", 400_000),
 };

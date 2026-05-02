@@ -187,9 +187,25 @@ export default async function FeedPage({
             <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  {it.sender_from ? (
-                    <p className="truncate text-xs text-[var(--muted)]" title={it.sender_from}>
-                      {it.sender_from}
+                  {it.sender_from || it.email_sent_at ? (
+                    <p
+                      className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--muted)]"
+                      title={[it.sender_from, it.email_sent_at?.toISOString()].filter(Boolean).join(" · ")}
+                    >
+                      {it.sender_from ? <span className="min-w-0 truncate font-medium">{it.sender_from}</span> : null}
+                      {it.sender_from && it.email_sent_at ? (
+                        <span className="shrink-0 text-[var(--muted)]" aria-hidden>
+                          ·
+                        </span>
+                      ) : null}
+                      {it.email_sent_at ? (
+                        <span className="shrink-0">
+                          {it.email_sent_at.toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      ) : null}
                     </p>
                   ) : null}
                   <Link

@@ -10,7 +10,12 @@ import {
   listEnabledGmailSignals,
   touchInputSignalLastIngest,
 } from "@content-resourcer/db";
-import { createGmailClient, getNormalizedMessageAndPayload, listMessageIds } from "./gmail-client.js";
+import {
+  createGmailClient,
+  extractHtmlFromPayload,
+  getNormalizedMessageAndPayload,
+  listMessageIds,
+} from "./gmail-client.js";
 import { fetchEmailImageAttachments } from "./email-images.js";
 import { env } from "./env.js";
 import { ingestLog, ingestVerbose } from "./ingest-log.js";
@@ -191,6 +196,8 @@ export async function runIngest(): Promise<IngestStats> {
           continue;
         }
         const { normalized, payload } = fetched;
+        const emailHtmlRaw = extractHtmlFromPayload(payload);
+        const emailHtmlForRow = emailHtmlRaw.trim().length > 0 ? emailHtmlRaw : null;
 
         const pf = prefilter(normalized, vertical, signal, signal.config);
         if (verbose()) {
@@ -198,7 +205,7 @@ export async function runIngest(): Promise<IngestStats> {
         }
 
         if (!pf.ok) {
-          const minimal = buildMinimalSignalItem(vertical, signal, normalized, pf.reason);
+          const minimal = buildMinimalSignalItem(vertical, signal, normalized, pf.reason, emailHtmlForRow);
           try {
             await insertSignalItem(db, minimal);
             stats.storedMinimal++;
@@ -264,6 +271,7 @@ export async function runIngest(): Promise<IngestStats> {
           summary,
           deal_metrics,
           email_images.length ? email_images : undefined,
+          emailHtmlForRow,
         );
         try {
           await insertSignalItem(db, full);

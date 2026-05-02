@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureIndexes, getSignalItem } from "@content-resourcer/db";
+import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealDetail } from "@/lib/deal-display";
@@ -20,14 +21,29 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         ← Back to feed
       </Link>
       <div>
-        {item.sender_from ? (
-          <p className="text-sm text-[var(--muted)]">
-            <span className="font-medium text-[var(--fg)]">From</span> {item.sender_from}
+        {item.sender_from || item.email_sent_at ? (
+          <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-[var(--muted)]">
+            {item.sender_from ? (
+              <>
+                <span className="font-medium text-[var(--fg)]">From</span> {item.sender_from}
+              </>
+            ) : null}
+            {item.sender_from && item.email_sent_at ? <span aria-hidden>·</span> : null}
+            {item.email_sent_at ? (
+              <>
+                <span className="font-medium text-[var(--fg)]">Sent</span>{" "}
+                {item.email_sent_at.toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </>
+            ) : null}
           </p>
         ) : null}
         <h1 className="text-2xl font-semibold">{item.title}</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Relevance {item.relevance_score}/10 · {item.source_name} · {item.created_at.toISOString()}
+          Relevance {item.relevance_score}/10 · {item.source_name} · Ingested{" "}
+          {item.created_at.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
         </p>
         {item.skip_reason ? (
           <p className="mt-2 text-sm text-amber-400">Pre-filter: {item.skip_reason}</p>
@@ -56,6 +72,18 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
           <h2 className="text-sm font-medium text-[var(--muted)]">Images from email</h2>
           <EmailImageGallery images={item.email_images} />
+        </section>
+      ) : null}
+
+      {item.email_html_preview ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Formatted (HTML)</h2>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Sanitized preview of the message HTML (remote images may be blocked here; see downloads above when present).
+          </p>
+          <div className="mt-3 max-h-[32rem] overflow-auto rounded border border-[var(--border)] bg-[var(--input-bg)] p-3">
+            <EmailHtmlPreview html={item.email_html_preview} />
+          </div>
         </section>
       ) : null}
 
