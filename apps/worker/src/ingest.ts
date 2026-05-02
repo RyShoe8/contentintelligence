@@ -1,4 +1,5 @@
 import "./env.js";
+import type { EmailImage } from "@content-resourcer/db";
 import {
   findSignalByExternalId,
   getDb,
@@ -7,8 +8,10 @@ import {
   getVertical,
   insertSignalItem,
   listEnabledGmailSignals,
+  touchInputSignalLastIngest,
 } from "@content-resourcer/db";
-import { createGmailClient, getNormalizedMessage, listMessageIds } from "./gmail-client.js";
+import { createGmailClient, getNormalizedMessageAndPayload, listMessageIds } from "./gmail-client.js";
+import { fetchEmailImageAttachments } from "./email-images.js";
 import { env } from "./env.js";
 import { ingestLog, ingestVerbose } from "./ingest-log.js";
 import { buildGmailQuery } from "./gmail-query.js";
@@ -35,6 +38,21 @@ export type IngestStats = {
 };
 
 const verbose = () => ingestVerbose();
+
+function effectiveLookbackHours(
+  configured: number,
+  lastCompleted: Date | undefined,
+  minGapHours: number,
+): number {
+  if (!lastCompleted || !Number.isFinite(lastCompleted.getTime())) {
+    return configured;
+  }
+  const gapMs = Date.now() - lastCompleted.getTime();
+  if (gapMs <= 0) return configured;
+  const gapHours = gapMs / 3600_000;
+  const bounded = Math.max(minGapHours, gapHours);
+  return Math.min(configured, bounded);
+}
 
 export async function runIngest(): Promise<IngestStats> {
   const stats: IngestStats = {
@@ -114,12 +132,26 @@ export async function runIngest(): Promise<IngestStats> {
       continue;
     }
 
-    const gmailQ = buildGmailQuery(signal.config);
-    ingestLog("gmail_query", { signalId: signal.id, q: gmailQ });
+    const configuredLookback = signal.config.lookback_window_hours;
+    const effectiveHours = effectiveLookbackHours(
+      configuredLookback,
+      signal.last_ingest_completed_at,
+      env.ingestMinGapHours,
+    );
+    const gmailQ = buildGmailQuery(signal.config, { lookbackHours: effectiveHours });
+    ingestLog("gmail_query", {
+      signalId: signal.id,
+      q: gmailQ,
+      effectiveLookbackHours: effectiveHours,
+      configuredLookbackHours: configuredLookback,
+      ...(signal.last_ingest_completed_at
+        ? { lastIngestCompletedAt: signal.last_ingest_completed_at.toISOString() }
+        : {}),
+    });
 
     let ids: string[] = [];
     try {
-      ids = await listMessageIds(gmail, signal.config, 80);
+      ids = await listMessageIds(gmail, signal.config, 80, effectiveHours);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[ingest] list messages failed", signal.id, e);
@@ -150,14 +182,15 @@ export async function runIngest(): Promise<IngestStats> {
           continue;
         }
 
-        const normalized = await getNormalizedMessage(gmail, messageId);
-        if (!normalized) {
+        const fetched = await getNormalizedMessageAndPayload(gmail, messageId);
+        if (!fetched) {
           stats.skippedError++;
           if (verbose()) {
             ingestLog("message_skip", { messageId, reason: "normalize_failed" });
           }
           continue;
         }
+        const { normalized, payload } = fetched;
 
         const pf = prefilter(normalized, vertical, signal, signal.config);
         if (verbose()) {
@@ -203,18 +236,35 @@ export async function runIngest(): Promise<IngestStats> {
           }
         }
 
+        const unitTokens = signal.config.deal_unit_tokens ?? [];
+
         let dealLlm: DealMetricsLlmPartial | null = null;
         if (env.openaiApiKey) {
           try {
-            dealLlm = await extractDealMetricsWithLlm(extracted);
+            dealLlm = await extractDealMetricsWithLlm(extracted, unitTokens);
           } catch (e) {
             console.error("[ingest] deal metrics LLM failed", e);
           }
         }
-        const dealRegex = extractDealMetricsRegex(normalized.subject, extracted);
+        const dealRegex = extractDealMetricsRegex(normalized.subject, extracted, unitTokens);
         const deal_metrics = mergeDealExtractions(dealLlm, dealRegex);
 
-        const full = buildFullSignalItem(vertical, signal, normalized, extracted, summary, deal_metrics);
+        let email_images: EmailImage[] = [];
+        try {
+          email_images = await fetchEmailImageAttachments(gmail, messageId, payload);
+        } catch (e) {
+          console.error("[ingest] email images failed", messageId, e);
+        }
+
+        const full = buildFullSignalItem(
+          vertical,
+          signal,
+          normalized,
+          extracted,
+          summary,
+          deal_metrics,
+          email_images.length ? email_images : undefined,
+        );
         try {
           await insertSignalItem(db, full);
           stats.storedFull++;
@@ -244,6 +294,12 @@ export async function runIngest(): Promise<IngestStats> {
           message: e instanceof Error ? e.message : String(e),
         });
       }
+    }
+
+    try {
+      await touchInputSignalLastIngest(db, signal.id, new Date());
+    } catch (e) {
+      console.error("[ingest] touchInputSignalLastIngest failed", signal.id, e);
     }
   }
 

@@ -10,6 +10,22 @@ function optionalStringArray() {
   );
 }
 
+function normalizeDealUnitTokensIn(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of val) {
+    if (typeof x !== "string") continue;
+    const s = x.trim();
+    if (!s || s.length > 12) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
 export const gmailInputConfigSchema = z.object({
   email_address: z.string().email(),
   labels: optionalStringArray(),
@@ -20,6 +36,11 @@ export const gmailInputConfigSchema = z.object({
   lookback_window_hours: z.number().int().positive().max(24 * 90).default(168),
   /** When false, ingest skips OpenAI summary (feed shows more body text). Deal LLM still runs if configured. */
   ai_summary_enabled: z.boolean().default(true),
+  /** Suffix/prefix tokens for deal extraction (e.g. SC, FP, $). Max 32 entries. */
+  deal_unit_tokens: z.preprocess(
+    normalizeDealUnitTokensIn,
+    z.array(z.string().max(12)).max(32).default([]),
+  ),
 });
 
 export type GmailInputConfig = z.infer<typeof gmailInputConfigSchema>;
@@ -44,6 +65,11 @@ export const inputSignalSchema = z.object({
   enabled: z.boolean().default(true),
   keywords: z.array(z.string()).default([]),
   config: gmailInputConfigSchema,
+  /** Worker sets after a full ingest pass for this signal; drives incremental Gmail `after:` window. */
+  last_ingest_completed_at: z.preprocess(
+    (val) => (val == null || val === "" ? undefined : val),
+    z.coerce.date().optional(),
+  ),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
 });
@@ -75,6 +101,21 @@ export const dealMetricsSchema = z.object({
 });
 
 export type DealMetrics = z.infer<typeof dealMetricsSchema>;
+
+export const emailImageSchema = z.object({
+  mime: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  data_base64: z.string(),
+  filename: z.string().optional(),
+});
+
+export type EmailImage = z.infer<typeof emailImageSchema>;
+
+function optionalEmailImages() {
+  return z.preprocess(
+    (val) => (val == null ? undefined : val),
+    z.array(emailImageSchema).max(5).optional(),
+  );
+}
 
 function optionalDealMetrics() {
   return z.preprocess(
@@ -121,6 +162,8 @@ const signalItemShape = z.object({
   ai_processed: z.boolean().default(false),
   skip_reason: z.string().nullable().optional(),
   deal_metrics: optionalDealMetrics(),
+  /** Ingested image attachments (capped count/size at ingest). */
+  email_images: optionalEmailImages(),
   created_at: z.coerce.date(),
 });
 

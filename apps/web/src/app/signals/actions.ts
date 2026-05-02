@@ -27,6 +27,7 @@ export async function saveSignalAction(formData: FormData) {
   const sender_addresses = splitLines(String(formData.get("sender_addresses") ?? ""));
   const sender_domains = splitLines(String(formData.get("sender_domains") ?? ""));
   const subject_keywords = splitLines(String(formData.get("subject_keywords") ?? ""));
+  const deal_unit_tokens = splitLines(String(formData.get("deal_unit_tokens") ?? ""));
   const scan_body = formData.get("scan_body") === "on";
   const ai_summary_enabled = formData.get("ai_summary_enabled") === "on";
   const lookback = Number(formData.get("lookback_window_hours") ?? 168);
@@ -41,6 +42,7 @@ export async function saveSignalAction(formData: FormData) {
     scan_body,
     lookback_window_hours: Number.isFinite(lookback) && lookback > 0 ? lookback : 168,
     ai_summary_enabled,
+    deal_unit_tokens: deal_unit_tokens.length ? deal_unit_tokens : [],
   };
 
   await upsertInputSignal(db, {

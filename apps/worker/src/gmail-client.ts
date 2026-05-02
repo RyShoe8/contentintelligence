@@ -12,6 +12,11 @@ export type NormalizedMessage = {
   links: string[];
 };
 
+export type NormalizedMessageWithPayload = {
+  normalized: NormalizedMessage;
+  payload: gmail_v1.Schema$MessagePart | undefined;
+};
+
 export function createGmailClient(refreshToken: string) {
   const oauth2 = new google.auth.OAuth2(
     env.gmailClientId,
@@ -26,8 +31,12 @@ export async function listMessageIds(
   gmail: gmail_v1.Gmail,
   config: GmailInputConfig,
   maxResults = 100,
+  effectiveLookbackHours?: number,
 ): Promise<string[]> {
-  const q = buildGmailQuery(config);
+  const q = buildGmailQuery(
+    config,
+    effectiveLookbackHours != null ? { lookbackHours: effectiveLookbackHours } : undefined,
+  );
   const ids: string[] = [];
   let pageToken: string | undefined;
   do {
@@ -45,10 +54,10 @@ export async function listMessageIds(
   return ids;
 }
 
-export async function getNormalizedMessage(
+export async function getNormalizedMessageAndPayload(
   gmail: gmail_v1.Gmail,
   messageId: string,
-): Promise<NormalizedMessage | null> {
+): Promise<NormalizedMessageWithPayload | null> {
   const res = await gmail.users.messages.get({
     userId: "me",
     id: messageId,
@@ -68,13 +77,24 @@ export async function getNormalizedMessage(
   const links = extractLinksFromPayload(msg.payload);
 
   return {
-    external_id: msg.id,
-    subject,
-    raw_content: raw.slice(0, 500_000),
-    from,
-    dateMs,
-    links,
+    normalized: {
+      external_id: msg.id,
+      subject,
+      raw_content: raw.slice(0, 500_000),
+      from,
+      dateMs,
+      links,
+    },
+    payload: msg.payload,
   };
+}
+
+export async function getNormalizedMessage(
+  gmail: gmail_v1.Gmail,
+  messageId: string,
+): Promise<NormalizedMessage | null> {
+  const r = await getNormalizedMessageAndPayload(gmail, messageId);
+  return r?.normalized ?? null;
 }
 
 function getHeader(

@@ -117,10 +117,21 @@ export async function upsertInputSignal(
     config,
     created_at: existing?.created_at ?? now,
     updated_at: now,
+    ...(existing?.last_ingest_completed_at != null
+      ? { last_ingest_completed_at: existing.last_ingest_completed_at }
+      : {}),
   };
   const parsed = inputSignalSchema.parse(row);
   await inputSignals(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
   return parsed;
+}
+
+export async function touchInputSignalLastIngest(db: Db, signalId: string, at: Date): Promise<void> {
+  const now = new Date();
+  await inputSignals(db).updateOne(
+    { id: signalId },
+    { $set: { last_ingest_completed_at: at, updated_at: now } },
+  );
 }
 
 export async function deleteInputSignal(db: Db, id: string): Promise<boolean> {

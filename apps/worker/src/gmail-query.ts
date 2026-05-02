@@ -1,10 +1,16 @@
 import type { GmailInputConfig } from "@content-resourcer/db";
 
+export type BuildGmailQueryOptions = {
+  /** Overrides `config.lookback_window_hours` for the `after:` clause only (incremental ingest). */
+  lookbackHours?: number;
+};
+
 /** Build Gmail `q` search string from signal config (AND of clauses). */
-export function buildGmailQuery(config: GmailInputConfig): string {
+export function buildGmailQuery(config: GmailInputConfig, options?: BuildGmailQueryOptions): string {
   const parts: string[] = [];
 
-  const after = new Date(Date.now() - config.lookback_window_hours * 3600 * 1000);
+  const hours = options?.lookbackHours ?? config.lookback_window_hours;
+  const after = new Date(Date.now() - hours * 3600 * 1000);
   const y = after.getFullYear();
   const m = after.getMonth() + 1;
   const d = after.getDate();

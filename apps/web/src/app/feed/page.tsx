@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ensureIndexes, listSignalItems, listVerticals } from "@content-resourcer/db";
+import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealBadge } from "@/lib/deal-display";
 
@@ -15,6 +16,7 @@ export default async function FeedPage({
     min_deal_pct?: string;
     min_deal_confidence?: string;
     has_deal?: string;
+    full_body?: string;
     sort?: string;
     order?: string;
   }>;
@@ -41,6 +43,7 @@ export default async function FeedPage({
   const min_confidence =
     Number.isFinite(minConfRaw) && minConfRaw! >= 0 && minConfRaw! <= 1 ? minConfRaw : undefined;
   const has_deal_metrics = sp.has_deal === "1";
+  const showFullBody = sp.full_body === "1";
 
   const items = await listSignalItems(db, {
     vertical_id: sp.vertical_id || undefined,
@@ -61,6 +64,7 @@ export default async function FeedPage({
   if (sp.min_deal_pct) toggleQs.set("min_deal_pct", sp.min_deal_pct);
   if (sp.min_deal_confidence) toggleQs.set("min_deal_confidence", sp.min_deal_confidence);
   if (sp.has_deal === "1") toggleQs.set("has_deal", "1");
+  if (sp.full_body === "1") toggleQs.set("full_body", "1");
   toggleQs.set("sort", sort);
   toggleQs.set("order", order === "desc" ? "asc" : "desc");
   const toggleOrderHref = `/feed?${toggleQs.toString()}`;
@@ -151,6 +155,15 @@ export default async function FeedPage({
             </label>
           </span>
         </div>
+        <div className="flex flex-col gap-2 text-sm md:col-span-2 lg:col-span-1">
+          <span className="text-[var(--muted)]">Feed body</span>
+          <span className="flex items-center gap-2">
+            <input type="checkbox" name="full_body" value="1" defaultChecked={sp.full_body === "1"} id="full_body" />
+            <label htmlFor="full_body" className="text-[var(--fg)]">
+              Show full extracted body on list (scrollable)
+            </label>
+          </span>
+        </div>
         <div className="flex flex-col gap-1 text-sm">
           <span className="text-[var(--muted)]">Sort by</span>
           <select name="sort" defaultValue={sort} className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2">
@@ -171,30 +184,41 @@ export default async function FeedPage({
       <ul className="space-y-3">
         {items.map((it) => (
           <li key={it.id}>
-            <Link
-              href={`/feed/${it.id}`}
-              className="block rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   {it.sender_from ? (
                     <p className="truncate text-xs text-[var(--muted)]" title={it.sender_from}>
                       {it.sender_from}
                     </p>
                   ) : null}
-                  <p className="font-medium">{it.title}</p>
+                  <Link
+                    href={`/feed/${it.id}`}
+                    className="font-medium text-[var(--fg)] hover:text-[var(--accent)] hover:underline"
+                  >
+                    {it.title}
+                  </Link>
+                  <div className="mt-1">
+                    <Link href={`/feed/${it.id}`} className="text-xs text-[var(--accent)] hover:underline">
+                      View details
+                    </Link>
+                  </div>
                 </div>
-                <span className="shrink-0 text-xs text-[var(--muted)]">
-                  {it.relevance_score}/10
-                </span>
+                <span className="shrink-0 text-xs text-[var(--muted)]">{it.relevance_score}/10</span>
               </div>
               {it.deal_metrics ? (
-                <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{formatDealBadge(it.deal_metrics)}</p>
+                <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  {formatDealBadge(it.deal_metrics)}
+                </p>
               ) : null}
               {it.ai_summary ? (
                 <p className="mt-1 line-clamp-2 text-sm text-[var(--fg)]">{it.ai_summary}</p>
               ) : null}
-              {it.ai_summary ? (
+              {showFullBody ? (
+                <div className="mt-1 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-[var(--muted)]">
+                  {it.extracted_text}
+                </div>
+              ) : it.ai_summary ? (
                 <p className="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{it.extracted_text}</p>
               ) : (
                 <div className="mt-1 max-h-48 overflow-y-auto text-sm break-words text-[var(--muted)]">
@@ -205,7 +229,8 @@ export default async function FeedPage({
                 {it.ai_summary ? "AI summary · " : "Body · "}
                 {it.detected_keywords.slice(0, 6).join(", ")}
               </p>
-            </Link>
+              {it.email_images?.length ? <EmailImageGallery images={it.email_images} /> : null}
+            </div>
           </li>
         ))}
       </ul>

@@ -18,6 +18,20 @@ function clampSavings(pct: number): number {
   return Math.min(0.99, Math.max(0, pct));
 }
 
+function reEsc(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Build case-insensitive suffix alternation for unit tokens (excludes bare `$`, handled as currency). */
+export function buildUnitSuffixPattern(unitTokens: readonly string[]): string | null {
+  const parts = unitTokens
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && t !== "$")
+    .map((t) => reEsc(t));
+  if (parts.length === 0) return null;
+  return `(?:${parts.join("|")})`;
+}
+
 /** Build deal_metrics when you_pay and baseline_value are known (you_pay < baseline for a “deal”). */
 export function buildDealMetricsFromAmounts(
   youPay: number,
@@ -42,11 +56,72 @@ export function buildDealMetricsFromAmounts(
 
 const MONEY = "([\\d,]+(?:\\.\\d{1,2})?)";
 
+function tryUnitPair(
+  text: string,
+  suf: string,
+  confidence: number,
+): DealMetrics | null {
+  const NUM_SUF = `${MONEY}\\s*${suf}\\b`;
+  const payDollar = `(?:\\$)?${MONEY}\\b`;
+
+  const getFor = new RegExp(
+    `\\b(?:get|receive|worth|value(?:\\s+of)?)\\s*${NUM_SUF}[\\s\\S]{0,100}?(?:for|only|just)\\s*${payDollar}`,
+    "i",
+  );
+  let m = getFor.exec(text);
+  if (m) {
+    const credited = parseMoney(m[1]!);
+    const pay = parseMoney(m[2]!);
+    if (credited != null && pay != null && credited > pay) {
+      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", confidence, "regex");
+    }
+  }
+
+  const forGet = new RegExp(
+    `\\b(?:for|only|just)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
+    "i",
+  );
+  m = forGet.exec(text);
+  if (m) {
+    const pay = parseMoney(m[1]!);
+    const credited = parseMoney(m[2]!);
+    if (pay != null && credited != null && credited > pay) {
+      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", confidence - 0.05, "regex");
+    }
+  }
+
+  const payGet = new RegExp(
+    `\\b(?:pay|buy|deposit)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
+    "i",
+  );
+  m = payGet.exec(text);
+  if (m) {
+    const pay = parseMoney(m[1]!);
+    const credited = parseMoney(m[2]!);
+    if (pay != null && credited != null && credited > pay) {
+      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", confidence, "regex");
+    }
+  }
+
+  return null;
+}
+
 /**
  * Conservative regex/heuristic pass on subject + body.
+ * `unitTokens` adds patterns like `500 SC` when tokens include `SC`.
  */
-export function extractDealMetricsRegex(subject: string, body: string): DealMetrics | null {
+export function extractDealMetricsRegex(
+  subject: string,
+  body: string,
+  unitTokens: readonly string[] = [],
+): DealMetrics | null {
   const text = `${subject}\n${body}`.replace(/\s+/g, " ");
+
+  const suf = buildUnitSuffixPattern(unitTokens);
+  if (suf) {
+    const fromUnits = tryUnitPair(text, suf, 0.52);
+    if (fromUnits) return fromUnits;
+  }
 
   const wasNow = new RegExp(
     `was\\s*\\$?${MONEY}\\b[\\s\\S]{0,120}?(?:now|only|just|from)\\s*\\$?${MONEY}\\b`,

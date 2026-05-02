@@ -1,6 +1,6 @@
 import { convert } from "html-to-text";
 import { randomUUID } from "node:crypto";
-import type { DealMetrics, GmailInputConfig, InputSignal, SignalItem, Vertical } from "@content-resourcer/db";
+import type { DealMetrics, EmailImage, GmailInputConfig, InputSignal, SignalItem, Vertical } from "@content-resourcer/db";
 import { SOURCE_TYPE_EMAIL_GMAIL } from "@content-resourcer/db";
 import { env } from "./env.js";
 import type { NormalizedMessage } from "./gmail-client.js";
@@ -212,6 +212,7 @@ export function buildFullSignalItem(
   extractedText: string,
   aiSummary: string,
   deal_metrics?: DealMetrics,
+  email_images?: EmailImage[],
 ): SignalItem {
   const kws = mergeKeywords(vertical, signal);
   const detected = detectKeywords(extractedText, kws);
@@ -236,5 +237,6 @@ export function buildFullSignalItem(
     skip_reason: null,
     created_at: new Date(),
   };
-  return deal_metrics ? { ...base, deal_metrics } : base;
+  const withDeal = deal_metrics ? { ...base, deal_metrics } : base;
+  return email_images?.length ? { ...withDeal, email_images } : withDeal;
 }

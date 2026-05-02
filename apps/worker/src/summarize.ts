@@ -34,13 +34,21 @@ export async function summarizeEmailBody(cleanText: string): Promise<string> {
 
 /**
  * Structured pass: dollars paid vs baseline (list price or credited package value).
+ * `dealUnitTokens` are user-defined labels (e.g. SC, FP, $) to prefer when reading amounts.
  */
-export async function extractDealMetricsWithLlm(cleanText: string): Promise<DealMetricsLlmPartial | null> {
+export async function extractDealMetricsWithLlm(
+  cleanText: string,
+  dealUnitTokens: readonly string[] = [],
+): Promise<DealMetricsLlmPartial | null> {
   if (!env.openaiApiKey) {
     return null;
   }
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const input = cleanText.slice(0, env.maxAiInputChars);
+  const unitLine =
+    dealUnitTokens.length > 0
+      ? `User-defined amount units (tokens/suffixes near numbers, including $ if listed): ${dealUnitTokens.join(", ")}. Prefer interpreting numeric offers using these units when they appear beside amounts.`
+      : "No custom units provided; infer USD ($) or generic promotional amounts.";
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensDeal,
@@ -52,6 +60,7 @@ export async function extractDealMetricsWithLlm(cleanText: string): Promise<Deal
         content: `Extract promotional economics from the email. Reply with JSON only:
 {"you_pay": number|null,"baseline_value": number|null,"mode":"retail_list_vs_sale"|"pay_vs_credited_value"|"unknown","confidence": number}
 Rules:
+${unitLine}
 - you_pay: what the customer pays today in USD (or clear USD equivalent). null if unclear.
 - baseline_value: for retail, regular/list/strike price before discount. For bundles/casino-style offers, total advertised dollar value of credits/coins/package worth (not bonus multipliers alone). Must be greater than you_pay when both set. null if unclear.
 - mode: retail_list_vs_sale for list vs sale; pay_vs_credited_value when comparing cash paid to credited/pack value; unknown otherwise.

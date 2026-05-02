@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureIndexes, getSignalItem } from "@content-resourcer/db";
+import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealDetail } from "@/lib/deal-display";
 
@@ -48,6 +49,13 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
             Estimates from email text (regex and, when configured, LLM). Not financial advice; marketing copy can inflate
             &quot;value&quot;.
           </p>
+        </section>
+      ) : null}
+
+      {item.email_images?.length ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Images from email</h2>
+          <EmailImageGallery images={item.email_images} />
         </section>
       ) : null}
 

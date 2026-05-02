@@ -226,6 +226,18 @@ export default async function SignalsPage({
             />
           </div>
           <div className="flex flex-col gap-1">
+            <LabelWithTip htmlFor="signal-add-deal_unit_tokens" tip={SIGNAL_FIELD_TIPS.deal_unit_tokens}>
+              Deal unit tokens (optional, comma or newline)
+            </LabelWithTip>
+            <textarea
+              id="signal-add-deal_unit_tokens"
+              name="deal_unit_tokens"
+              rows={2}
+              placeholder="e.g. $, SC, FP"
+              className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
             <LabelWithTip htmlFor="signal-add-lookback_window_hours" tip={SIGNAL_FIELD_TIPS.lookback_window_hours}>
               Lookback window (hours)
             </LabelWithTip>
@@ -407,6 +419,18 @@ export default async function SignalsPage({
                         name="keywords"
                         rows={2}
                         defaultValue={s.keywords.join("\n")}
+                        className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <LabelWithTip htmlFor={`${p}-deal_unit_tokens`} tip={SIGNAL_FIELD_TIPS.deal_unit_tokens}>
+                        Deal unit tokens
+                      </LabelWithTip>
+                      <textarea
+                        id={`${p}-deal_unit_tokens`}
+                        name="deal_unit_tokens"
+                        rows={2}
+                        defaultValue={(s.config.deal_unit_tokens ?? []).join("\n")}
                         className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
                       />
                     </div>
