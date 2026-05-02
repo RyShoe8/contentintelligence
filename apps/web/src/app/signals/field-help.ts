@@ -19,6 +19,8 @@ export const SIGNAL_FIELD_TIPS = {
     "How far back the Gmail search goes (after: date = now minus this many hours). Default 168 is one week; max 2160 is 90 days.",
   scan_body:
     "When on, more of the email body is converted to text for scoring and summaries. When off, only about the first five lines of extracted body text are used.",
+  ai_summary_enabled:
+    "When off, the worker does not call OpenAI for a short summary; the feed shows more extracted body text instead. Deal parsing (if API key is set) still runs.",
   enabled: "When off, the worker skips this signal entirely during ingestion.",
 } as const;
 

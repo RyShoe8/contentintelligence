@@ -19,9 +19,14 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         ← Back to feed
       </Link>
       <div>
+        {item.sender_from ? (
+          <p className="text-sm text-[var(--muted)]">
+            <span className="font-medium text-[var(--fg)]">From</span> {item.sender_from}
+          </p>
+        ) : null}
         <h1 className="text-2xl font-semibold">{item.title}</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Score {item.relevance_score} · {item.source_name} · {item.created_at.toISOString()}
+          Relevance {item.relevance_score}/10 · {item.source_name} · {item.created_at.toISOString()}
         </p>
         {item.skip_reason ? (
           <p className="mt-2 text-sm text-amber-400">Pre-filter: {item.skip_reason}</p>

@@ -194,7 +194,8 @@ export async function runIngest(): Promise<IngestStats> {
         extracted = extracted.slice(0, env.maxAiInputChars);
 
         let summary = "";
-        if (env.openaiApiKey) {
+        const aiSummaryOn = signal.config.ai_summary_enabled !== false;
+        if (env.openaiApiKey && aiSummaryOn) {
           try {
             summary = await summarizeEmailBody(extracted);
           } catch (e) {

@@ -253,6 +253,18 @@ export default async function SignalsPage({
           </div>
           <div className="flex items-center gap-2">
             <input
+              id="signal-add-ai_summary_enabled"
+              type="checkbox"
+              name="ai_summary_enabled"
+              defaultChecked
+              className="h-4 w-4 shrink-0"
+            />
+            <LabelWithTip htmlFor="signal-add-ai_summary_enabled" tip={SIGNAL_FIELD_TIPS.ai_summary_enabled}>
+              AI email summary
+            </LabelWithTip>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
               id="signal-add-enabled"
               type="checkbox"
               name="enabled"
@@ -422,6 +434,18 @@ export default async function SignalsPage({
                       />
                       <LabelWithTip htmlFor={`${p}-scan_body`} tip={SIGNAL_FIELD_TIPS.scan_body}>
                         Scan body
+                      </LabelWithTip>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`${p}-ai_summary_enabled`}
+                        type="checkbox"
+                        name="ai_summary_enabled"
+                        defaultChecked={s.config.ai_summary_enabled !== false}
+                        className="h-4 w-4 shrink-0"
+                      />
+                      <LabelWithTip htmlFor={`${p}-ai_summary_enabled`} tip={SIGNAL_FIELD_TIPS.ai_summary_enabled}>
+                        AI email summary
                       </LabelWithTip>
                     </div>
                     <div className="flex items-center gap-2">

@@ -102,11 +102,13 @@ export default async function FeedPage({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Min score</span>
+          <span className="text-[var(--muted)]">Min relevance (1–10)</span>
           <input
             name="min_score"
             type="number"
-            step="0.01"
+            min={1}
+            max={10}
+            step={0.1}
             defaultValue={sp.min_score ?? ""}
             className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
           />
@@ -174,15 +176,33 @@ export default async function FeedPage({
               className="block rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium">{it.title}</p>
-                <span className="text-xs text-[var(--muted)]">score {it.relevance_score}</span>
+                <div className="min-w-0 flex-1">
+                  {it.sender_from ? (
+                    <p className="truncate text-xs text-[var(--muted)]" title={it.sender_from}>
+                      {it.sender_from}
+                    </p>
+                  ) : null}
+                  <p className="font-medium">{it.title}</p>
+                </div>
+                <span className="shrink-0 text-xs text-[var(--muted)]">
+                  {it.relevance_score}/10
+                </span>
               </div>
               {it.deal_metrics ? (
                 <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">{formatDealBadge(it.deal_metrics)}</p>
               ) : null}
-              <p className="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{it.extracted_text}</p>
+              {it.ai_summary ? (
+                <p className="mt-1 line-clamp-2 text-sm text-[var(--fg)]">{it.ai_summary}</p>
+              ) : null}
+              {it.ai_summary ? (
+                <p className="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{it.extracted_text}</p>
+              ) : (
+                <div className="mt-1 max-h-48 overflow-y-auto text-sm break-words text-[var(--muted)]">
+                  {it.extracted_text}
+                </div>
+              )}
               <p className="mt-2 text-xs text-[var(--muted)]">
-                {it.ai_summary ? "AI summary · " : ""}
+                {it.ai_summary ? "AI summary · " : "Body · "}
                 {it.detected_keywords.slice(0, 6).join(", ")}
               </p>
             </Link>

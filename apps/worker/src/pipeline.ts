@@ -157,6 +157,12 @@ export function recencyScore(dateMs: number): number {
   return Math.exp(-ageHours / (halfLifeDays * 24)) * 0.35;
 }
 
+/** Internal 0–1 strength → stored relevance 1–10 (one decimal, 10 = best). */
+export function mapRelevanceInternalToScale(internal01: number): number {
+  const s = Math.min(1, Math.max(0, internal01));
+  return Math.round((1 + 9 * s) * 10) / 10;
+}
+
 export function computeRelevanceScore(
   text: string,
   keywords: string[],
@@ -166,7 +172,7 @@ export function computeRelevanceScore(
   const promo = heuristicPromoScore(text);
   const rec = recencyScore(dateMs);
   const score = kd + promo + rec;
-  return Math.round(Math.min(score, 1) * 1000) / 1000;
+  return mapRelevanceInternalToScale(score);
 }
 
 export function buildMinimalSignalItem(
@@ -184,11 +190,12 @@ export function buildMinimalSignalItem(
     input_signal_id: signal.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
     source_name: signal.name,
+    sender_from: normalized.from,
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),
     extracted_text: extracted,
     detected_keywords: detected,
-    relevance_score: 0.05,
+    relevance_score: 1,
     original_url: normalized.links[0] ?? null,
     external_id: normalized.external_id,
     ai_summary: null,
@@ -216,6 +223,7 @@ export function buildFullSignalItem(
     input_signal_id: signal.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
     source_name: signal.name,
+    sender_from: normalized.from,
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),
     extracted_text: extractedText,
