@@ -105,7 +105,11 @@ export type DealMetrics = z.infer<typeof dealMetricsSchema>;
 export const emailImageSchema = z.object({
   mime: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
   data_base64: z.string(),
-  filename: z.string().optional(),
+  /** Mongo may store null when absent (e.g. remote-fetched images). */
+  filename: z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    z.string().optional(),
+  ),
 });
 
 export type EmailImage = z.infer<typeof emailImageSchema>;
