@@ -6,7 +6,7 @@ export const CONTENT_SIGNAL_FIELD_TIPS = {
   lookback_window_hours:
     "Maximum age for the Gmail after: filter on first sync. After a successful ingest, the worker uses the smaller of this value and time since last ingest.",
   deal_unit_tokens:
-    "Comma or newline. Suffix labels for credited amounts (e.g. SC, FC). Dollar amounts are parsed automatically; do not compare USD pay to SC credits in deal filters. Does not change Gmail search.",
+    "Comma or newline. Suffix labels for credited amounts (e.g. SC, FC, GC). Dollar amounts are parsed automatically; do not compare USD pay to SC credits in deal filters. If empty, ingest uses SC, FC, and GC for deal parsing. Does not change Gmail search.",
   active: "When off, ingest skips all sources attached to this content signal.",
 } as const;
 

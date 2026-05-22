@@ -289,7 +289,10 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           }
         }
 
-        const unitTokens = contentSignal.deal_unit_tokens ?? [];
+        const unitTokens =
+          contentSignal.deal_unit_tokens?.length > 0
+            ? contentSignal.deal_unit_tokens
+            : ["SC", "FC", "GC"];
 
         let dealLlm: DealMetricsLlmPartial | null = null;
         if (env.openaiApiKey) {

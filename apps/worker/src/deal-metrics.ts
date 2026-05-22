@@ -119,13 +119,11 @@ function hasCreditToken(unitTokens: readonly string[], ...labels: string[]): boo
   return labels.some((l) => upper.has(l));
 }
 
-/** Heuristic: email lists multiple purchasable tiers (avoid cross-tier pairing). */
+/** Heuristic: email lists multiple purchasable pay tiers (avoid cross-tier pairing). */
 export function countDistinctOffers(text: string): number {
   const forPrices = [...text.matchAll(/\bfor\s+\$\s*[\d,]+(?:\.\d{1,2})?/gi)].length;
-  const freeSc = [...text.matchAll(/\b\d+\s*Free\s*SC\b/gi)].length;
-  const freeFc = [...text.matchAll(/\b\d+\s*Free\s*FC\b/gi)].length;
   const goldTier = [...text.matchAll(/\d[\d,]*\s*(?:Gold\s*Coins?|GC)\s+for\s+\$/gi)].length;
-  return Math.max(forPrices, freeSc + freeFc, goldTier);
+  return Math.max(forPrices, goldTier);
 }
 
 function extractForPrices(text: string): number[] {
@@ -258,12 +256,56 @@ export function pickBestDeal(deals: readonly DealMetrics[]): DealMetrics | null 
   return best;
 }
 
+/** "$50 = 75,000 GC + 75 FREE SC" style offers. */
+function tryDollarEqualsFreeSc(text: string, unitTokens: readonly string[]): DealMetrics | null {
+  if (!hasCreditToken(unitTokens, "SC", "FC")) return null;
+
+  const allowedFree = new Set<string>();
+  if (hasCreditToken(unitTokens, "SC")) allowedFree.add("SC");
+  if (hasCreditToken(unitTokens, "FC")) allowedFree.add("FC");
+
+  const re = new RegExp(
+    `\\$\\s*(${MONEY})\\s*=\\s*[\\s\\S]{0,120}?(\\d+)\\s*FREE\\s*(SC|FC)\\b`,
+    "gi",
+  );
+  let best: DealMetrics | null = null;
+  let bestStrength = -1;
+  for (const m of text.matchAll(re)) {
+    const freeUnit = (m[3] ?? "SC").toUpperCase();
+    if (!allowedFree.has(freeUnit)) continue;
+    const pay = parseMoney(m[1]!);
+    const credited = parseMoney(m[2]!);
+    if (pay == null || credited == null || credited <= pay) continue;
+    const candidate = buildIncomparableDealMetrics(
+      pay,
+      credited,
+      "pay_vs_credited_value",
+      0.55,
+      "regex",
+      "USD",
+      freeUnit,
+    );
+    const strength = dealStrengthPct(candidate);
+    if (strength > bestStrength) {
+      bestStrength = strength;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 /** Single-offer regex paths (no multi-tier list). */
 function extractSingleDealRegex(
   text: string,
   unitTokens: readonly string[],
 ): DealMetrics | null {
   const multiOffer = countDistinctOffers(text) >= 2;
+
+  if (unitTokens.length > 0) {
+    const fromEquals = tryDollarEqualsFreeSc(text, unitTokens);
+    const plausibleEquals = applyPlausibility(fromEquals, text);
+    if (plausibleEquals) return plausibleEquals;
+  }
 
   if (!multiOffer && unitTokens.length > 0) {
     const fromPurchase = tryPurchasePackageUsdToToken(text, unitTokens);

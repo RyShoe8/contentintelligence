@@ -4,7 +4,8 @@ import { EmailImageGallery } from "@/components/email-image-gallery";
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
-import { hasDeal } from "@/lib/deal-display";
+import { DealsList } from "@/components/deals-list";
+import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
@@ -296,6 +297,7 @@ export default async function FeedPage({
                   {it.extracted_text}
                 </div>
               )}
+              <DealsList deals={dealsForDisplay(it)} variant="feed" />
               <p className="mt-2 text-xs text-[var(--muted)]">
                 {it.detected_keywords.slice(0, 6).join(", ")}
               </p>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildDealMetricsFromAmounts,
+  countDistinctOffers,
   dealStrengthPct,
   extractDealMetricsRegex,
   extractDealsFoundRegex,
@@ -34,7 +35,26 @@ describe("buildDealMetricsFromAmounts", () => {
   });
 });
 
+describe("countDistinctOffers", () => {
+  it("does not treat duplicate FREE SC in subject and body as multi-offer", () => {
+    const subject = "Claim 75 FREE SC!";
+    const body = "$50 = 75,000 GC + 75 FREE SC. purchase the special $50 package.";
+    assert.ok(countDistinctOffers(`${subject}\n${body}`) < 2);
+  });
+});
+
 describe("extractDealMetricsRegex", () => {
+  it("Spinfinite: $50 = 75 FREE SC with subject Claim 75 FREE SC", () => {
+    const subject = "Time's Running Out — Claim 75 FREE SC!";
+    const body =
+      "We've unlocked a limited-time boost. $50 = 75,000 GC + 75 FREE SC + a Ruby Wheel Spin. purchase via our special $50 package labelled Thursday Night Spins.";
+    const dm = extractDealMetricsRegex(subject, body, ["SC", "GC"]);
+    assert.ok(dm, "expected deal");
+    assert.equal(dm.you_pay, 50);
+    assert.equal(dm.baseline_value, 75);
+    assert.ok(dealStrengthPct(dm) >= 0.45, `expected ~50% bonus got ${dealStrengthPct(dm)}`);
+  });
+
   it("deposit $20 get 26 SC has ~30% filterable bonus", () => {
     const dm = extractDealMetricsRegex(
       "Deposit $20 and get 26 SC free",

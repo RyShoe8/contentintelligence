@@ -1,13 +1,23 @@
 import type { DealMetrics } from "@content-resourcer/db";
 import { dealStrengthPercent, formatDealRow } from "@/lib/deal-display";
 
-export function DealsList({ deals }: { deals: DealMetrics[] }) {
+export function DealsList({
+  deals,
+  variant = "detail",
+}: {
+  deals: DealMetrics[];
+  variant?: "detail" | "feed";
+}) {
   if (!deals.length) return null;
 
+  const isFeed = variant === "feed";
+
   return (
-    <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-      <h2 className="text-sm font-medium text-[var(--muted)]">Deals</h2>
-      <ul className="mt-3 space-y-3">
+    <section className={isFeed ? "mt-3" : "rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"}>
+      <h2 className={isFeed ? "text-xs font-medium text-[var(--muted)]" : "text-sm font-medium text-[var(--muted)]"}>
+        Deals
+      </h2>
+      <ul className={isFeed ? "mt-2 space-y-2" : "mt-3 space-y-3"}>
         {deals.map((dm, i) => {
           const pct = dealStrengthPercent(dm);
           return (
@@ -25,10 +35,12 @@ export function DealsList({ deals }: { deals: DealMetrics[] }) {
           );
         })}
       </ul>
-      <p className="mt-3 text-xs text-[var(--muted)]">
-        Estimates from email text (regex and, when configured, LLM). Not financial advice; marketing copy can inflate
-        &quot;value&quot;.
-      </p>
+      {isFeed ? null : (
+        <p className="mt-3 text-xs text-[var(--muted)]">
+          Estimates from email text (regex and, when configured, LLM). Not financial advice; marketing copy can inflate
+          &quot;value&quot;.
+        </p>
+      )}
     </section>
   );
 }
