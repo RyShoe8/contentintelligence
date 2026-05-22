@@ -4,7 +4,7 @@ import { EmailImageGallery } from "@/components/email-image-gallery";
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
-import { dealStrengthPercent } from "@/lib/deal-display";
+import { hasDeal } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
@@ -256,12 +256,12 @@ export default async function FeedPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <p className="text-xs font-medium text-[var(--muted)]">{it.source_name}</p>
-                    {it.deal_metrics && dealStrengthPercent(it.deal_metrics) > 0 ? (
+                    {hasDeal(it) ? (
                       <span
-                        className="inline-flex shrink-0 items-center rounded-md border border-emerald-500/50 bg-emerald-500/20 px-2 py-0.5 text-xs font-bold tabular-nums tracking-tight text-emerald-800 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200"
-                        title="Estimated deal strength"
+                        className="inline-flex shrink-0 items-center rounded-md border border-emerald-500/50 bg-emerald-500/20 px-2 py-0.5 text-xs font-bold tracking-tight text-emerald-800 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200"
+                        title="Deal detected in this email"
                       >
-                        {dealStrengthPercent(it.deal_metrics)}% deal
+                        Deal Found!
                       </span>
                     ) : null}
                   </div>

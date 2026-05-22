@@ -4,6 +4,7 @@ import {
   buildDealMetricsFromAmounts,
   dealStrengthPct,
   extractDealMetricsRegex,
+  extractDealsFoundRegex,
 } from "./deal-metrics.js";
 
 describe("buildDealMetricsFromAmounts", () => {
@@ -70,6 +71,21 @@ describe("extractDealMetricsRegex", () => {
     assert.ok(dm);
     assert.equal(dm.mode, "retail_list_vs_sale");
     assert.ok(dealStrengthPct(dm) >= 0.75);
+  });
+
+  it("Mega Bonanza multi-tier: extractDealsFoundRegex returns 3 tiers", () => {
+    const body =
+      "Take advantage of the Sizzlin' Stampede with three hot offers on Gold Coins, each claimable three times: 40,000 Gold Coins for $15.49 + 20 Free SC, 64,000 Gold Coins for $24.99 + 32 Free SC, and 90,000 Gold Coins for $34.99 + 45 Free SC. These offers are valid until May 22nd.";
+    const deals = extractDealsFoundRegex("Somethin' hot just rode into town", body, ["SC", "GC"]);
+    assert.equal(deals.length, 3);
+    const pairs = deals.map((d) => [d.you_pay, d.baseline_value] as const);
+    assert.ok(pairs.some(([p, s]) => p === 15.49 && s === 20));
+    assert.ok(pairs.some(([p, s]) => p === 24.99 && s === 32));
+    assert.ok(pairs.some(([p, s]) => p === 34.99 && s === 45));
+    const best = deals.reduce((a, b) => (dealStrengthPct(b) > dealStrengthPct(a) ? b : a));
+    const bestStrength = dealStrengthPct(best);
+    assert.ok(bestStrength >= 0.25);
+    assert.ok(bestStrength <= 0.4);
   });
 
   it("Mega Bonanza multi-tier: ~30% not 99% from cross-tier pairing", () => {

@@ -29,6 +29,8 @@ import {
 } from "./pipeline.js";
 import {
   extractDealMetricsRegex,
+  extractDealsFoundRegex,
+  pickBestDeal,
   mergeDealExtractions,
   type DealMetricsLlmPartial,
 } from "./deal-metrics.js";
@@ -298,7 +300,9 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           }
         }
         const dealSourceText = `${normalized.subject}\n${extracted}`;
-        const dealRegex = extractDealMetricsRegex(normalized.subject, extracted, unitTokens);
+        const deals_found = extractDealsFoundRegex(normalized.subject, extracted, unitTokens);
+        const dealRegex =
+          pickBestDeal(deals_found) ?? extractDealMetricsRegex(normalized.subject, extracted, unitTokens);
         const deal_metrics = mergeDealExtractions(dealLlm, dealRegex, dealSourceText);
 
         let email_images: EmailImage[] = [];
@@ -315,6 +319,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           extracted,
           summary,
           deal_metrics,
+          deals_found.length > 0 ? deals_found : undefined,
           email_images.length ? email_images : undefined,
           emailHtmlForRow,
         );

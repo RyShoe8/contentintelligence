@@ -6,6 +6,8 @@ import { orgInviteSchema, organizationSchema } from "./schemas.js";
 
 const DEFAULT_ORG_NAME = "Default organization";
 const FIRST_ADMIN_EMAIL = "ryanschumacher@themediashop.co";
+const MIGRATIONS_COLLECTION = "_migrations";
+export const ORG_USER_BACKFILL_MIGRATION_ID = "org_user_backfill_v1";
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -159,6 +161,28 @@ export async function setUserOrganization(
   });
 }
 
+/** Add email to org immediately if they have signed in before; otherwise store a pending invite. */
+export async function addEmailToOrganization(
+  db: Db,
+  data: {
+    organization_id: string;
+    email: string;
+    role?: OrgInviteRole;
+    invited_by: string;
+  },
+): Promise<"member" | "invited"> {
+  const email = normalizeEmail(data.email);
+  const orgRole: OrgRole = data.role === "owner" ? "owner" : "member";
+  const existing = await getUserByEmail(db, email);
+  if (existing) {
+    await setUserOrganization(db, email, data.organization_id, orgRole);
+    await orgInvites(db).deleteOne({ organization_id: data.organization_id, email });
+    return "member";
+  }
+  await addOrgInvite(db, { ...data, email, role: data.role ?? "member" });
+  return "invited";
+}
+
 export async function clearUserOrganization(db: Db, email: string): Promise<void> {
   await users(db).updateOne(userEmailQuery(email), {
     $unset: { organization_id: "", org_role: "" },
@@ -212,6 +236,42 @@ export async function countOrgContentSignals(db: Db, organizationId: string): Pr
   return db.collection(COLLECTIONS.content_signals).countDocuments({ organization_id: organizationId });
 }
 
+async function isMigrationComplete(db: Db, migrationId: string): Promise<boolean> {
+  const doc = await db.collection(MIGRATIONS_COLLECTION).findOne({ id: migrationId });
+  return Boolean(doc?.done);
+}
+
+async function markMigrationComplete(db: Db, migrationId: string): Promise<void> {
+  await db.collection(MIGRATIONS_COLLECTION).updateOne(
+    { id: migrationId },
+    { $set: { id: migrationId, done: true, completed_at: new Date() } },
+    { upsert: true },
+  );
+}
+
+/** Assign users without organization_id to the default org (runs once). Exported for tests. */
+export async function backfillUsersToDefaultOrg(db: Db, defaultOrgId: string): Promise<number> {
+  let count = 0;
+  const allUsers = await users(db).find({}).toArray();
+  for (const u of allUsers) {
+    if (u.organization_id) continue;
+    const email = String(u.email ?? "");
+    const role = (u.role as string) ?? "member";
+    const isAdmin = email.toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase() || role === "admin";
+    await users(db).updateOne(
+      { _id: u._id },
+      {
+        $set: {
+          organization_id: defaultOrgId,
+          org_role: isAdmin ? "owner" : "member",
+        },
+      },
+    );
+    count++;
+  }
+  return count;
+}
+
 /**
  * Backfill organizations, assign users, and scope content_signals / signal_items.
  */
@@ -247,21 +307,9 @@ export async function migrateOrganizations(db: Db): Promise<{ defaultOrgId?: str
     await db.collection(COLLECTIONS.signal_items).updateOne({ id: item.id }, { $set: { organization_id: orgId } });
   }
 
-  const allUsers = await users(db).find({}).toArray();
-  for (const u of allUsers) {
-    if (u.organization_id) continue;
-    const email = String(u.email ?? "");
-    const role = (u.role as string) ?? "member";
-    const isAdmin = email.toLowerCase() === FIRST_ADMIN_EMAIL.toLowerCase() || role === "admin";
-    await users(db).updateOne(
-      { _id: u._id },
-      {
-        $set: {
-          organization_id: defaultOrgId,
-          org_role: isAdmin ? "owner" : "member",
-        },
-      },
-    );
+  if (!(await isMigrationComplete(db, ORG_USER_BACKFILL_MIGRATION_ID))) {
+    await backfillUsersToDefaultOrg(db, defaultOrgId);
+    await markMigrationComplete(db, ORG_USER_BACKFILL_MIGRATION_ID);
   }
 
   return { defaultOrgId };

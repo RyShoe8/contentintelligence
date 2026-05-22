@@ -1,5 +1,10 @@
 import type { DealMetrics } from "@content-resourcer/db";
 
+type DealItemLike = {
+  deal_metrics?: DealMetrics | null;
+  deals_found?: DealMetrics[] | null;
+};
+
 function confidenceLabel(c: number): string {
   if (c >= 0.7) return "high";
   if (c >= 0.4) return "medium";
@@ -16,6 +21,60 @@ export function dealStrengthPct(dm: DealMetrics): number {
 /** Rounded percent for badges (0–100). */
 export function dealStrengthPercent(dm: DealMetrics): number {
   return Math.round(dealStrengthPct(dm) * 100);
+}
+
+export function hasDeal(item: DealItemLike): boolean {
+  if (item.deals_found?.length) {
+    return item.deals_found.some((d) => dealStrengthPct(d) > 0);
+  }
+  return item.deal_metrics != null && dealStrengthPct(item.deal_metrics) > 0;
+}
+
+/** All deals for detail UI (backward compat when only deal_metrics exists). */
+export function dealsForDisplay(item: DealItemLike): DealMetrics[] {
+  const list = item.deals_found?.length
+    ? item.deals_found
+    : item.deal_metrics
+      ? [item.deal_metrics]
+      : [];
+  return list.filter((d) => dealStrengthPct(d) > 0);
+}
+
+function formatMoneyAmount(amount: number, unit?: string): string {
+  if (unit === "USD") return `$${amount}`;
+  return `${amount}${unit ? ` ${unit}` : ""}`;
+}
+
+/** One human-readable deal line for the Deals section. */
+export function formatDealRow(dm: DealMetrics): string {
+  const pay =
+    dm.you_pay != null
+      ? formatMoneyAmount(dm.you_pay, dm.pay_unit ?? (dm.units_comparable !== false ? "USD" : undefined))
+      : null;
+  const credit =
+    dm.baseline_value != null
+      ? formatMoneyAmount(
+          dm.baseline_value,
+          dm.credit_unit ?? (dm.units_comparable !== false ? "USD" : undefined),
+        )
+      : null;
+  const amounts = pay && credit ? `${pay} → ${credit}` : pay ?? credit ?? "Deal";
+
+  if (dm.units_comparable === false) {
+    const bonusPct = dm.bonus_pct != null ? Math.round(dm.bonus_pct * 100) : null;
+    return bonusPct != null ? `${amounts} · ~${bonusPct}% bonus` : amounts;
+  }
+
+  const savingsPct = Math.round(dm.effective_savings_pct * 100);
+  if (dm.mode === "retail_list_vs_sale") {
+    return `${amounts} · ~${savingsPct}% off list`;
+  }
+
+  const bonusPct = dm.bonus_pct != null ? Math.round(dm.bonus_pct * 100) : null;
+  if (bonusPct != null && bonusPct !== savingsPct) {
+    return `${amounts} · ~${bonusPct}% bonus`;
+  }
+  return `${amounts} · ~${savingsPct}% value vs pay`;
 }
 
 /** Short line for list cards. */

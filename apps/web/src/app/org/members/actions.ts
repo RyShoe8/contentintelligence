@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  addOrgInvite,
+  addEmailToOrganization,
   clearUserOrganization,
   ensureIndexes,
   getEmailOtherOrganizationId,
@@ -65,7 +65,7 @@ export async function inviteMemberAction(formData: FormData) {
     redirect("/org/members?error=already_member");
   }
 
-  await addOrgInvite(db, {
+  const result = await addEmailToOrganization(db, {
     organization_id: orgId,
     email,
     role: "member",
@@ -73,7 +73,7 @@ export async function inviteMemberAction(formData: FormData) {
   });
 
   revalidatePath("/org/members");
-  redirect("/org/members?invited=1");
+  redirect(result === "member" ? "/org/members?added=1" : "/org/members?invited=1");
 }
 
 export async function revokeInviteAction(formData: FormData) {

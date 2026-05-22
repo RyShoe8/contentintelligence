@@ -289,6 +289,7 @@ export function buildFullSignalItem(
   extractedText: string,
   aiSummary: string,
   deal_metrics?: DealMetrics,
+  deals_found?: DealMetrics[],
   email_images?: EmailImage[],
   emailHtmlPreview?: string | null,
 ): SignalItem {
@@ -321,6 +322,9 @@ export function buildFullSignalItem(
     ...(email_sent_at ? { email_sent_at } : {}),
     ...(preview ? { email_html_preview: preview } : {}),
   };
-  const withDeal = deal_metrics ? { ...base, deal_metrics } : base;
+  let withDeal = deal_metrics ? { ...base, deal_metrics } : base;
+  if (deals_found?.length) {
+    withDeal = { ...withDeal, deals_found };
+  }
   return email_images?.length ? { ...withDeal, email_images } : withDeal;
 }

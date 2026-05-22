@@ -192,19 +192,30 @@ function applyPlausibility(dm: DealMetrics | null, text: string): DealMetrics | 
   return isPlausibleDealMetrics(dm, text) ? dm : null;
 }
 
-/** Parse "40,000 Gold Coins for $15.49 + 20 Free SC" style multi-tier offers. */
-function tryMultiTierCoinOffers(
+function dealDedupeKey(dm: DealMetrics): string {
+  return `${dm.you_pay ?? ""}|${dm.baseline_value ?? ""}|${dm.pay_unit ?? ""}|${dm.credit_unit ?? ""}`;
+}
+
+function appendUniqueDeal(list: DealMetrics[], dm: DealMetrics | null, text: string): void {
+  const plausible = applyPlausibility(dm, text);
+  if (!plausible) return;
+  const key = dealDedupeKey(plausible);
+  if (list.some((d) => dealDedupeKey(d) === key)) return;
+  list.push(plausible);
+}
+
+/** Parse all "40,000 Gold Coins for $15.49 + 20 Free SC" style tiers. */
+function collectMultiTierCoinOffers(
   text: string,
   unitTokens: readonly string[],
-): DealMetrics | null {
-  if (!hasCreditToken(unitTokens, "SC", "FC")) return null;
+): DealMetrics[] {
+  if (!hasCreditToken(unitTokens, "SC", "FC")) return [];
 
   const allowedFree = new Set<string>();
   if (hasCreditToken(unitTokens, "SC")) allowedFree.add("SC");
   if (hasCreditToken(unitTokens, "FC")) allowedFree.add("FC");
 
-  let best: DealMetrics | null = null;
-  let bestBonus = -1;
+  const deals: DealMetrics[] = [];
 
   for (const m of text.matchAll(MULTI_TIER_OFFER_RE)) {
     const freeUnit = (m[4] ?? "SC").toUpperCase();
@@ -215,122 +226,44 @@ function tryMultiTierCoinOffers(
     const credited = parseMoney(scRaw);
     if (credited == null || credited <= pay) continue;
 
-    const candidate = buildIncomparableDealMetrics(
-      pay,
-      credited,
-      "pay_vs_credited_value",
-      0.55,
-      "regex",
-      "USD",
-      freeUnit,
+    appendUniqueDeal(
+      deals,
+      buildIncomparableDealMetrics(
+        pay,
+        credited,
+        "pay_vs_credited_value",
+        0.55,
+        "regex",
+        "USD",
+        freeUnit,
+      ),
+      text,
     );
-    const bonus = candidate.bonus_pct ?? 0;
-    if (bonus > bestBonus) {
-      bestBonus = bonus;
-      best = candidate;
-    }
   }
 
+  return deals;
+}
+
+/** Highest filterable strength deal in a list. */
+export function pickBestDeal(deals: readonly DealMetrics[]): DealMetrics | null {
+  let best: DealMetrics | null = null;
+  let bestStrength = -1;
+  for (const d of deals) {
+    const s = dealStrengthPct(d);
+    if (s > bestStrength) {
+      bestStrength = s;
+      best = d;
+    }
+  }
   return best;
 }
 
-function tryUnitPair(
+/** Single-offer regex paths (no multi-tier list). */
+function extractSingleDealRegex(
   text: string,
-  suf: string,
-  creditUnitLabel: string,
-  confidence: number,
+  unitTokens: readonly string[],
 ): DealMetrics | null {
-  const NUM_SUF = `${MONEY}\\s*${suf}\\b`;
-  const payDollar = `(?:\\$)?${MONEY}\\b`;
-
-  const getFor = new RegExp(
-    `\\b(?:get|receive|worth|value(?:\\s+of)?)\\s*${NUM_SUF}[\\s\\S]{0,100}?(?:for|only|just)\\s*${payDollar}`,
-    "i",
-  );
-  let m = getFor.exec(text);
-  if (m) {
-    const credited = parseMoney(m[1]!);
-    const pay = parseMoney(m[2]!);
-    if (credited != null && pay != null && credited > pay) {
-      return buildIncomparableDealMetrics(
-        pay,
-        credited,
-        "pay_vs_credited_value",
-        confidence,
-        "regex",
-        "USD",
-        creditUnitLabel,
-      );
-    }
-  }
-
-  const forGet = new RegExp(
-    `\\b(?:for|only|just)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
-    "i",
-  );
-  m = forGet.exec(text);
-  if (m) {
-    const pay = parseMoney(m[1]!);
-    const credited = parseMoney(m[2]!);
-    if (pay != null && credited != null && credited > pay) {
-      return buildIncomparableDealMetrics(
-        pay,
-        credited,
-        "pay_vs_credited_value",
-        confidence - 0.05,
-        "regex",
-        "USD",
-        creditUnitLabel,
-      );
-    }
-  }
-
-  const payGet = new RegExp(
-    `\\b(?:pay|buy|deposit)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
-    "i",
-  );
-  m = payGet.exec(text);
-  if (m) {
-    const pay = parseMoney(m[1]!);
-    const credited = parseMoney(m[2]!);
-    if (pay != null && credited != null && credited > pay) {
-      return buildIncomparableDealMetrics(
-        pay,
-        credited,
-        "pay_vs_credited_value",
-        confidence,
-        "regex",
-        "USD",
-        creditUnitLabel,
-      );
-    }
-  }
-
-  return null;
-}
-
-/** First non-$ unit token label for cross-unit regex (e.g. SC). */
-function primaryCreditUnitLabel(unitTokens: readonly string[]): string {
-  const t = unitTokens.map((x) => x.trim()).find((x) => x.length > 0 && x !== "$");
-  return t ?? "TOKEN";
-}
-
-/**
- * Conservative regex/heuristic pass on subject + body.
- * `unitTokens` adds patterns like `500 SC` when tokens include `SC`.
- */
-export function extractDealMetricsRegex(
-  subject: string,
-  body: string,
-  unitTokens: readonly string[] = [],
-): DealMetrics | null {
-  const text = `${subject}\n${body}`.replace(/\s+/g, " ");
   const multiOffer = countDistinctOffers(text) >= 2;
-
-  if (unitTokens.length > 0) {
-    const fromTiers = tryMultiTierCoinOffers(text, unitTokens);
-    if (fromTiers) return applyPlausibility(fromTiers, text);
-  }
 
   if (!multiOffer && unitTokens.length > 0) {
     const fromPurchase = tryPurchasePackageUsdToToken(text, unitTokens);
@@ -434,6 +367,120 @@ export function extractDealMetricsRegex(
   }
 
   return null;
+}
+
+/**
+ * All plausible deals extracted from subject + body (multi-tier + single-offer paths).
+ */
+export function extractDealsFoundRegex(
+  subject: string,
+  body: string,
+  unitTokens: readonly string[] = [],
+): DealMetrics[] {
+  const text = `${subject}\n${body}`.replace(/\s+/g, " ");
+  const deals: DealMetrics[] = [];
+
+  if (unitTokens.length > 0) {
+    for (const d of collectMultiTierCoinOffers(text, unitTokens)) {
+      appendUniqueDeal(deals, d, text);
+    }
+  }
+
+  if (deals.length === 0) {
+    appendUniqueDeal(deals, extractSingleDealRegex(text, unitTokens), text);
+  }
+
+  return deals;
+}
+
+function tryUnitPair(
+  text: string,
+  suf: string,
+  creditUnitLabel: string,
+  confidence: number,
+): DealMetrics | null {
+  const NUM_SUF = `${MONEY}\\s*${suf}\\b`;
+  const payDollar = `(?:\\$)?${MONEY}\\b`;
+
+  const getFor = new RegExp(
+    `\\b(?:get|receive|worth|value(?:\\s+of)?)\\s*${NUM_SUF}[\\s\\S]{0,100}?(?:for|only|just)\\s*${payDollar}`,
+    "i",
+  );
+  let m = getFor.exec(text);
+  if (m) {
+    const credited = parseMoney(m[1]!);
+    const pay = parseMoney(m[2]!);
+    if (credited != null && pay != null && credited > pay) {
+      return buildIncomparableDealMetrics(
+        pay,
+        credited,
+        "pay_vs_credited_value",
+        confidence,
+        "regex",
+        "USD",
+        creditUnitLabel,
+      );
+    }
+  }
+
+  const forGet = new RegExp(
+    `\\b(?:for|only|just)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
+    "i",
+  );
+  m = forGet.exec(text);
+  if (m) {
+    const pay = parseMoney(m[1]!);
+    const credited = parseMoney(m[2]!);
+    if (pay != null && credited != null && credited > pay) {
+      return buildIncomparableDealMetrics(
+        pay,
+        credited,
+        "pay_vs_credited_value",
+        confidence - 0.05,
+        "regex",
+        "USD",
+        creditUnitLabel,
+      );
+    }
+  }
+
+  const payGet = new RegExp(
+    `\\b(?:pay|buy|deposit)\\s*${payDollar}[\\s\\S]{0,120}?(?:get|receive|worth)\\s*${NUM_SUF}`,
+    "i",
+  );
+  m = payGet.exec(text);
+  if (m) {
+    const pay = parseMoney(m[1]!);
+    const credited = parseMoney(m[2]!);
+    if (pay != null && credited != null && credited > pay) {
+      return buildIncomparableDealMetrics(
+        pay,
+        credited,
+        "pay_vs_credited_value",
+        confidence,
+        "regex",
+        "USD",
+        creditUnitLabel,
+      );
+    }
+  }
+
+  return null;
+}
+
+/** First non-$ unit token label for cross-unit regex (e.g. SC). */
+function primaryCreditUnitLabel(unitTokens: readonly string[]): string {
+  const t = unitTokens.map((x) => x.trim()).find((x) => x.length > 0 && x !== "$");
+  return t ?? "TOKEN";
+}
+
+/** Best deal from regex/heuristics (used for merge + min-deal filter). */
+export function extractDealMetricsRegex(
+  subject: string,
+  body: string,
+  unitTokens: readonly string[] = [],
+): DealMetrics | null {
+  return pickBestDeal(extractDealsFoundRegex(subject, body, unitTokens));
 }
 
 function dealFromLlmPartial(p: DealMetricsLlmPartial, source: DealMetricsSource): DealMetrics | null {

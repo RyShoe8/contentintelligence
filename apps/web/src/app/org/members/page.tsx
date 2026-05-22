@@ -20,6 +20,7 @@ export default async function OrgMembersPage({
 }: {
   searchParams: Promise<{
     error?: string;
+    added?: string;
     invited?: string;
     removed?: string;
     renamed?: string;
@@ -60,8 +61,8 @@ export default async function OrgMembersPage({
       <div>
         <h1 className="text-2xl font-semibold">Team</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Manage members and settings for your organization. Invited users can sign in with Google
-          using the same email address.
+          Add members by email. If they have signed in before, they are added to your organization
+          immediately. Otherwise they join automatically on first Google sign-in with that address.
         </p>
       </div>
 
@@ -70,9 +71,14 @@ export default async function OrgMembersPage({
           Organization name updated.
         </p>
       ) : null}
+      {sp.added === "1" ? (
+        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          Member added to your organization.
+        </p>
+      ) : null}
       {sp.invited === "1" ? (
         <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Invite saved. They will join on next sign-in with that email.
+          Invite saved. They will join your organization on first sign-in with Google using that email.
         </p>
       ) : null}
       {sp.removed === "1" ? (
@@ -111,7 +117,7 @@ export default async function OrgMembersPage({
       </section>
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
-        <h2 className="text-lg font-medium">Invite member</h2>
+        <h2 className="text-lg font-medium">Add member</h2>
         <form action={inviteMemberAction} className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-sm">
             <span className="text-[var(--muted)]">Email</span>
@@ -127,7 +133,7 @@ export default async function OrgMembersPage({
             type="submit"
             className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
           >
-            Add invite
+            Add member
           </button>
         </form>
       </section>

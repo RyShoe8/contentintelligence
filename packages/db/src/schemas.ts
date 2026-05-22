@@ -154,6 +154,13 @@ function optionalDealMetrics() {
   );
 }
 
+function optionalDealsFound() {
+  return z.preprocess(
+    (val) => (val == null ? undefined : val),
+    z.array(dealMetricsSchema).max(20).optional(),
+  );
+}
+
 /** Legacy 0–1 relevance → stored 1–10 scale; map old vertical/input_signal ids on read. */
 function normalizeSignalItemMongoDoc(raw: unknown): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
@@ -196,6 +203,7 @@ const signalItemShape = z.object({
   ai_processed: z.boolean().default(false),
   skip_reason: z.string().nullable().optional(),
   deal_metrics: optionalDealMetrics(),
+  deals_found: optionalDealsFound(),
   email_images: optionalEmailImages(),
   email_sent_at: z.coerce.date().optional(),
   email_html_preview: z.preprocess(
