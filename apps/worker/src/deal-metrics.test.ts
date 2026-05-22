@@ -44,6 +44,17 @@ describe("countDistinctOffers", () => {
 });
 
 describe("extractDealMetricsRegex", () => {
+  it("Spinfinite Thursday Treat: $20 = 26 FREE SC", () => {
+    const subject = "Mega Offer Ends Soon — 26 FREE SC";
+    const body =
+      "For a limited time, grab this boosted package: $20 = 26,000 GC + 26 FREE SC + Cosmic Wheel Spin. purchase via our special $20 package labelled Thursday Treat.";
+    const dm = extractDealMetricsRegex(subject, body, ["SC", "GC"]);
+    assert.ok(dm, "expected deal");
+    assert.equal(dm.you_pay, 20);
+    assert.equal(dm.baseline_value, 26);
+    assert.ok(dealStrengthPct(dm) >= 0.25);
+  });
+
   it("Spinfinite: $50 = 75 FREE SC with subject Claim 75 FREE SC", () => {
     const subject = "Time's Running Out — Claim 75 FREE SC!";
     const body =

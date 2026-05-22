@@ -6,7 +6,7 @@ import {
   ensureIndexes,
   getContentSignal,
   getGmailOAuth,
-  insertSignalItem,
+  upsertSignalItem,
   listEnabledSources,
   setGmailOAuthIngestError,
   touchContentSignalLastIngest,
@@ -25,6 +25,7 @@ import {
   buildFullSignalItem,
   buildMinimalSignalItem,
   extractAndTruncate,
+  extractFullBodyText,
   prefilter,
 } from "./pipeline.js";
 import {
@@ -218,14 +219,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           ingestLog("message_begin", { sourceId: source.id, messageId });
         }
 
-        const existing = await findSignalByExternalId(db, messageId);
-        if (existing) {
-          stats.skippedDuplicate++;
-          if (verbose()) {
-            ingestLog("message_skip", { messageId, reason: "duplicate" });
-          }
-          continue;
-        }
+        const existingRow = await findSignalByExternalId(db, messageId);
 
         const fetched = await getNormalizedMessageAndPayload(gmail, messageId);
         if (!fetched) {
@@ -252,32 +246,32 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
             pf.reason,
             emailHtmlForRow,
           );
+          if (existingRow) {
+            minimal.id = existingRow.id;
+            minimal.created_at = existingRow.created_at;
+          }
           try {
-            await insertSignalItem(db, minimal);
-            stats.storedMinimal++;
+            const outcome = await upsertSignalItem(db, minimal);
+            if (outcome === "inserted") stats.storedMinimal++;
             if (verbose()) {
-              ingestLog("insert_ok", { messageId, kind: "minimal", skipReason: pf.reason });
+              ingestLog("insert_ok", { messageId, kind: "minimal", skipReason: pf.reason, outcome });
             }
           } catch (e: unknown) {
-            const code = (e as { code?: number })?.code;
-            if (code === 11000) {
-              stats.skippedDuplicate++;
-              if (verbose()) ingestLog("insert_skip", { messageId, reason: "duplicate_key_minimal" });
-            } else {
-              console.error("[ingest] insert minimal", e);
-              stats.skippedError++;
-              ingestLog("insert_error", {
-                messageId,
-                kind: "minimal",
-                message: e instanceof Error ? e.message : String(e),
-              });
-            }
+            console.error("[ingest] upsert minimal", e);
+            stats.skippedError++;
+            ingestLog("insert_error", {
+              messageId,
+              kind: "minimal",
+              message: e instanceof Error ? e.message : String(e),
+            });
           }
           continue;
         }
 
         let extracted = extractAndTruncate(normalized.raw_content, source.config.scan_body);
         extracted = extracted.slice(0, env.maxAiInputChars);
+
+        const dealParseText = extractFullBodyText(normalized.raw_content).slice(0, env.maxAiInputChars);
 
         let summary = "";
         const aiSummaryOn = source.config.ai_summary_enabled !== false;
@@ -297,15 +291,16 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         let dealLlm: DealMetricsLlmPartial | null = null;
         if (env.openaiApiKey) {
           try {
-            dealLlm = await extractDealMetricsWithLlm(extracted, unitTokens);
+            dealLlm = await extractDealMetricsWithLlm(dealParseText, unitTokens);
           } catch (e) {
             console.error("[ingest] deal metrics LLM failed", e);
           }
         }
-        const dealSourceText = `${normalized.subject}\n${extracted}`;
-        const deals_found = extractDealsFoundRegex(normalized.subject, extracted, unitTokens);
+        const dealSourceText = `${normalized.subject}\n${dealParseText}`;
+        const deals_found = extractDealsFoundRegex(normalized.subject, dealParseText, unitTokens);
         const dealRegex =
-          pickBestDeal(deals_found) ?? extractDealMetricsRegex(normalized.subject, extracted, unitTokens);
+          pickBestDeal(deals_found) ??
+          extractDealMetricsRegex(normalized.subject, dealParseText, unitTokens);
         const deal_metrics = mergeDealExtractions(dealLlm, dealRegex, dealSourceText);
 
         let email_images: EmailImage[] = [];
@@ -326,26 +321,24 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           email_images.length ? email_images : undefined,
           emailHtmlForRow,
         );
+        if (existingRow) {
+          full.id = existingRow.id;
+          full.created_at = existingRow.created_at;
+        }
         try {
-          await insertSignalItem(db, full);
-          stats.storedFull++;
+          const outcome = await upsertSignalItem(db, full);
+          if (outcome === "inserted") stats.storedFull++;
           if (verbose()) {
-            ingestLog("insert_ok", { messageId, kind: "full" });
+            ingestLog("insert_ok", { messageId, kind: "full", outcome });
           }
         } catch (e: unknown) {
-          const code = (e as { code?: number })?.code;
-          if (code === 11000) {
-            stats.skippedDuplicate++;
-            if (verbose()) ingestLog("insert_skip", { messageId, reason: "duplicate_key_full" });
-          } else {
-            console.error("[ingest] insert full", e);
-            stats.skippedError++;
-            ingestLog("insert_error", {
-              messageId,
-              kind: "full",
-              message: e instanceof Error ? e.message : String(e),
-            });
-          }
+          console.error("[ingest] upsert full", e);
+          stats.skippedError++;
+          ingestLog("insert_error", {
+            messageId,
+            kind: "full",
+            message: e instanceof Error ? e.message : String(e),
+          });
         }
       } catch (e) {
         console.error("[ingest] message error", messageId, e);

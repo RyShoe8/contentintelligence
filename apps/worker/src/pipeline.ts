@@ -136,6 +136,11 @@ export function extractAndTruncate(raw: string, scanBody: boolean): string {
   return text.slice(0, env.maxBodyChars);
 }
 
+/** Full email body text for deal parsing (ignores scan_body five-line cap). */
+export function extractFullBodyText(raw: string): string {
+  return extractAndTruncate(raw, true);
+}
+
 /** ESP / legal footer markers; cut at earliest match in the tail of the body. */
 const FOOTER_PATTERNS: RegExp[] = [
   /unsubscribe/gi,

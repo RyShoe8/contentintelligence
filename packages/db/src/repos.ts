@@ -224,7 +224,10 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
   if (q.has_deal_metrics) {
     clauses.push({
       deal_metrics: { $exists: true, $ne: null },
-      "deal_metrics.effective_savings_pct": { $exists: true },
+      $or: [
+        { "deal_metrics.effective_savings_pct": { $gt: 0 } },
+        { "deal_metrics.bonus_pct": { $gt: 0 } },
+      ],
     });
   }
 
@@ -277,6 +280,17 @@ export async function findSignalByExternalId(
 export async function insertSignalItem(db: Db, item: SignalItem): Promise<void> {
   const parsed = signalItemSchema.parse(item);
   await signalItems(db).insertOne(parsed as SignalItem);
+}
+
+/** Insert or refresh a Gmail row by external_id (re-sync updates deal fields). */
+export async function upsertSignalItem(db: Db, item: SignalItem): Promise<"inserted" | "updated"> {
+  const parsed = signalItemSchema.parse(item);
+  const result = await signalItems(db).replaceOne(
+    { external_id: parsed.external_id },
+    parsed as SignalItem,
+    { upsert: true },
+  );
+  return result.upsertedCount > 0 ? "inserted" : "updated";
 }
 
 /** Remove all feed rows for a content signal and reset ingest cursor for a full re-sync. */
