@@ -5,7 +5,7 @@ import { google } from "googleapis";
 import cron from "node-cron";
 import { env } from "./env.js";
 import { ingestLog } from "./ingest-log.js";
-import { runIngest } from "./ingest.js";
+import { runIngest, type IngestStats } from "./ingest.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
@@ -78,6 +78,27 @@ async function main(): Promise<void> {
     return { ok: true, email_address: email };
   });
 
+  /** Avoid overlapping manual/cron ingests (long runs exceed HTTP gateway timeouts). */
+  let ingestInFlight: Promise<IngestStats> | null = null;
+
+  const startIngest = (contentSignalId: string | undefined, source: "http_post" | "cron") => {
+    ingestInFlight = runIngest(contentSignalId)
+      .then((stats) => {
+        ingestLog("ingest_response", { source, contentSignalId: contentSignalId ?? null, ...stats });
+        return stats;
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : String(e);
+        ingestLog("ingest_fatal", { source, message });
+        app.log.error(e);
+        throw e;
+      })
+      .finally(() => {
+        ingestInFlight = null;
+      });
+    return ingestInFlight;
+  };
+
   app.post("/ingest", async (req, reply) => {
     const body = req.headers["x-ingest-secret"];
     const secretRequired = Boolean(env.ingestSecret);
@@ -98,15 +119,21 @@ async function main(): Promise<void> {
       (typeof q.content_signal_id === "string" && q.content_signal_id.trim()) ||
       (typeof bodyJson?.content_signal_id === "string" && bodyJson.content_signal_id.trim()) ||
       undefined;
-    try {
-      const stats = await runIngest(contentSignalId);
-      ingestLog("ingest_response", { source: "http_post", contentSignalId: contentSignalId ?? null, ...stats });
-      return stats;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      ingestLog("ingest_fatal", { source: "http_post", message });
-      throw e;
+
+    if (ingestInFlight) {
+      return reply.code(409).send({
+        error: "ingest_already_running",
+        message: "A sync is already running. Wait a minute and refresh the feed.",
+      });
     }
+
+    void startIngest(contentSignalId, "http_post");
+    return reply.code(202).send({
+      accepted: true,
+      content_signal_id: contentSignalId ?? null,
+      message:
+        "Sync started in the background. Refresh the feed in a minute to see new items.",
+    });
   });
 
   const port = env.port;
@@ -114,15 +141,11 @@ async function main(): Promise<void> {
 
   cron.schedule(env.ingestCron, () => {
     ingestLog("ingest_cron_tick", { cron: env.ingestCron });
-    runIngest()
-      .then((stats) => {
-        ingestLog("ingest_response", { source: "cron", ...stats });
-      })
-      .catch((e) => {
-        const message = e instanceof Error ? e.message : String(e);
-        ingestLog("ingest_fatal", { source: "cron", message });
-        app.log.error(e);
-      });
+    if (ingestInFlight) {
+      ingestLog("ingest_cron_skip", { reason: "ingest_already_running" });
+      return;
+    }
+    void startIngest(undefined, "cron");
   });
 
   const shutdown = async () => {

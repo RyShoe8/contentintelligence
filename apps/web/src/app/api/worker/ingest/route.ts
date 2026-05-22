@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { sanitizeIngestError } from "@/lib/ingest-response";
+
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -38,17 +41,15 @@ export async function POST(req: NextRequest) {
       parsed = { raw: text };
     }
     if (!r.ok) {
-      return NextResponse.json(
-        {
-          error:
-            typeof parsed === "object" && parsed && "error" in parsed
-              ? (parsed as { error: string }).error
-              : text,
-        },
-        { status: r.status },
-      );
+      const rawErr =
+        typeof parsed === "object" && parsed && "message" in parsed
+          ? (parsed as { message: string }).message
+          : typeof parsed === "object" && parsed && "error" in parsed
+            ? (parsed as { error: string }).error
+            : text;
+      return NextResponse.json({ error: sanitizeIngestError(rawErr) }, { status: r.status });
     }
-    return NextResponse.json(parsed);
+    return NextResponse.json(parsed, { status: r.status });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "fetch_failed";
     return NextResponse.json({ error: msg }, { status: 502 });

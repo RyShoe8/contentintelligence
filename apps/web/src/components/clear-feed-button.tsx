@@ -1,5 +1,6 @@
 "use client";
 
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { useState } from "react";
 import { clearFeedAction } from "@/app/feed/actions";
 
@@ -35,7 +36,8 @@ export function ClearFeedButton({
       const fd = new FormData();
       fd.set("content_signal_id", contentSignalId);
       await clearFeedAction(fd);
-    } catch {
+    } catch (e) {
+      if (isRedirectError(e)) throw e;
       setError("Could not clear the feed. Try again.");
       setPending(false);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sanitizeIngestError } from "@/lib/ingest-response";
 
 type IngestSourceError = {
   sourceId?: string;
@@ -73,7 +74,16 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
       const data = (await r.json().catch(() => ({}))) as Record<string, unknown> & IngestStats;
       if (!r.ok) {
         setStatus("err");
-        setMessage(typeof data.error === "string" ? data.error : `HTTP ${r.status}`);
+        setMessage(sanitizeIngestError(data.error ?? data.message ?? `HTTP ${r.status}`));
+        return;
+      }
+      if (data.accepted === true) {
+        setStatus("ok");
+        setMessage(
+          typeof data.message === "string"
+            ? data.message
+            : "Sync started in the background. Refresh the feed in a minute to see new items.",
+        );
         return;
       }
       const result = formatSyncResult(data);
