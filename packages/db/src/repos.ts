@@ -1,27 +1,29 @@
 import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
+import { migrateLegacyCollections } from "./migrate.js";
 import type {
-  GmailInputConfig,
+  ContentSignal,
   GmailOAuthDoc,
-  InputSignal,
+  GmailSourceConfig,
   SignalItem,
-  Vertical,
+  Source,
 } from "./schemas.js";
 import {
-  gmailInputConfigSchema,
-  inputSignalSchema,
+  contentSignalSchema,
+  gmailSourceConfigSchema,
   signalItemSchema,
-  verticalSchema,
+  sourceDisplayLabel,
+  sourceSchema,
 } from "./schemas.js";
 import { SOURCE_TYPE_EMAIL_GMAIL } from "./schemas.js";
 
-function verticals(db: Db): Collection<Vertical> {
-  return db.collection<Vertical>(COLLECTIONS.verticals);
+function contentSignals(db: Db): Collection<ContentSignal> {
+  return db.collection<ContentSignal>(COLLECTIONS.content_signals);
 }
 
-function inputSignals(db: Db): Collection<InputSignal> {
-  return db.collection<InputSignal>(COLLECTIONS.input_signals);
+function sources(db: Db): Collection<Source> {
+  return db.collection<Source>(COLLECTIONS.sources);
 }
 
 function signalItems(db: Db): Collection<SignalItem> {
@@ -32,123 +34,136 @@ function gmailOAuth(db: Db): Collection<GmailOAuthDoc> {
   return db.collection<GmailOAuthDoc>(COLLECTIONS.gmail_oauth);
 }
 
-export async function listVerticals(db: Db, activeOnly = false): Promise<Vertical[]> {
+export async function listContentSignals(db: Db, activeOnly = false): Promise<ContentSignal[]> {
   const filter = activeOnly ? { active: true } : {};
-  const docs = await verticals(db).find(filter).sort({ name: 1 }).toArray();
-  return docs.map((d) => verticalSchema.parse(d));
+  const docs = await contentSignals(db).find(filter).sort({ name: 1 }).toArray();
+  return docs.map((d) => contentSignalSchema.parse(d));
 }
 
-export async function getVertical(db: Db, id: string): Promise<Vertical | null> {
-  const doc = await verticals(db).findOne({ id });
-  return doc ? verticalSchema.parse(doc) : null;
+export async function getContentSignal(db: Db, id: string): Promise<ContentSignal | null> {
+  const doc = await contentSignals(db).findOne({ id });
+  return doc ? contentSignalSchema.parse(doc) : null;
 }
 
-export async function upsertVertical(
+export async function upsertContentSignal(
   db: Db,
-  data: Omit<Vertical, "id" | "created_at" | "updated_at"> & { id?: string },
-): Promise<Vertical> {
+  data: Omit<ContentSignal, "id" | "created_at" | "updated_at" | "last_ingest_completed_at"> & {
+    id?: string;
+    last_ingest_completed_at?: Date;
+  },
+): Promise<ContentSignal> {
   const now = new Date();
   const id = data.id ?? randomUUID();
-  const existing = await verticals(db).findOne({ id });
-  const row: Vertical = {
+  const existing = await contentSignals(db).findOne({ id });
+  const row: ContentSignal = {
     id,
     name: data.name,
     description: data.description ?? "",
-    default_keywords: data.default_keywords ?? [],
-    active: data.active ?? true,
-    created_at: existing?.created_at ?? now,
-    updated_at: now,
-  };
-  const parsed = verticalSchema.parse(row);
-  await verticals(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
-  return parsed;
-}
-
-export async function deleteVertical(db: Db, id: string): Promise<boolean> {
-  const r = await verticals(db).deleteOne({ id });
-  await inputSignals(db).deleteMany({ vertical_id: id });
-  await signalItems(db).deleteMany({ vertical_id: id });
-  return r.deletedCount > 0;
-}
-
-export async function listInputSignals(
-  db: Db,
-  verticalId?: string,
-): Promise<InputSignal[]> {
-  const filter = verticalId ? { vertical_id: verticalId } : {};
-  const docs = await inputSignals(db).find(filter).sort({ name: 1 }).toArray();
-  return docs.map((d) => inputSignalSchema.parse(d));
-}
-
-export async function listEnabledGmailSignals(db: Db): Promise<InputSignal[]> {
-  const docs = await inputSignals(db)
-    .find({ enabled: true, source_type: SOURCE_TYPE_EMAIL_GMAIL })
-    .toArray();
-  return docs.map((d) => inputSignalSchema.parse(d));
-}
-
-export async function getInputSignal(db: Db, id: string): Promise<InputSignal | null> {
-  const doc = await inputSignals(db).findOne({ id });
-  return doc ? inputSignalSchema.parse(doc) : null;
-}
-
-export async function upsertInputSignal(
-  db: Db,
-  data: {
-    id?: string;
-    vertical_id: string;
-    name: string;
-    enabled?: boolean;
-    keywords?: string[];
-    config: unknown;
-  },
-): Promise<InputSignal> {
-  const now = new Date();
-  const id = data.id ?? randomUUID();
-  const config = gmailInputConfigSchema.parse(data.config);
-  const existing = await inputSignals(db).findOne({ id });
-  const row: InputSignal = {
-    id,
-    vertical_id: data.vertical_id,
-    source_type: SOURCE_TYPE_EMAIL_GMAIL,
-    name: data.name,
-    enabled: data.enabled ?? true,
     keywords: data.keywords ?? [],
-    config,
+    lookback_window_hours: data.lookback_window_hours ?? 168,
+    deal_unit_tokens: data.deal_unit_tokens ?? [],
+    active: data.active ?? true,
     created_at: existing?.created_at ?? now,
     updated_at: now,
     ...(existing?.last_ingest_completed_at != null
       ? { last_ingest_completed_at: existing.last_ingest_completed_at }
       : {}),
+    ...(data.last_ingest_completed_at != null
+      ? { last_ingest_completed_at: data.last_ingest_completed_at }
+      : {}),
   };
-  const parsed = inputSignalSchema.parse(row);
-  await inputSignals(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
+  const parsed = contentSignalSchema.parse(row);
+  await contentSignals(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
   return parsed;
 }
 
-export async function touchInputSignalLastIngest(db: Db, signalId: string, at: Date): Promise<void> {
+export async function deleteContentSignal(db: Db, id: string): Promise<boolean> {
+  const r = await contentSignals(db).deleteOne({ id });
+  await sources(db).deleteMany({ content_signal_id: id });
+  await signalItems(db).deleteMany({ content_signal_id: id });
+  return r.deletedCount > 0;
+}
+
+export async function touchContentSignalLastIngest(
+  db: Db,
+  contentSignalId: string,
+  at: Date,
+): Promise<void> {
   const now = new Date();
-  await inputSignals(db).updateOne(
-    { id: signalId },
+  await contentSignals(db).updateOne(
+    { id: contentSignalId },
     { $set: { last_ingest_completed_at: at, updated_at: now } },
   );
 }
 
-export async function deleteInputSignal(db: Db, id: string): Promise<boolean> {
-  const r = await inputSignals(db).deleteOne({ id });
-  await signalItems(db).deleteMany({ input_signal_id: id });
+export async function listSourcesByContentSignal(db: Db, contentSignalId: string): Promise<Source[]> {
+  const docs = await sources(db).find({ content_signal_id: contentSignalId }).sort({ created_at: 1 }).toArray();
+  return docs.map((d) => sourceSchema.parse(d));
+}
+
+export async function listSources(db: Db, contentSignalId?: string): Promise<Source[]> {
+  const filter = contentSignalId ? { content_signal_id: contentSignalId } : {};
+  const docs = await sources(db).find(filter).sort({ created_at: 1 }).toArray();
+  return docs.map((d) => sourceSchema.parse(d));
+}
+
+export async function listEnabledSources(
+  db: Db,
+  contentSignalId?: string,
+): Promise<Source[]> {
+  const filter: Record<string, unknown> = {
+    enabled: true,
+    source_type: SOURCE_TYPE_EMAIL_GMAIL,
+  };
+  if (contentSignalId) filter.content_signal_id = contentSignalId;
+  const docs = await sources(db).find(filter).toArray();
+  return docs.map((d) => sourceSchema.parse(d));
+}
+
+export async function getSource(db: Db, id: string): Promise<Source | null> {
+  const doc = await sources(db).findOne({ id });
+  return doc ? sourceSchema.parse(doc) : null;
+}
+
+export async function upsertSource(
+  db: Db,
+  data: {
+    id?: string;
+    content_signal_id: string;
+    enabled?: boolean;
+    config: unknown;
+  },
+): Promise<Source> {
+  const now = new Date();
+  const id = data.id ?? randomUUID();
+  const config = gmailSourceConfigSchema.parse(data.config);
+  const existing = await sources(db).findOne({ id });
+  const row: Source = {
+    id,
+    content_signal_id: data.content_signal_id,
+    source_type: SOURCE_TYPE_EMAIL_GMAIL,
+    enabled: data.enabled ?? true,
+    config,
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  };
+  const parsed = sourceSchema.parse(row);
+  await sources(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
+  return parsed;
+}
+
+export async function deleteSource(db: Db, id: string): Promise<boolean> {
+  const r = await sources(db).deleteOne({ id });
+  await signalItems(db).deleteMany({ source_id: id });
   return r.deletedCount > 0;
 }
 
 export type SignalFeedQuery = {
-  vertical_id?: string;
+  content_signal_id?: string;
   keyword?: string;
   min_score?: number;
-  /** Minimum deal strength 0–1 (matches `deal_metrics.effective_savings_pct`). */
   min_effective_savings_pct?: number;
-  /** Minimum extraction confidence 0–1. */
   min_confidence?: number;
-  /** When true, only rows with `deal_metrics` present. */
   has_deal_metrics?: boolean;
   sort: "created_at" | "relevance_score" | "deal_savings";
   order: "asc" | "desc";
@@ -157,7 +172,14 @@ export type SignalFeedQuery = {
 
 export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<SignalItem[]> {
   const clauses: Record<string, unknown>[] = [];
-  if (q.vertical_id) clauses.push({ vertical_id: q.vertical_id });
+  if (q.content_signal_id) {
+    clauses.push({
+      $or: [
+        { content_signal_id: q.content_signal_id },
+        { vertical_id: q.content_signal_id },
+      ],
+    });
+  }
   if (q.min_score !== undefined) clauses.push({ relevance_score: { $gte: q.min_score } });
   if (q.keyword) {
     const kw = escapeRegex(q.keyword);
@@ -186,7 +208,11 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
     clauses.length === 0 ? {} : clauses.length === 1 ? (clauses[0] as Record<string, unknown>) : { $and: clauses };
 
   const sortField =
-    q.sort === "deal_savings" ? "deal_metrics.effective_savings_pct" : q.sort === "relevance_score" ? "relevance_score" : "created_at";
+    q.sort === "deal_savings"
+      ? "deal_metrics.effective_savings_pct"
+      : q.sort === "relevance_score"
+        ? "relevance_score"
+        : "created_at";
   const sort: Record<string, 1 | -1> = {
     [sortField]: q.order === "asc" ? 1 : -1,
   };
@@ -211,6 +237,19 @@ export async function findSignalByExternalId(
 export async function insertSignalItem(db: Db, item: SignalItem): Promise<void> {
   const parsed = signalItemSchema.parse(item);
   await signalItems(db).insertOne(parsed as SignalItem);
+}
+
+/** Remove all feed rows for a content signal and reset ingest cursor for a full re-sync. */
+export async function clearFeedForContentSignal(db: Db, contentSignalId: string): Promise<number> {
+  const result = await signalItems(db).deleteMany({
+    $or: [{ content_signal_id: contentSignalId }, { vertical_id: contentSignalId }],
+  });
+  const now = new Date();
+  await contentSignals(db).updateOne(
+    { id: contentSignalId },
+    { $unset: { last_ingest_completed_at: "" }, $set: { updated_at: now } },
+  );
+  return result.deletedCount;
 }
 
 export async function saveGmailOAuth(
@@ -267,5 +306,5 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export { SOURCE_TYPE_EMAIL_GMAIL, gmailInputConfigSchema };
-export type { GmailInputConfig };
+export { SOURCE_TYPE_EMAIL_GMAIL, gmailSourceConfigSchema, sourceDisplayLabel };
+export type { GmailSourceConfig };

@@ -1,5 +1,6 @@
 import { MongoClient, type Db } from "mongodb";
 import { COLLECTIONS } from "./collections.js";
+import { migrateLegacyCollections } from "./migrate.js";
 
 let client: MongoClient | null = null;
 let dbInstance: Db | null = null;
@@ -27,19 +28,21 @@ export async function closeDb(): Promise<void> {
 }
 
 export async function ensureIndexes(db: Db): Promise<void> {
-  await db.collection(COLLECTIONS.verticals).createIndexes([
+  await migrateLegacyCollections(db);
+
+  await db.collection(COLLECTIONS.content_signals).createIndexes([
     { key: { id: 1 }, unique: true },
     { key: { active: 1 } },
   ]);
-  await db.collection(COLLECTIONS.input_signals).createIndexes([
+  await db.collection(COLLECTIONS.sources).createIndexes([
     { key: { id: 1 }, unique: true },
-    { key: { vertical_id: 1 } },
+    { key: { content_signal_id: 1 } },
     { key: { enabled: 1 } },
     { key: { source_type: 1 } },
   ]);
   await db.collection(COLLECTIONS.signal_items).createIndexes([
-    { key: { vertical_id: 1 } },
-    { key: { input_signal_id: 1 } },
+    { key: { content_signal_id: 1 } },
+    { key: { source_id: 1 } },
     { key: { created_at: -1 } },
     { key: { external_id: 1 }, unique: true, sparse: true },
     { key: { relevance_score: -1 } },

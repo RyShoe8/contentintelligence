@@ -44,11 +44,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link className="transition-colors hover:text-[var(--accent)]" href="/getting-started">
                     Getting started
                   </Link>
-                  <Link className="transition-colors hover:text-[var(--accent)]" href="/verticals">
-                    Verticals
-                  </Link>
-                  <Link className="transition-colors hover:text-[var(--accent)]" href="/signals">
-                    Email signals
+                  <Link className="transition-colors hover:text-[var(--accent)]" href="/content-signals">
+                    Content Signals
                   </Link>
                   <Link className="transition-colors hover:text-[var(--accent)]" href="/feed">
                     Feed

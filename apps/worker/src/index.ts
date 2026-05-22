@@ -92,9 +92,15 @@ async function main(): Promise<void> {
       ingestLog("ingest_reject", { reason: "unauthorized" });
       return reply.code(401).send({ error: "unauthorized" });
     }
+    const q = req.query as { content_signal_id?: string };
+    const bodyJson = req.body as { content_signal_id?: string } | undefined;
+    const contentSignalId =
+      (typeof q.content_signal_id === "string" && q.content_signal_id.trim()) ||
+      (typeof bodyJson?.content_signal_id === "string" && bodyJson.content_signal_id.trim()) ||
+      undefined;
     try {
-      const stats = await runIngest();
-      ingestLog("ingest_response", { source: "http_post", ...stats });
+      const stats = await runIngest(contentSignalId);
+      ingestLog("ingest_response", { source: "http_post", contentSignalId: contentSignalId ?? null, ...stats });
       return stats;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

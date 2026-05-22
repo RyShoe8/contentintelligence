@@ -4,12 +4,12 @@ import {
   findSignalByExternalId,
   getDb,
   ensureIndexes,
+  getContentSignal,
   getGmailOAuth,
-  getVertical,
   insertSignalItem,
-  listEnabledGmailSignals,
+  listEnabledSources,
   setGmailOAuthIngestError,
-  touchInputSignalLastIngest,
+  touchContentSignalLastIngest,
 } from "@content-resourcer/db";
 import {
   createGmailClient,
@@ -34,20 +34,20 @@ import {
 } from "./deal-metrics.js";
 import { extractDealMetricsWithLlm, summarizeEmailBody } from "./summarize.js";
 
-export type IngestSignalError = {
-  signalId: string;
+export type IngestSourceError = {
+  sourceId: string;
   email_address: string;
   error: string;
 };
 
 export type IngestStats = {
-  signals: number;
+  sources: number;
   messagesListed: number;
   skippedDuplicate: number;
   skippedError: number;
   storedMinimal: number;
   storedFull: number;
-  signalErrors: IngestSignalError[];
+  sourceErrors: IngestSourceError[];
 };
 
 const verbose = () => ingestVerbose();
@@ -67,19 +67,19 @@ function effectiveLookbackHours(
   return Math.min(configured, bounded);
 }
 
-export async function runIngest(): Promise<IngestStats> {
+export async function runIngest(contentSignalId?: string): Promise<IngestStats> {
   const stats: IngestStats = {
-    signals: 0,
+    sources: 0,
     messagesListed: 0,
     skippedDuplicate: 0,
     skippedError: 0,
     storedMinimal: 0,
     storedFull: 0,
-    signalErrors: [],
+    sourceErrors: [],
   };
 
   const mongoConfigured = Boolean(env.mongodbUri);
-  ingestLog("run_start", { mongodbConfigured: mongoConfigured });
+  ingestLog("run_start", { mongodbConfigured: mongoConfigured, contentSignalId: contentSignalId ?? null });
 
   if (!env.mongodbUri) {
     ingestLog("run_abort", { reason: "MONGODB_URI unset" });
@@ -89,48 +89,64 @@ export async function runIngest(): Promise<IngestStats> {
   const db = await getDb(env.mongodbUri);
   await ensureIndexes(db);
 
-  const signals = await listEnabledGmailSignals(db);
-  stats.signals = signals.length;
+  const sourceList = await listEnabledSources(db, contentSignalId);
+  stats.sources = sourceList.length;
 
-  ingestLog("signals_loaded", {
-    signalCount: signals.length,
-    signals: signals.map((s) => ({
+  ingestLog("sources_loaded", {
+    sourceCount: sourceList.length,
+    sources: sourceList.map((s) => ({
       id: s.id,
-      name: s.name,
-      vertical_id: s.vertical_id,
+      content_signal_id: s.content_signal_id,
       enabled: s.enabled,
       email_address: s.config.email_address,
     })),
   });
 
-  for (const signal of signals) {
-    ingestLog("signal_begin", {
-      signalId: signal.id,
-      name: signal.name,
-      vertical_id: signal.vertical_id,
-      email_address: signal.config.email_address,
+  const contentSignalCache = new Map<string, Awaited<ReturnType<typeof getContentSignal>>>();
+
+  for (const source of sourceList) {
+    ingestLog("source_begin", {
+      sourceId: source.id,
+      content_signal_id: source.content_signal_id,
+      email_address: source.config.email_address,
     });
 
-    const vertical = await getVertical(db, signal.vertical_id);
-    if (!vertical) {
-      ingestLog("vertical_skip", { signalId: signal.id, reason: "vertical_not_found" });
+    let contentSignal = contentSignalCache.get(source.content_signal_id);
+    if (contentSignal === undefined) {
+      contentSignal = await getContentSignal(db, source.content_signal_id);
+      contentSignalCache.set(source.content_signal_id, contentSignal);
+    }
+    if (!contentSignal) {
+      ingestLog("content_signal_skip", { sourceId: source.id, reason: "content_signal_not_found" });
       continue;
     }
-    if (!vertical.active) {
-      ingestLog("vertical_skip", { signalId: signal.id, reason: "vertical_inactive", verticalId: vertical.id });
+    if (!contentSignal.active) {
+      ingestLog("content_signal_skip", {
+        sourceId: source.id,
+        reason: "content_signal_inactive",
+        contentSignalId: contentSignal.id,
+      });
       continue;
     }
 
-    const oauth = await getGmailOAuth(db, signal.config.email_address);
+    const email = source.config.email_address?.trim();
+    if (!email) {
+      ingestLog("oauth_skip", {
+        sourceId: source.id,
+        hint: "connect Gmail on the source editor",
+      });
+      console.warn(`[ingest] No email on source ${source.id}; connect Gmail first.`);
+      continue;
+    }
+
+    const oauth = await getGmailOAuth(db, email);
     if (!oauth?.refresh_token) {
       ingestLog("oauth_skip", {
-        signalId: signal.id,
-        email_address: signal.config.email_address,
+        sourceId: source.id,
+        email_address: email,
         hint: "check gmail_oauth collection for refresh_token",
       });
-      console.warn(
-        `[ingest] No OAuth token for ${signal.config.email_address}; connect Gmail first.`,
-      );
+      console.warn(`[ingest] No OAuth token for ${email}; connect Gmail first.`);
       continue;
     }
 
@@ -139,55 +155,55 @@ export async function runIngest(): Promise<IngestStats> {
       gmail = createGmailClient(oauth.refresh_token);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      ingestLog("gmail_client_error", { signalId: signal.id, message: msg });
+      ingestLog("gmail_client_error", { sourceId: source.id, message: msg });
       if (verbose() && e instanceof Error && e.stack) {
         console.error("[ingest] Gmail client stack", e.stack);
       }
       continue;
     }
 
-    const configuredLookback = signal.config.lookback_window_hours;
+    const configuredLookback = contentSignal.lookback_window_hours;
     const effectiveHours = effectiveLookbackHours(
       configuredLookback,
-      signal.last_ingest_completed_at,
+      contentSignal.last_ingest_completed_at,
       env.ingestMinGapHours,
     );
-    const gmailQ = buildGmailQuery(signal.config, { lookbackHours: effectiveHours });
+    const gmailQ = buildGmailQuery(source.config, { lookbackHours: effectiveHours });
     ingestLog("gmail_query", {
-      signalId: signal.id,
+      sourceId: source.id,
       q: gmailQ,
       effectiveLookbackHours: effectiveHours,
       configuredLookbackHours: configuredLookback,
-      ...(signal.last_ingest_completed_at
-        ? { lastIngestCompletedAt: signal.last_ingest_completed_at.toISOString() }
+      ...(contentSignal.last_ingest_completed_at
+        ? { lastIngestCompletedAt: contentSignal.last_ingest_completed_at.toISOString() }
         : {}),
     });
 
     let ids: string[] = [];
     try {
-      ids = await listMessageIds(gmail, signal.config, 80, effectiveHours);
-      await setGmailOAuthIngestError(db, signal.config.email_address, null);
+      ids = await listMessageIds(gmail, source.config, 80, effectiveHours);
+      await setGmailOAuthIngestError(db, email, null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[ingest] list messages failed", signal.id, e);
-      ingestLog("list_messages_error", { signalId: signal.id, message: msg });
-      await setGmailOAuthIngestError(db, signal.config.email_address, msg);
-      stats.signalErrors.push({
-        signalId: signal.id,
-        email_address: signal.config.email_address,
+      console.error("[ingest] list messages failed", source.id, e);
+      ingestLog("list_messages_error", { sourceId: source.id, message: msg });
+      await setGmailOAuthIngestError(db, email, msg);
+      stats.sourceErrors.push({
+        sourceId: source.id,
+        email_address: email,
         error: msg,
       });
       if (msg.includes("invalid_grant")) {
         console.warn(
-          `[ingest] Gmail token rejected for ${signal.config.email_address}. ` +
-            "Re-connect Gmail on Vercel /signals and ensure Render GMAIL_CLIENT_ID/SECRET match Vercel.",
+          `[ingest] Gmail token rejected for ${email}. ` +
+            "Re-connect Gmail on the source editor and ensure Render GMAIL_CLIENT_ID/SECRET match Vercel.",
         );
       }
       continue;
     }
 
     ingestLog("gmail_list_result", {
-      signalId: signal.id,
+      sourceId: source.id,
       idCount: ids.length,
       ...(verbose() && ids.length > 0 ? { sampleIds: ids.slice(0, 3) } : {}),
     });
@@ -197,7 +213,7 @@ export async function runIngest(): Promise<IngestStats> {
     for (const messageId of ids) {
       try {
         if (verbose()) {
-          ingestLog("message_begin", { signalId: signal.id, messageId });
+          ingestLog("message_begin", { sourceId: source.id, messageId });
         }
 
         const existing = await findSignalByExternalId(db, messageId);
@@ -221,13 +237,19 @@ export async function runIngest(): Promise<IngestStats> {
         const emailHtmlRaw = extractHtmlFromPayload(payload);
         const emailHtmlForRow = emailHtmlRaw.trim().length > 0 ? emailHtmlRaw : null;
 
-        const pf = prefilter(normalized, vertical, signal, signal.config);
+        const pf = prefilter(normalized, contentSignal, source.config);
         if (verbose()) {
           ingestLog("prefilter", { messageId, ok: pf.ok, reason: pf.ok ? undefined : pf.reason });
         }
 
         if (!pf.ok) {
-          const minimal = buildMinimalSignalItem(vertical, signal, normalized, pf.reason, emailHtmlForRow);
+          const minimal = buildMinimalSignalItem(
+            contentSignal,
+            source,
+            normalized,
+            pf.reason,
+            emailHtmlForRow,
+          );
           try {
             await insertSignalItem(db, minimal);
             stats.storedMinimal++;
@@ -252,11 +274,11 @@ export async function runIngest(): Promise<IngestStats> {
           continue;
         }
 
-        let extracted = extractAndTruncate(normalized.raw_content, signal.config.scan_body);
+        let extracted = extractAndTruncate(normalized.raw_content, source.config.scan_body);
         extracted = extracted.slice(0, env.maxAiInputChars);
 
         let summary = "";
-        const aiSummaryOn = signal.config.ai_summary_enabled !== false;
+        const aiSummaryOn = source.config.ai_summary_enabled !== false;
         if (env.openaiApiKey && aiSummaryOn) {
           try {
             summary = await summarizeEmailBody(extracted);
@@ -265,7 +287,7 @@ export async function runIngest(): Promise<IngestStats> {
           }
         }
 
-        const unitTokens = signal.config.deal_unit_tokens ?? [];
+        const unitTokens = contentSignal.deal_unit_tokens ?? [];
 
         let dealLlm: DealMetricsLlmPartial | null = null;
         if (env.openaiApiKey) {
@@ -286,8 +308,8 @@ export async function runIngest(): Promise<IngestStats> {
         }
 
         const full = buildFullSignalItem(
-          vertical,
-          signal,
+          contentSignal,
+          source,
           normalized,
           extracted,
           summary,
@@ -327,9 +349,9 @@ export async function runIngest(): Promise<IngestStats> {
     }
 
     try {
-      await touchInputSignalLastIngest(db, signal.id, new Date());
+      await touchContentSignalLastIngest(db, contentSignal.id, new Date());
     } catch (e) {
-      console.error("[ingest] touchInputSignalLastIngest failed", signal.id, e);
+      console.error("[ingest] touchContentSignalLastIngest failed", contentSignal.id, e);
     }
   }
 

@@ -1,0 +1,24 @@
+export const CONTENT_SIGNAL_FIELD_TIPS = {
+  name: "A short label for this content signal (e.g. Gambling, Sports).",
+  description: "Optional notes for your team.",
+  keywords:
+    "Comma or newline. After Gmail fetch, message subject + body must contain at least one keyword (case-insensitive). If empty, keyword check is skipped.",
+  lookback_window_hours:
+    "Maximum age for the Gmail after: filter on first sync. After a successful ingest, the worker uses the smaller of this value and time since last ingest.",
+  deal_unit_tokens:
+    "Comma or newline. Labels for deal parsing (e.g. SC, FP, $). Does not change Gmail search.",
+  active: "When off, ingest skips all sources attached to this content signal.",
+} as const;
+
+export const SOURCE_FIELD_TIPS = {
+  labels:
+    "Gmail label names, one per line. Narrows the Gmail search (OR across lines). Must match Gmail spelling.",
+  sender_addresses:
+    "Optional, one per line. Gmail from: filter and post-fetch From header match.",
+  sender_domains:
+    "Optional domains such as casino.com. Used in Gmail search and sender matching after fetch.",
+  scan_body:
+    "When on, more body text is used for scoring and summaries. When off, only ~5 lines of body.",
+  ai_summary_enabled:
+    "When off, OpenAI summary is skipped for this source; deal parsing still runs if configured.",
+} as const;

@@ -4,7 +4,7 @@ Monorepo: **Next.js** UI on Vercel, **Node worker** on Render (Gmail + optional 
 
 ## Structure
 
-- `apps/web` — internal UI (verticals, Gmail signals, feed)
+- `apps/web` — internal UI (content signals, sources, feed)
 - `apps/worker` — health, Gmail OAuth, cron ingest, pipeline
 - `packages/db` — Zod schemas, Mongo helpers, indexes
 
@@ -113,18 +113,20 @@ npm run dev
 Use `npm run dev:worker` in another terminal for the ingest service.
 
 1. For **in-app Gmail connect** locally, set `GMAIL_REDIRECT_URI` to `http://localhost:3000/api/gmail/oauth/callback` (Next dev port) and add it in Google Cloud. Alternatively use the worker: `http://localhost:8787/oauth/google/callback` with worker `GMAIL_REDIRECT_URI`.
-2. Open **Getting started** or **Email signals** in the web UI and use **Connect Gmail**, or use `http://localhost:8787/oauth/google/start` for worker-only OAuth; tokens are stored in Mongo.
-3. Create verticals and signals in the web UI (`http://localhost:3000`).
-4. Trigger ingest: **Sync now** on Email signals / Getting started (requires `WORKER_URL` on `.env.local`), wait for worker cron, or `POST http://localhost:8787/ingest` with optional `x-ingest-secret`.
+2. Create **content signals** and **email sources** in the web UI (`http://localhost:3000/content-signals`).
+3. Connect Gmail on each source editor (`Connect Gmail`); tokens are stored in Mongo.
+4. Trigger ingest: **Sync now** on the **Feed** (select a content signal; requires `WORKER_URL` on `.env.local`), wait for worker cron, or `POST http://localhost:8787/ingest?content_signal_id=<uuid>` with optional `x-ingest-secret`.
 
-## Seed example vertical
+On first deploy, `ensureIndexes` migrates legacy `verticals` / `input_signals` collections to `content_signals` / `sources`.
+
+## Seed example content signal
 
 ```bash
 set SEED_GMAIL_ADDRESS=you@gmail.com
 npm run seed
 ```
 
-Creates the **Gambling** vertical and a sample Gmail signal (labels: `Casinos`). Adjust `SEED_GMAIL_ADDRESS` to your inbox.
+Creates the **Gambling** content signal and a sample email source (labels: `Casinos`). Set `SEED_GMAIL_ADDRESS` before seeding if you want the source pre-filled with an inbox address.
 
 ## Production builds
 
@@ -135,11 +137,11 @@ npm run build
 
 ## Troubleshooting ingest
 
-- **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On **Email signals**, check the OAuth alignment line (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail** for the inbox.
+- **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
 
 ## OAuth notes
 
 - **Vercel (Auth.js):** Redirect must be `…/api/auth/callback/google` on your Vercel domain.
-- **Vercel (Gmail in app):** Redirect must be `…/api/gmail/oauth/callback` and match `GMAIL_REDIRECT_URI`. Users connect from **Getting started** or **Email signals**; scope is read-only Gmail.
+- **Vercel (Gmail in app):** Redirect must be `…/api/gmail/oauth/callback` and match `GMAIL_REDIRECT_URI`. Users connect from each **source editor**; scope is read-only Gmail.
 - **Render (Gmail, optional):** Redirect `…/oauth/google/callback` if you still use worker-hosted OAuth. First consent should use **offline** access so a **refresh token** is stored.

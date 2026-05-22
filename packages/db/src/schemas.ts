@@ -26,46 +26,29 @@ function normalizeDealUnitTokensIn(val: unknown): string[] {
   return out;
 }
 
-export const gmailInputConfigSchema = z.object({
-  email_address: z.string().email(),
+/** Per-source Gmail inbox filters and ingest toggles. */
+export const gmailSourceConfigSchema = z.object({
+  email_address: z.string().default(""),
   labels: optionalStringArray(),
   sender_addresses: optionalStringArray(),
   sender_domains: optionalStringArray(),
-  subject_keywords: optionalStringArray(),
   scan_body: z.boolean().default(true),
-  lookback_window_hours: z.number().int().positive().max(24 * 90).default(168),
-  /** When false, ingest skips OpenAI summary (feed shows more body text). Deal LLM still runs if configured. */
   ai_summary_enabled: z.boolean().default(true),
-  /** Suffix/prefix tokens for deal extraction (e.g. SC, FP, $). Max 32 entries. */
+});
+
+export type GmailSourceConfig = z.infer<typeof gmailSourceConfigSchema>;
+
+export const contentSignalSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  keywords: z.array(z.string()).default([]),
+  lookback_window_hours: z.number().int().positive().max(24 * 90).default(168),
   deal_unit_tokens: z.preprocess(
     normalizeDealUnitTokensIn,
     z.array(z.string().max(12)).max(32).default([]),
   ),
-});
-
-export type GmailInputConfig = z.infer<typeof gmailInputConfigSchema>;
-
-export const verticalSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1),
-  description: z.string().default(""),
-  default_keywords: z.array(z.string()).default([]),
   active: z.boolean().default(true),
-  created_at: z.coerce.date(),
-  updated_at: z.coerce.date(),
-});
-
-export type Vertical = z.infer<typeof verticalSchema>;
-
-export const inputSignalSchema = z.object({
-  id: z.string().uuid(),
-  vertical_id: z.string().uuid(),
-  source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
-  name: z.string().min(1),
-  enabled: z.boolean().default(true),
-  keywords: z.array(z.string()).default([]),
-  config: gmailInputConfigSchema,
-  /** Worker sets after a full ingest pass for this signal; drives incremental Gmail `after:` window. */
   last_ingest_completed_at: z.preprocess(
     (val) => (val == null || val === "" ? undefined : val),
     z.coerce.date().optional(),
@@ -74,7 +57,19 @@ export const inputSignalSchema = z.object({
   updated_at: z.coerce.date(),
 });
 
-export type InputSignal = z.infer<typeof inputSignalSchema>;
+export type ContentSignal = z.infer<typeof contentSignalSchema>;
+
+export const sourceSchema = z.object({
+  id: z.string().uuid(),
+  content_signal_id: z.string().uuid(),
+  source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
+  enabled: z.boolean().default(true),
+  config: gmailSourceConfigSchema,
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type Source = z.infer<typeof sourceSchema>;
 
 export const dealMetricsModeSchema = z.enum([
   "retail_list_vs_sale",
@@ -92,9 +87,7 @@ export const dealMetricsSchema = z.object({
   mode: dealMetricsModeSchema,
   you_pay: z.number().optional(),
   baseline_value: z.number().optional(),
-  /** Portion saved vs baseline: 1 - you_pay / baseline_value (0–1). */
   effective_savings_pct: z.number(),
-  /** baseline_value / you_pay when both defined. */
   value_ratio: z.number().optional(),
   confidence: z.number().min(0).max(1),
   source: dealMetricsSourceSchema,
@@ -105,7 +98,6 @@ export type DealMetrics = z.infer<typeof dealMetricsSchema>;
 export const emailImageSchema = z.object({
   mime: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
   data_base64: z.string(),
-  /** Mongo may store null when absent (e.g. remote-fetched images). */
   filename: z.preprocess(
     (v) => (v === null || v === "" ? undefined : v),
     z.string().optional(),
@@ -128,16 +120,21 @@ function optionalDealMetrics() {
   );
 }
 
-/** Legacy 0–1 relevance → stored 1–10 scale (read-time). */
+/** Legacy 0–1 relevance → stored 1–10 scale; map old vertical/input_signal ids on read. */
 function normalizeSignalItemMongoDoc(raw: unknown): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const o = { ...(raw as Record<string, unknown>) };
   if (o.sender_from == null) o.sender_from = "";
+  if (o.content_signal_id == null && o.vertical_id != null) {
+    o.content_signal_id = o.vertical_id;
+  }
+  if (o.source_id == null && o.input_signal_id != null) {
+    o.source_id = o.input_signal_id;
+  }
   const rs = o.relevance_score;
   const sr = o.skip_reason;
   if (typeof rs === "number" && Number.isFinite(rs) && rs <= 1) {
     const hasSkip = sr != null && String(sr).length > 0;
-    // New minimal rows use score 1 + skip_reason; legacy 0–1 rows (incl. old minimal 0.05) remap here.
     if (!(rs === 1 && hasSkip)) {
       const s = Math.min(1, Math.max(0, rs));
       o.relevance_score = Math.round((1 + 9 * s) * 10) / 10;
@@ -148,17 +145,15 @@ function normalizeSignalItemMongoDoc(raw: unknown): unknown {
 
 const signalItemShape = z.object({
   id: z.string().uuid(),
-  vertical_id: z.string().uuid(),
-  input_signal_id: z.string().uuid(),
+  content_signal_id: z.string().uuid(),
+  source_id: z.string().uuid(),
   source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
   source_name: z.string(),
-  /** Gmail From header (raw). */
   sender_from: z.string(),
   title: z.string(),
   raw_content: z.string(),
   extracted_text: z.string(),
   detected_keywords: z.array(z.string()).default([]),
-  /** 1–10 (10 = strongest); legacy docs normalized on read. */
   relevance_score: z.number(),
   original_url: z.string().nullable().optional(),
   external_id: z.string(),
@@ -166,11 +161,8 @@ const signalItemShape = z.object({
   ai_processed: z.boolean().default(false),
   skip_reason: z.string().nullable().optional(),
   deal_metrics: optionalDealMetrics(),
-  /** Ingested image attachments (capped count/size at ingest). */
   email_images: optionalEmailImages(),
-  /** Message Date header (when known). */
   email_sent_at: z.coerce.date().optional(),
-  /** Truncated HTML body for sanitized preview in the web app. */
   email_html_preview: z.preprocess(
     (v) => (v === null || v === "" ? undefined : v),
     z.string().max(150_000).optional(),
@@ -194,3 +186,11 @@ export const gmailOAuthSchema = z.object({
 });
 
 export type GmailOAuthDoc = z.infer<typeof gmailOAuthSchema>;
+
+/** Human-readable label for feed rows (no user-defined source name). */
+export function sourceDisplayLabel(config: GmailSourceConfig): string {
+  const labels = config.labels?.filter(Boolean) ?? [];
+  if (labels.length) return `Email · ${labels.join(", ")}`;
+  if (config.email_address?.trim()) return `Email · ${config.email_address.trim()}`;
+  return "Email";
+}

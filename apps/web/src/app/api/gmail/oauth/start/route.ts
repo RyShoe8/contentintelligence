@@ -6,13 +6,21 @@ import { auth } from "@/auth";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 const STATE_COOKIE = "gmail_oauth_state";
+const RETURN_COOKIE = "gmail_oauth_return";
 const STATE_MAX_AGE = 600;
 
 export async function GET(req: NextRequest) {
   const session = await auth();
+  const sourceId = req.nextUrl.searchParams.get("source_id")?.trim();
+  const contentSignalId = req.nextUrl.searchParams.get("content_signal_id")?.trim();
+  const returnPath =
+    sourceId && contentSignalId
+      ? `/content-signals/${contentSignalId}/sources/${sourceId}`
+      : "/content-signals";
+
   if (!session?.user) {
     const login = new URL("/login", req.url);
-    login.searchParams.set("next", "/signals");
+    login.searchParams.set("next", returnPath);
     return NextResponse.redirect(login);
   }
 
@@ -35,6 +43,15 @@ export async function GET(req: NextRequest) {
     maxAge: STATE_MAX_AGE,
     path: "/",
   });
+  if (sourceId && contentSignalId) {
+    cookieStore.set(RETURN_COOKIE, JSON.stringify({ sourceId, contentSignalId }), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: STATE_MAX_AGE,
+      path: "/",
+    });
+  }
 
   const oauth2 = new google.auth.OAuth2(id, secret, redirectUri);
   const loginHint = req.nextUrl.searchParams.get("login_hint")?.trim();

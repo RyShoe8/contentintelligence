@@ -1,5 +1,5 @@
 import { google, type gmail_v1 } from "googleapis";
-import type { GmailInputConfig } from "@content-resourcer/db";
+import type { GmailSourceConfig } from "@content-resourcer/db";
 import { env } from "./env.js";
 import { buildGmailQuery } from "./gmail-query.js";
 
@@ -29,7 +29,7 @@ export function createGmailClient(refreshToken: string) {
 
 export async function listMessageIds(
   gmail: gmail_v1.Gmail,
-  config: GmailInputConfig,
+  config: GmailSourceConfig,
   maxResults = 100,
   effectiveLookbackHours?: number,
 ): Promise<string[]> {

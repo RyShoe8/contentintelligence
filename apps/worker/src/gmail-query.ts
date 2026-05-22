@@ -1,15 +1,14 @@
-import type { GmailInputConfig } from "@content-resourcer/db";
+import type { GmailSourceConfig } from "@content-resourcer/db";
 
 export type BuildGmailQueryOptions = {
-  /** Overrides `config.lookback_window_hours` for the `after:` clause only (incremental ingest). */
   lookbackHours?: number;
 };
 
-/** Build Gmail `q` search string from signal config (AND of clauses). */
-export function buildGmailQuery(config: GmailInputConfig, options?: BuildGmailQueryOptions): string {
+/** Build Gmail `q` search string from source config (AND of clauses). */
+export function buildGmailQuery(config: GmailSourceConfig, options?: BuildGmailQueryOptions): string {
   const parts: string[] = [];
 
-  const hours = options?.lookbackHours ?? config.lookback_window_hours;
+  const hours = options?.lookbackHours ?? 168;
   const after = new Date(Date.now() - hours * 3600 * 1000);
   const y = after.getFullYear();
   const m = after.getMonth() + 1;
@@ -37,18 +36,5 @@ export function buildGmailQuery(config: GmailInputConfig, options?: BuildGmailQu
     parts.push(fromClauses.length > 1 ? `(${inner})` : inner);
   }
 
-  if (config.subject_keywords?.length) {
-    const inner = config.subject_keywords
-      .filter((k) => k.trim())
-      .map((k) => `subject:${quoteIfNeeded(k.trim())}`)
-      .join(" OR ");
-    if (inner) parts.push(config.subject_keywords.length > 1 ? `(${inner})` : inner);
-  }
-
   return parts.join(" ");
-}
-
-function quoteIfNeeded(s: string): string {
-  if (/[\s()]/.test(s)) return `"${s.replace(/"/g, "")}"`;
-  return s;
 }

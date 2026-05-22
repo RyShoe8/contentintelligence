@@ -1,7 +1,14 @@
 import { convert } from "html-to-text";
 import { randomUUID } from "node:crypto";
-import type { DealMetrics, EmailImage, GmailInputConfig, InputSignal, SignalItem, Vertical } from "@content-resourcer/db";
-import { SOURCE_TYPE_EMAIL_GMAIL } from "@content-resourcer/db";
+import type {
+  ContentSignal,
+  DealMetrics,
+  EmailImage,
+  GmailSourceConfig,
+  SignalItem,
+  Source,
+} from "@content-resourcer/db";
+import { SOURCE_TYPE_EMAIL_GMAIL, sourceDisplayLabel } from "@content-resourcer/db";
 import { env } from "./env.js";
 import type { NormalizedMessage } from "./gmail-client.js";
 
@@ -44,15 +51,10 @@ const PROMO_PHRASES = [
   "exclusive offer",
 ];
 
-function mergeKeywords(vertical: Vertical, signal: InputSignal): string[] {
-  const set = new Set<string>();
-  for (const k of vertical.default_keywords ?? []) {
-    if (k.trim()) set.add(k.trim().toLowerCase());
-  }
-  for (const k of signal.keywords ?? []) {
-    if (k.trim()) set.add(k.trim().toLowerCase());
-  }
-  return [...set];
+function contentSignalKeywords(contentSignal: ContentSignal): string[] {
+  return (contentSignal.keywords ?? [])
+    .map((k) => k.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function quickPlainText(raw: string): string {
@@ -65,9 +67,8 @@ export type PrefilterResult =
 
 export function prefilter(
   normalized: NormalizedMessage,
-  vertical: Vertical,
-  signal: InputSignal,
-  config: GmailInputConfig,
+  contentSignal: ContentSignal,
+  config: GmailSourceConfig,
 ): PrefilterResult {
   const combined = `${normalized.subject}\n${quickPlainText(normalized.raw_content)}`.toLowerCase();
   const plainLen = quickPlainText(normalized.raw_content).length;
@@ -79,7 +80,7 @@ export function prefilter(
     return { ok: false, reason: "sender_filter_mismatch" };
   }
 
-  const keywords = mergeKeywords(vertical, signal);
+  const keywords = contentSignalKeywords(contentSignal);
   if (keywords.length > 0) {
     const hit = keywords.some((k) => combined.includes(k.toLowerCase()));
     if (!hit) return { ok: false, reason: "keyword_no_match" };
@@ -88,7 +89,7 @@ export function prefilter(
   return { ok: true };
 }
 
-function senderMatches(fromHeader: string, config: GmailInputConfig): boolean {
+function senderMatches(fromHeader: string, config: GmailSourceConfig): boolean {
   const addresses = config.sender_addresses ?? [];
   const domains = config.sender_domains ?? [];
   if (addresses.length === 0 && domains.length === 0) return true;
@@ -244,24 +245,24 @@ export function computeRelevanceScore(
 }
 
 export function buildMinimalSignalItem(
-  vertical: Vertical,
-  signal: InputSignal,
+  contentSignal: ContentSignal,
+  source: Source,
   normalized: NormalizedMessage,
   skipReason: string,
   emailHtmlPreview?: string | null,
 ): SignalItem {
-  const extracted = extractAndTruncate(normalized.raw_content, signal.config.scan_body).slice(0, 2000);
-  const kws = mergeKeywords(vertical, signal);
+  const extracted = extractAndTruncate(normalized.raw_content, source.config.scan_body).slice(0, 2000);
+  const kws = contentSignalKeywords(contentSignal);
   const detected = detectKeywords(extracted, kws);
   const email_sent_at =
     Number.isFinite(normalized.dateMs) && normalized.dateMs > 0 ? new Date(normalized.dateMs) : undefined;
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
   const base: SignalItem = {
     id: randomUUID(),
-    vertical_id: vertical.id,
-    input_signal_id: signal.id,
+    content_signal_id: contentSignal.id,
+    source_id: source.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
-    source_name: signal.name,
+    source_name: sourceDisplayLabel(source.config),
     sender_from: normalized.from,
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),
@@ -281,8 +282,8 @@ export function buildMinimalSignalItem(
 }
 
 export function buildFullSignalItem(
-  vertical: Vertical,
-  signal: InputSignal,
+  contentSignal: ContentSignal,
+  source: Source,
   normalized: NormalizedMessage,
   extractedText: string,
   aiSummary: string,
@@ -290,7 +291,7 @@ export function buildFullSignalItem(
   email_images?: EmailImage[],
   emailHtmlPreview?: string | null,
 ): SignalItem {
-  const kws = mergeKeywords(vertical, signal);
+  const kws = contentSignalKeywords(contentSignal);
   const detected = detectKeywords(extractedText, kws);
   const relevance = computeRelevanceScore(extractedText, kws, normalized.dateMs);
   const trimmed = aiSummary.trim();
@@ -299,10 +300,10 @@ export function buildFullSignalItem(
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
   const base: SignalItem = {
     id: randomUUID(),
-    vertical_id: vertical.id,
-    input_signal_id: signal.id,
+    content_signal_id: contentSignal.id,
+    source_id: source.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
-    source_name: signal.name,
+    source_name: sourceDisplayLabel(source.config),
     sender_from: normalized.from,
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),

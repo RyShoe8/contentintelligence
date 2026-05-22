@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 
-type IngestSignalError = {
-  signalId?: string;
+type IngestSourceError = {
+  sourceId?: string;
   email_address?: string;
   error?: string;
 };
@@ -12,10 +12,12 @@ type IngestStats = {
   messagesListed?: number;
   storedFull?: number;
   storedMinimal?: number;
-  signalErrors?: IngestSignalError[];
+  sourceErrors?: IngestSourceError[];
+  signalErrors?: IngestSourceError[];
 };
 
 type Props = {
+  contentSignalId: string;
   disabled?: boolean;
   className?: string;
 };
@@ -23,7 +25,7 @@ type Props = {
 function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: string } {
   const listed = stats.messagesListed ?? 0;
   const stored = (stats.storedFull ?? 0) + (stats.storedMinimal ?? 0);
-  const errors = stats.signalErrors ?? [];
+  const errors = stats.sourceErrors ?? stats.signalErrors ?? [];
 
   if (errors.length > 0) {
     const first = errors[0];
@@ -32,7 +34,7 @@ function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: 
     if (detail.includes("invalid_grant")) {
       return {
         status: "err",
-        message: `Gmail authorization expired${email}. Use Re-connect on this page, then sync again.`,
+        message: `Gmail authorization expired${email}. Re-connect Gmail on the source editor, then sync again.`,
       };
     }
     return {
@@ -45,17 +47,17 @@ function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: 
     return {
       status: "err",
       message:
-        "Sync completed but no messages matched (0 listed). Check Gmail labels/lookback, or Re-connect Gmail if access was revoked.",
+        "Sync completed but no messages matched (0 listed). Check source labels/lookback, or re-connect Gmail.",
     };
   }
 
   return {
     status: "ok",
-    message: `Sync finished: ${listed} listed, ${stored} stored. Check the feed.`,
+    message: `Sync finished: ${listed} listed, ${stored} stored.`,
   };
 }
 
-export function GmailSyncButton({ disabled, className }: Props) {
+export function GmailSyncButton({ contentSignalId, disabled, className }: Props) {
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [message, setMessage] = useState("");
 
@@ -63,7 +65,11 @@ export function GmailSyncButton({ disabled, className }: Props) {
     setStatus("loading");
     setMessage("");
     try {
-      const r = await fetch("/api/worker/ingest", { method: "POST" });
+      const r = await fetch("/api/worker/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content_signal_id: contentSignalId }),
+      });
       const data = (await r.json().catch(() => ({}))) as Record<string, unknown> & IngestStats;
       if (!r.ok) {
         setStatus("err");
@@ -85,7 +91,7 @@ export function GmailSyncButton({ disabled, className }: Props) {
         type="button"
         disabled={disabled || status === "loading"}
         onClick={run}
-        className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-1.5 text-sm font-medium text-[var(--fg)] hover:bg-[var(--card)] disabled:opacity-50"
+        className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
       >
         {status === "loading" ? "Syncing…" : "Sync now"}
       </button>
