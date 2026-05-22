@@ -6,7 +6,12 @@ import {
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgOwner } from "@/lib/org-auth";
-import { inviteMemberAction, removeMemberAction, revokeInviteAction } from "./actions";
+import {
+  inviteMemberAction,
+  removeMemberAction,
+  revokeInviteAction,
+  updateOrganizationNameAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +22,7 @@ export default async function OrgMembersPage({
     error?: string;
     invited?: string;
     removed?: string;
+    renamed?: string;
   }>;
 }) {
   const session = await requireOrgOwner();
@@ -29,32 +35,41 @@ export default async function OrgMembersPage({
   const invites = await listOrgInvites(db, orgId);
 
   const errorMsg =
-    sp.error === "invalid_email"
-      ? "Enter a valid email address."
-      : sp.error === "self"
-        ? "You cannot invite yourself."
-        : sp.error === "other_org"
-          ? "That email already belongs to another organization."
-          : sp.error === "already_member"
-            ? "That user is already a member."
-            : sp.error === "remove_self"
-              ? "You cannot remove yourself."
-              : sp.error === "remove_owner"
-                ? "You cannot remove an organization owner."
-                : sp.error === "not_member"
-                  ? "User is not in this organization."
-                  : null;
+    sp.error === "empty_name"
+      ? "Organization name cannot be empty."
+      : sp.error === "name_too_long"
+        ? "Organization name must be 120 characters or fewer."
+        : sp.error === "invalid_email"
+          ? "Enter a valid email address."
+          : sp.error === "self"
+            ? "You cannot invite yourself."
+            : sp.error === "other_org"
+              ? "That email already belongs to another organization."
+              : sp.error === "already_member"
+                ? "That user is already a member."
+                : sp.error === "remove_self"
+                  ? "You cannot remove yourself."
+                  : sp.error === "remove_owner"
+                    ? "You cannot remove an organization owner."
+                    : sp.error === "not_member"
+                      ? "User is not in this organization."
+                      : null;
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Team</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Manage members for <strong>{org?.name ?? "your organization"}</strong>. Invited users can
-          sign in with Google using the same email address.
+          Manage members and settings for your organization. Invited users can sign in with Google
+          using the same email address.
         </p>
       </div>
 
+      {sp.renamed === "1" ? (
+        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          Organization name updated.
+        </p>
+      ) : null}
       {sp.invited === "1" ? (
         <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
           Invite saved. They will join on next sign-in with that email.
@@ -70,6 +85,30 @@ export default async function OrgMembersPage({
           {errorMsg}
         </p>
       ) : null}
+
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+        <h2 className="text-lg font-medium">Organization name</h2>
+        <form action={updateOrganizationNameAction} className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-sm">
+            <span className="text-[var(--muted)]">Name</span>
+            <input
+              name="name"
+              type="text"
+              required
+              maxLength={120}
+              defaultValue={org?.name ?? ""}
+              placeholder="Your organization"
+              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Save name
+          </button>
+        </form>
+      </section>
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
         <h2 className="text-lg font-medium">Invite member</h2>

@@ -8,11 +8,36 @@ import {
   getUserByEmail,
   normalizeEmail,
   revokeOrgInvite,
+  updateOrganizationName,
 } from "@content-resourcer/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgOwner } from "@/lib/org-auth";
+
+const MAX_ORG_NAME_LENGTH = 120;
+
+export async function updateOrganizationNameAction(formData: FormData) {
+  const session = await requireOrgOwner();
+  const nameRaw = String(formData.get("name") ?? "").trim();
+  if (!nameRaw) {
+    redirect("/org/members?error=empty_name");
+  }
+  if (nameRaw.length > MAX_ORG_NAME_LENGTH) {
+    redirect("/org/members?error=name_too_long");
+  }
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const updated = await updateOrganizationName(db, session.user.organizationId, nameRaw);
+  if (!updated) {
+    redirect("/org/members?error=empty_name");
+  }
+
+  revalidatePath("/org/members");
+  revalidatePath("/admin/orgs");
+  redirect("/org/members?renamed=1");
+}
 
 export async function inviteMemberAction(formData: FormData) {
   const session = await requireOrgOwner();

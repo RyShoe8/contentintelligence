@@ -51,6 +51,21 @@ export async function getOrganization(db: Db, id: string): Promise<Organization 
   return doc ? organizationSchema.parse(doc) : null;
 }
 
+export async function updateOrganizationName(
+  db: Db,
+  organizationId: string,
+  name: string,
+): Promise<Organization | null> {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const doc = await organizations(db).findOneAndUpdate(
+    { id: organizationId },
+    { $set: { name: trimmed, updated_at: new Date() } },
+    { returnDocument: "after" },
+  );
+  return doc ? organizationSchema.parse(doc) : null;
+}
+
 export async function addOrgInvite(
   db: Db,
   data: {
