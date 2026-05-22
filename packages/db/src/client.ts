@@ -26,9 +26,12 @@ export async function closeDb(): Promise<void> {
     client = null;
     dbInstance = null;
   }
+  ensureIndexesOnce = null;
 }
 
-export async function ensureIndexes(db: Db): Promise<void> {
+let ensureIndexesOnce: Promise<void> | null = null;
+
+async function runEnsureIndexes(db: Db): Promise<void> {
   await migrateLegacyCollections(db);
   await migrateOrganizations(db);
 
@@ -61,4 +64,15 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection(COLLECTIONS.gmail_oauth).createIndexes([
     { key: { email_address: 1 }, unique: true },
   ]);
+}
+
+/** Run migrations and index creation once per server instance (not per page request). */
+export async function ensureIndexes(db: Db): Promise<void> {
+  if (!ensureIndexesOnce) {
+    ensureIndexesOnce = runEnsureIndexes(db).catch((err) => {
+      ensureIndexesOnce = null;
+      throw err;
+    });
+  }
+  return ensureIndexesOnce;
 }
