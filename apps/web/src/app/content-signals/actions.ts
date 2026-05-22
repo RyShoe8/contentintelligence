@@ -12,6 +12,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
+import { canAccessContentSignal, requireOrgMember, type AppSession } from "@/lib/org-auth";
 
 function splitLines(s: string): string[] {
   return s
@@ -20,12 +21,28 @@ function splitLines(s: string): string[] {
     .filter(Boolean);
 }
 
+async function getSignalForSession(
+  db: Awaited<ReturnType<typeof connectMongo>>,
+  id: string,
+  session: AppSession,
+) {
+  const cs = await getContentSignal(db, id);
+  if (!cs || !canAccessContentSignal(cs, session)) return null;
+  return cs;
+}
+
 export async function saveContentSignalAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
   const id = String(formData.get("id") ?? "").trim() || undefined;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) redirect("/content-signals?error=name");
+
+  if (id) {
+    const existing = await getSignalForSession(db, id, session);
+    if (!existing) redirect("/content-signals?error=not_found");
+  }
 
   const description = String(formData.get("description") ?? "");
   const active = formData.get("active") === "on";
@@ -35,6 +52,7 @@ export async function saveContentSignalAction(formData: FormData) {
 
   const saved = await upsertContentSignal(db, {
     id,
+    organization_id: session.user.organizationId,
     name,
     description,
     keywords,
@@ -49,22 +67,29 @@ export async function saveContentSignalAction(formData: FormData) {
 }
 
 export async function deleteContentSignalAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   const id = String(formData.get("id") ?? "");
-  if (id) await deleteContentSignal(db, id);
+  if (id) {
+    const cs = await getSignalForSession(db, id, session);
+    if (!cs) redirect("/content-signals?error=not_found");
+    await deleteContentSignal(db, id);
+  }
   revalidatePath("/content-signals");
   revalidatePath("/feed");
   redirect("/content-signals");
 }
 
 export async function toggleContentSignalAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/content-signals");
-  const cs = await getContentSignal(db, id);
+  const cs = await getSignalForSession(db, id, session);
   if (!cs) redirect("/content-signals");
   await upsertContentSignal(db, {
     id: cs.id,
+    organization_id: cs.organization_id,
     name: cs.name,
     description: cs.description,
     keywords: cs.keywords,
@@ -78,10 +103,13 @@ export async function toggleContentSignalAction(formData: FormData) {
 }
 
 export async function createSourceAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
   const content_signal_id = String(formData.get("content_signal_id") ?? "").trim();
   if (!content_signal_id) redirect("/content-signals");
+  const cs = await getSignalForSession(db, content_signal_id, session);
+  if (!cs) redirect("/content-signals");
 
   const source = await upsertSource(db, {
     content_signal_id,
@@ -97,12 +125,16 @@ export async function createSourceAction(formData: FormData) {
 }
 
 export async function saveSourceAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
 
   const id = String(formData.get("id") ?? "").trim();
   const content_signal_id = String(formData.get("content_signal_id") ?? "").trim();
   if (!id || !content_signal_id) redirect("/content-signals");
+
+  const cs = await getSignalForSession(db, content_signal_id, session);
+  if (!cs) redirect("/content-signals");
 
   const existing = await getSource(db, id);
   const labels = splitLines(String(formData.get("labels") ?? ""));
@@ -132,9 +164,14 @@ export async function saveSourceAction(formData: FormData) {
 }
 
 export async function deleteSourceAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   const id = String(formData.get("id") ?? "");
   const content_signal_id = String(formData.get("content_signal_id") ?? "");
+  if (content_signal_id) {
+    const cs = await getSignalForSession(db, content_signal_id, session);
+    if (!cs) redirect("/content-signals");
+  }
   if (id) await deleteSource(db, id);
   revalidatePath(`/content-signals/${content_signal_id}`);
   revalidatePath("/feed");
@@ -142,12 +179,15 @@ export async function deleteSourceAction(formData: FormData) {
 }
 
 export async function toggleSourceAction(formData: FormData) {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   const id = String(formData.get("id") ?? "");
   const content_signal_id = String(formData.get("content_signal_id") ?? "");
   if (!id) redirect(`/content-signals/${content_signal_id}`);
   const s = await getSource(db, id);
   if (!s) redirect(`/content-signals/${content_signal_id}`);
+  const cs = await getSignalForSession(db, s.content_signal_id, session);
+  if (!cs) redirect("/content-signals");
   await upsertSource(db, {
     id: s.id,
     content_signal_id: s.content_signal_id,

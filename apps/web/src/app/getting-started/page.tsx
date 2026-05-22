@@ -6,6 +6,7 @@ import {
   listSources,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,12 @@ export const metadata = {
 };
 
 export default async function GettingStartedPage() {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
-  const contentSignals = await listContentSignals(db);
-  const sources = await listSources(db);
+  const contentSignals = await listContentSignals(db, { organizationId: session.user.organizationId });
+  const signalIds = new Set(contentSignals.map((s) => s.id));
+  const sources = (await listSources(db)).filter((s) => signalIds.has(s.content_signal_id));
   const inboxEmails = [...new Set(sources.map((s) => s.config.email_address).filter(Boolean))].sort();
   const inboxStatus = await Promise.all(
     inboxEmails.map(async (email) => {

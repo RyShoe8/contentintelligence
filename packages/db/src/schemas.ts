@@ -38,8 +38,35 @@ export const gmailSourceConfigSchema = z.object({
 
 export type GmailSourceConfig = z.infer<typeof gmailSourceConfigSchema>;
 
+export const orgRoleSchema = z.enum(["owner", "member"]);
+export type OrgRole = z.infer<typeof orgRoleSchema>;
+
+export const organizationSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type Organization = z.infer<typeof organizationSchema>;
+
+export const orgInviteRoleSchema = z.enum(["owner", "member"]);
+export type OrgInviteRole = z.infer<typeof orgInviteRoleSchema>;
+
+export const orgInviteSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  email: z.string().email(),
+  role: orgInviteRoleSchema.default("member"),
+  invited_by: z.string().email(),
+  created_at: z.coerce.date(),
+});
+
+export type OrgInvite = z.infer<typeof orgInviteSchema>;
+
 export const contentSignalSchema = z.object({
   id: z.string().uuid(),
+  organization_id: z.string().uuid(),
   name: z.string().min(1),
   description: z.string().default(""),
   keywords: z.array(z.string()).default([]),
@@ -152,6 +179,7 @@ function normalizeSignalItemMongoDoc(raw: unknown): unknown {
 
 const signalItemShape = z.object({
   id: z.string().uuid(),
+  organization_id: z.string().uuid(),
   content_signal_id: z.string().uuid(),
   source_id: z.string().uuid(),
   source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),

@@ -2,7 +2,10 @@ import { randomBytes } from "node:crypto";
 import { google } from "googleapis";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { ensureIndexes, getContentSignal, getSource } from "@content-resourcer/db";
+import { connectMongo } from "@/lib/mongo";
 import { auth } from "@/auth";
+import { canAccessContentSignal } from "@/lib/org-auth";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 const STATE_COOKIE = "gmail_oauth_state";
@@ -10,7 +13,6 @@ const RETURN_COOKIE = "gmail_oauth_return";
 const STATE_MAX_AGE = 600;
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
   const sourceId = req.nextUrl.searchParams.get("source_id")?.trim();
   const contentSignalId = req.nextUrl.searchParams.get("content_signal_id")?.trim();
   const returnPath =
@@ -18,10 +20,29 @@ export async function GET(req: NextRequest) {
       ? `/content-signals/${contentSignalId}/sources/${sourceId}`
       : "/content-signals";
 
+  const session = await auth();
   if (!session?.user) {
     const login = new URL("/login", req.url);
     login.searchParams.set("next", returnPath);
     return NextResponse.redirect(login);
+  }
+  if (!session.user.organizationId) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
+  }
+
+  if (sourceId && contentSignalId) {
+    const db = await connectMongo();
+    await ensureIndexes(db);
+    const contentSignal = await getContentSignal(db, contentSignalId);
+    const source = await getSource(db, sourceId);
+    if (
+      !contentSignal ||
+      !source ||
+      source.content_signal_id !== contentSignalId ||
+      !canAccessContentSignal(contentSignal, session)
+    ) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
   }
 
   const id = process.env.GMAIL_CLIENT_ID;

@@ -6,9 +6,16 @@ function confidenceLabel(c: number): string {
   return "low";
 }
 
-function dealStrengthPct(dm: DealMetrics): number {
-  if (dm.units_comparable === false) return 0;
-  return Math.max(dm.effective_savings_pct ?? 0, dm.bonus_pct ?? 0);
+/** Filterable deal strength 0–1 (matches worker + feed min-deal filter). */
+export function dealStrengthPct(dm: DealMetrics): number {
+  const savings = dm.units_comparable === false ? 0 : (dm.effective_savings_pct ?? 0);
+  const bonus = dm.bonus_pct ?? 0;
+  return Math.max(savings, bonus);
+}
+
+/** Rounded percent for badges (0–100). */
+export function dealStrengthPercent(dm: DealMetrics): number {
+  return Math.round(dealStrengthPct(dm) * 100);
 }
 
 /** Short line for list cards. */
@@ -20,7 +27,9 @@ export function formatDealBadge(dm: DealMetrics): string {
         ? `${dm.credit_unit === "USD" ? "$" : ""}${dm.baseline_value}${dm.credit_unit ? ` ${dm.credit_unit}` : ""}`
         : "";
     const amounts = pay && credit ? `${pay} → ${credit}` : "mixed units";
-    return `Deal detected (${amounts} — not filterable) · ${confidenceLabel(dm.confidence)} confidence`;
+    const bonusPct = dm.bonus_pct != null ? Math.round(dm.bonus_pct * 100) : null;
+    const bonusHint = bonusPct != null ? `~${bonusPct}% bonus on spend` : "mixed units";
+    return `Deal detected (${amounts} · ${bonusHint}) · ${confidenceLabel(dm.confidence)} confidence`;
   }
 
   const strength = Math.round(dealStrengthPct(dm) * 100);

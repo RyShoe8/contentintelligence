@@ -4,7 +4,8 @@ import { EmailImageGallery } from "@/components/email-image-gallery";
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
-import { formatDealBadge } from "@/lib/deal-display";
+import { dealStrengthPercent } from "@/lib/deal-display";
+import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,11 @@ export default async function FeedPage({
   }>;
 }) {
   const sp = await searchParams;
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
   const db = await connectMongo();
   await ensureIndexes(db);
-  const contentSignals = await listContentSignals(db);
+  const contentSignals = await listContentSignals(db, { organizationId: orgId });
   const selectedId = sp.content_signal_id || sp.vertical_id || contentSignals[0]?.id || "";
   const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
   const workerIngestConfigured = !!process.env.WORKER_URL;
@@ -41,7 +44,8 @@ export default async function FeedPage({
       : sp.sort === "deal_savings"
         ? "deal_savings"
         : "created_at";
-  const order = sp.order === "asc" ? "asc" : "desc";
+  const order: "asc" | "desc" =
+    sort === "created_at" ? "desc" : sp.order === "asc" ? "asc" : "desc";
   const min_score = sp.min_score ? Number(sp.min_score) : undefined;
   const minDealPctRaw = sp.min_deal_pct ? Number(sp.min_deal_pct) : undefined;
   const min_effective_savings_pct =
@@ -55,6 +59,7 @@ export default async function FeedPage({
 
   const items = selectedId
     ? await listSignalItems(db, {
+        organizationId: orgId,
         content_signal_id: selectedId,
         keyword: sp.keyword || undefined,
         min_score: Number.isFinite(min_score) ? min_score : undefined,
@@ -88,9 +93,13 @@ export default async function FeedPage({
             Select a content signal, sync its sources, then filter results below.
           </p>
         </div>
-        <Link href={toggleOrderHref} className="text-sm text-[var(--accent)]">
-          Toggle sort direction ({order === "desc" ? "descending" : "ascending"})
-        </Link>
+        {sort !== "created_at" ? (
+          <Link href={toggleOrderHref} className="text-sm text-[var(--accent)]">
+            Toggle sort direction ({order === "desc" ? "descending" : "ascending"})
+          </Link>
+        ) : (
+          <span className="text-sm text-[var(--muted)]">Newest first</span>
+        )}
       </div>
 
       {clearedCount !== null && Number.isFinite(clearedCount) ? (
@@ -215,7 +224,7 @@ export default async function FeedPage({
             className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
           />
           <span className="text-xs text-[var(--muted)]">
-            % off list or % bonus on spend (same units). USD pay + SC credits are not filterable.
+            % off list or % bonus on spend (includes USD → SC offers when a bonus % can be computed).
           </span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -225,7 +234,7 @@ export default async function FeedPage({
             defaultValue={sort}
             className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
           >
-            <option value="created_at">Recency</option>
+            <option value="created_at">Most Recent</option>
             <option value="relevance_score">Relevance score</option>
             <option value="deal_savings">Deal strength</option>
           </select>
@@ -245,9 +254,19 @@ export default async function FeedPage({
             <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-[var(--muted)]">{it.source_name}</p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="text-xs font-medium text-[var(--muted)]">{it.source_name}</p>
+                    {it.deal_metrics && dealStrengthPercent(it.deal_metrics) > 0 ? (
+                      <span
+                        className="inline-flex shrink-0 items-center rounded-md border border-emerald-500/50 bg-emerald-500/20 px-2 py-0.5 text-xs font-bold tabular-nums tracking-tight text-emerald-800 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200"
+                        title="Estimated deal strength"
+                      >
+                        {dealStrengthPercent(it.deal_metrics)}% deal
+                      </span>
+                    ) : null}
+                  </div>
                   {it.sender_from || it.email_sent_at ? (
-                    <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--muted)]">
+                    <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--muted)]">
                       {it.sender_from ? (
                         <span className="min-w-0 truncate font-medium">{it.sender_from}</span>
                       ) : null}
@@ -263,18 +282,13 @@ export default async function FeedPage({
                   ) : null}
                   <Link
                     href={`/feed/${it.id}`}
-                    className="font-medium text-[var(--fg)] hover:text-[var(--accent)] hover:underline"
+                    className="mt-1 block font-medium text-[var(--fg)] hover:text-[var(--accent)] hover:underline"
                   >
                     {it.title}
                   </Link>
                 </div>
                 <span className="shrink-0 text-xs text-[var(--muted)]">{it.relevance_score}/10</span>
               </div>
-              {it.deal_metrics ? (
-                <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                  {formatDealBadge(it.deal_metrics)}
-                </p>
-              ) : null}
               {it.ai_summary ? (
                 <p className="mt-1 line-clamp-2 text-sm text-[var(--fg)]">{it.ai_summary}</p>
               ) : (

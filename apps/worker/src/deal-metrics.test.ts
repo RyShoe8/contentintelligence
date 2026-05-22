@@ -16,13 +16,13 @@ describe("buildDealMetricsFromAmounts", () => {
     assert.ok(dealStrengthPct(dm) < 0.75);
   });
 
-  it("marks USD pay vs SC credit as incomparable", () => {
+  it("marks USD pay vs SC credit as incomparable but stores bonus for filters", () => {
     const dm = buildDealMetricsFromAmounts(20, 26, "pay_vs_credited_value", 0.5, "regex", "USD", "SC");
     assert.ok(dm);
     assert.equal(dm.units_comparable, false);
     assert.equal(dm.effective_savings_pct, 0);
-    assert.equal(dm.bonus_pct, undefined);
-    assert.equal(dealStrengthPct(dm), 0);
+    assert.ok(Math.abs(dm.bonus_pct! - 0.3) < 0.02);
+    assert.ok(dealStrengthPct(dm) >= 0.25);
   });
 
   it("retail was $100 now $25 is 75% off", () => {
@@ -34,7 +34,7 @@ describe("buildDealMetricsFromAmounts", () => {
 });
 
 describe("extractDealMetricsRegex", () => {
-  it("deposit $20 get 26 SC is incomparable (not 75% filterable)", () => {
+  it("deposit $20 get 26 SC has ~30% filterable bonus", () => {
     const dm = extractDealMetricsRegex(
       "Deposit $20 and get 26 SC free",
       "",
@@ -42,7 +42,19 @@ describe("extractDealMetricsRegex", () => {
     );
     assert.ok(dm);
     assert.equal(dm.units_comparable, false);
-    assert.equal(dealStrengthPct(dm), 0);
+    assert.ok(dealStrengthPct(dm) >= 0.25);
+  });
+
+  it("purchase $20 package receive 26 FREE SC (Thursday Treat copy)", () => {
+    const dm = extractDealMetricsRegex(
+      "purchase the special $20 package labeled Thursday Treat to receive 26,000 GC, 26 FREE SC",
+      "",
+      ["SC", "GC"],
+    );
+    assert.ok(dm);
+    assert.equal(dm.you_pay, 20);
+    assert.equal(dm.baseline_value, 26);
+    assert.ok(dealStrengthPct(dm) >= 0.25);
   });
 
   it("pay $20 get $26 USD is comparable with ~30% bonus", () => {

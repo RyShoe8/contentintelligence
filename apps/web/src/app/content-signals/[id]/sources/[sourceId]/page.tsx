@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureIndexes, getContentSignal, getGmailOAuth, getSource } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
 import { GmailOAuthDiagnostics } from "@/components/gmail-oauth-diagnostics";
 import { saveSourceAction } from "../../../actions";
 import { LabelWithTip } from "@/app/signals/label-with-tip";
@@ -22,12 +23,20 @@ export default async function SourceEditorPage({
 }) {
   const { id: contentSignalId, sourceId } = await params;
   const sp = await searchParams;
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
 
   const contentSignal = await getContentSignal(db, contentSignalId);
   const source = await getSource(db, sourceId);
-  if (!contentSignal || !source || source.content_signal_id !== contentSignalId) notFound();
+  if (
+    !contentSignal ||
+    !source ||
+    source.content_signal_id !== contentSignalId ||
+    !canAccessContentSignal(contentSignal, session)
+  ) {
+    notFound();
+  }
 
   const email = source.config.email_address?.trim();
   const oauth = email ? await getGmailOAuth(db, email) : null;

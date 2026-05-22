@@ -1,8 +1,11 @@
 export const COLLECTIONS = {
+  organizations: "organizations",
+  org_invites: "org_invites",
   content_signals: "content_signals",
   sources: "sources",
   signal_items: "signal_items",
   gmail_oauth: "gmail_oauth",
+  users: "users",
   /** Legacy collections migrated on startup */
   verticals: "verticals",
   input_signals: "input_signals",

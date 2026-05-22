@@ -259,6 +259,7 @@ export function buildMinimalSignalItem(
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
   const base: SignalItem = {
     id: randomUUID(),
+    organization_id: contentSignal.organization_id,
     content_signal_id: contentSignal.id,
     source_id: source.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
@@ -300,6 +301,7 @@ export function buildFullSignalItem(
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
   const base: SignalItem = {
     id: randomUUID(),
+    organization_id: contentSignal.organization_id,
     content_signal_id: contentSignal.id,
     source_id: source.id,
     source_type: SOURCE_TYPE_EMAIL_GMAIL,

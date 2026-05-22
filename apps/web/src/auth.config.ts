@@ -14,6 +14,8 @@ export default {
       if (session.user) {
         session.user.id = (token.sub as string) ?? session.user.email ?? "";
         session.user.role = (token.role as "admin" | "member") ?? "member";
+        session.user.organizationId = token.organizationId as string | undefined;
+        session.user.orgRole = token.orgRole as "owner" | "member" | undefined;
       }
       return session;
     },

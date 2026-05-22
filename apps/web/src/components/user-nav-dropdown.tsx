@@ -7,9 +7,10 @@ import { SignOutButton } from "@/components/sign-out-button";
 type Props = {
   email: string;
   isAdmin: boolean;
+  isOrgOwner?: boolean;
 };
 
-export function UserNavDropdown({ email, isAdmin }: Props) {
+export function UserNavDropdown({ email, isAdmin, isOrgOwner }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -52,17 +53,39 @@ export function UserNavDropdown({ email, isAdmin }: Props) {
           className="absolute right-0 z-50 mt-1 min-w-[12rem] rounded-md border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
           role="menu"
         >
-          {isAdmin ? (
+          {isOrgOwner ? (
             <Link
-              href="/admin/users"
+              href="/org/members"
               role="menuitem"
               className="block px-3 py-2 text-sm text-[var(--fg)] hover:bg-[var(--input-bg)]"
               onClick={() => setOpen(false)}
             >
-              Admin
+              Team
             </Link>
           ) : null}
-          <div className={`px-3 py-2 ${isAdmin ? "border-t border-[var(--border)]" : ""}`}>
+          {isAdmin ? (
+            <>
+              <Link
+                href="/admin/orgs"
+                role="menuitem"
+                className="block px-3 py-2 text-sm text-[var(--fg)] hover:bg-[var(--input-bg)]"
+                onClick={() => setOpen(false)}
+              >
+                Organizations
+              </Link>
+              <Link
+                href="/admin/users"
+                role="menuitem"
+                className="block px-3 py-2 text-sm text-[var(--fg)] hover:bg-[var(--input-bg)]"
+                onClick={() => setOpen(false)}
+              >
+                Users
+              </Link>
+            </>
+          ) : null}
+          <div
+            className={`px-3 py-2 ${isAdmin || isOrgOwner ? "border-t border-[var(--border)]" : ""}`}
+          >
             <SignOutButton className="w-full text-left text-sm text-[var(--muted)] hover:text-[var(--accent)]" />
           </div>
         </div>

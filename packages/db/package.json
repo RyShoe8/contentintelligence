@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "test": "node --import tsx --test src/org-repos.test.ts"
   },
   "dependencies": {
     "mongodb": "^6.12.0",

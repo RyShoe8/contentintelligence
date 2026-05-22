@@ -1,6 +1,7 @@
 import { MongoClient, type Db } from "mongodb";
 import { COLLECTIONS } from "./collections.js";
 import { migrateLegacyCollections } from "./migrate.js";
+import { migrateOrganizations } from "./org-repos.js";
 
 let client: MongoClient | null = null;
 let dbInstance: Db | null = null;
@@ -29,9 +30,16 @@ export async function closeDb(): Promise<void> {
 
 export async function ensureIndexes(db: Db): Promise<void> {
   await migrateLegacyCollections(db);
+  await migrateOrganizations(db);
 
+  await db.collection(COLLECTIONS.organizations).createIndexes([{ key: { id: 1 }, unique: true }]);
+  await db.collection(COLLECTIONS.org_invites).createIndexes([
+    { key: { id: 1 }, unique: true },
+    { key: { organization_id: 1, email: 1 }, unique: true },
+  ]);
   await db.collection(COLLECTIONS.content_signals).createIndexes([
     { key: { id: 1 }, unique: true },
+    { key: { organization_id: 1 } },
     { key: { active: 1 } },
   ]);
   await db.collection(COLLECTIONS.sources).createIndexes([
@@ -41,6 +49,7 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { source_type: 1 } },
   ]);
   await db.collection(COLLECTIONS.signal_items).createIndexes([
+    { key: { organization_id: 1 } },
     { key: { content_signal_id: 1 } },
     { key: { source_id: 1 } },
     { key: { created_at: -1 } },

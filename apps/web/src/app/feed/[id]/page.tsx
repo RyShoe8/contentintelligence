@@ -5,15 +5,22 @@ import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealDetail } from "@/lib/deal-display";
+import { canAccessOrganization, requireOrgMember, isPlatformAdmin } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
   const item = await getSignalItem(db, id);
-  if (!item) notFound();
+  if (
+    !item ||
+    (!isPlatformAdmin(session) && !canAccessOrganization(item.organization_id, session))
+  ) {
+    notFound();
+  }
 
   return (
     <div className="space-y-6">

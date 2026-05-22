@@ -8,6 +8,7 @@ import {
   sourceDisplayLabel,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
 import {
   createSourceAction,
   deleteSourceAction,
@@ -22,10 +23,11 @@ export default async function ContentSignalDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
   const contentSignal = await getContentSignal(db, id);
-  if (!contentSignal) notFound();
+  if (!contentSignal || !canAccessContentSignal(contentSignal, session)) notFound();
 
   const sources = await listSourcesByContentSignal(db, id);
   const sourcesWithOAuth = await Promise.all(

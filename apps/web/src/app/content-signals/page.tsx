@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ensureIndexes, listContentSignals, listSourcesByContentSignal } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { requireOrgMember } from "@/lib/org-auth";
 import {
   deleteContentSignalAction,
   saveContentSignalAction,
@@ -12,9 +13,10 @@ import { CONTENT_SIGNAL_FIELD_TIPS } from "./field-help";
 export const dynamic = "force-dynamic";
 
 export default async function ContentSignalsPage() {
+  const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
-  const signals = await listContentSignals(db);
+  const signals = await listContentSignals(db, { organizationId: session.user.organizationId });
   const sourceCounts = await Promise.all(
     signals.map(async (s) => ({
       id: s.id,

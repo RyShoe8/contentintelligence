@@ -34,8 +34,13 @@ function gmailOAuth(db: Db): Collection<GmailOAuthDoc> {
   return db.collection<GmailOAuthDoc>(COLLECTIONS.gmail_oauth);
 }
 
-export async function listContentSignals(db: Db, activeOnly = false): Promise<ContentSignal[]> {
-  const filter = activeOnly ? { active: true } : {};
+export async function listContentSignals(
+  db: Db,
+  opts?: { organizationId?: string; activeOnly?: boolean },
+): Promise<ContentSignal[]> {
+  const filter: Record<string, unknown> = {};
+  if (opts?.organizationId) filter.organization_id = opts.organizationId;
+  if (opts?.activeOnly) filter.active = true;
   const docs = await contentSignals(db).find(filter).sort({ name: 1 }).toArray();
   return docs.map((d) => contentSignalSchema.parse(d));
 }
@@ -49,6 +54,7 @@ export async function upsertContentSignal(
   db: Db,
   data: Omit<ContentSignal, "id" | "created_at" | "updated_at" | "last_ingest_completed_at"> & {
     id?: string;
+    organization_id: string;
     last_ingest_completed_at?: Date;
   },
 ): Promise<ContentSignal> {
@@ -57,6 +63,7 @@ export async function upsertContentSignal(
   const existing = await contentSignals(db).findOne({ id });
   const row: ContentSignal = {
     id,
+    organization_id: data.organization_id,
     name: data.name,
     description: data.description ?? "",
     keywords: data.keywords ?? [],
@@ -159,6 +166,7 @@ export async function deleteSource(db: Db, id: string): Promise<boolean> {
 }
 
 export type SignalFeedQuery = {
+  organizationId?: string;
   content_signal_id?: string;
   keyword?: string;
   min_score?: number;
@@ -172,6 +180,9 @@ export type SignalFeedQuery = {
 
 export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<SignalItem[]> {
   const clauses: Record<string, unknown>[] = [];
+  if (q.organizationId) {
+    clauses.push({ organization_id: q.organizationId });
+  }
   if (q.content_signal_id) {
     clauses.push({
       $or: [
@@ -194,30 +205,17 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
   if (q.min_effective_savings_pct !== undefined) {
     const min = q.min_effective_savings_pct;
     clauses.push({
-      $and: [
-        {
-          $or: [
-            { "deal_metrics.units_comparable": true },
-            {
-              "deal_metrics.units_comparable": { $exists: false },
-              "deal_metrics.mode": "retail_list_vs_sale",
-            },
-          ],
-        },
-        {
-          $expr: {
-            $gte: [
-              {
-                $max: [
-                  { $ifNull: ["$deal_metrics.effective_savings_pct", 0] },
-                  { $ifNull: ["$deal_metrics.bonus_pct", 0] },
-                ],
-              },
-              min,
+      $expr: {
+        $gte: [
+          {
+            $max: [
+              { $ifNull: ["$deal_metrics.effective_savings_pct", 0] },
+              { $ifNull: ["$deal_metrics.bonus_pct", 0] },
             ],
           },
-        },
-      ],
+          min,
+        ],
+      },
     });
   }
   if (q.min_confidence !== undefined) {
@@ -233,16 +231,32 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
   const filter: Record<string, unknown> =
     clauses.length === 0 ? {} : clauses.length === 1 ? (clauses[0] as Record<string, unknown>) : { $and: clauses };
 
-  const sortField =
+  const limit = q.limit ?? 200;
+
+  if (q.sort === "created_at") {
+    const docs = await signalItems(db)
+      .aggregate([
+        { $match: filter },
+        { $addFields: { _recency: { $ifNull: ["$email_sent_at", "$created_at"] } } },
+        { $sort: { _recency: -1 } },
+        { $limit: limit },
+        { $project: { _recency: 0 } },
+      ])
+      .toArray();
+    return docs.map((d) => signalItemSchema.parse(d));
+  }
+
+  const sort: Record<string, 1 | -1> =
     q.sort === "deal_savings"
-      ? "deal_metrics.effective_savings_pct"
-      : q.sort === "relevance_score"
-        ? "relevance_score"
-        : "created_at";
-  const sort: Record<string, 1 | -1> = {
-    [sortField]: q.order === "asc" ? 1 : -1,
-  };
-  const cursor = signalItems(db).find(filter).sort(sort).limit(q.limit ?? 200);
+      ? {
+          "deal_metrics.effective_savings_pct": q.order === "asc" ? 1 : -1,
+          created_at: -1,
+        }
+      : {
+          relevance_score: q.order === "asc" ? 1 : -1,
+          created_at: -1,
+        };
+  const cursor = signalItems(db).find(filter).sort(sort).limit(limit);
   const docs = await cursor.toArray();
   return docs.map((d) => signalItemSchema.parse(d));
 }

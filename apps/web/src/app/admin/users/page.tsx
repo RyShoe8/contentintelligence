@@ -1,6 +1,9 @@
+import Link from "next/link";
+import { ensureIndexes, listOrganizations } from "@content-resourcer/db";
 import { auth } from "@/auth";
 import clientPromise from "@/lib/mongo-auth-adapter";
 import { redirect } from "next/navigation";
+import { connectMongo } from "@/lib/mongo";
 import { updateUserRoleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,20 +28,32 @@ export default async function AdminUsersPage() {
     .limit(200)
     .toArray();
 
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const orgs = await listOrganizations(db);
+  const orgById = Object.fromEntries(orgs.map((o) => [o.id, o]));
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Promote or demote roles. New accounts default to <strong>member</strong>;{" "}
-          <strong>ryanschumacher@themediashop.co</strong> becomes <strong>admin</strong> on first sign-in.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Platform roles and organization membership.{" "}
+            <Link href="/admin/orgs" className="text-[var(--accent)] hover:underline">
+              View organizations
+            </Link>
+          </p>
+        </div>
       </div>
 
       <ul className="space-y-3">
         {users.map((u) => {
           const email = String(u.email ?? "");
           const role = ((u as { role?: string }).role as "admin" | "member" | undefined) ?? "member";
+          const orgId = (u as { organization_id?: string }).organization_id;
+          const orgRole = (u as { org_role?: string }).org_role;
+          const org = orgId ? orgById[orgId] : null;
           return (
             <li
               key={String(u._id)}
@@ -46,7 +61,21 @@ export default async function AdminUsersPage() {
             >
               <div>
                 <p className="font-medium">{email || "(no email)"}</p>
-                <p className="text-xs text-[var(--muted)]">Role: {role}</p>
+                <p className="text-xs text-[var(--muted)]">
+                  Platform: {role}
+                  {org ? (
+                    <>
+                      {" "}
+                      · Org:{" "}
+                      <Link href={`/admin/orgs/${org.id}`} className="text-[var(--accent)] hover:underline">
+                        {org.name}
+                      </Link>
+                      {orgRole ? ` (${orgRole})` : ""}
+                    </>
+                  ) : (
+                    " · No organization"
+                  )}
+                </p>
               </div>
               <form action={updateUserRoleAction} className="flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="email" value={email} />

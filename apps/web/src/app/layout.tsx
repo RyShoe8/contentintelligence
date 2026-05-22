@@ -56,6 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <UserNavDropdown
                   email={session.user.email ?? ""}
                   isAdmin={session.user.role === "admin"}
+                  isOrgOwner={session.user.orgRole === "owner"}
                 />
               ) : null}
             </div>

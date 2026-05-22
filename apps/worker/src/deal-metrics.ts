@@ -56,6 +56,8 @@ function buildIncomparableDealMetrics(
   payUnit: string,
   creditUnit: string,
 ): DealMetrics {
+  const bonus_pct =
+    youPay > 0 && baseline > youPay ? clampSavings((baseline - youPay) / youPay) : undefined;
   return {
     mode,
     you_pay: youPay,
@@ -64,6 +66,7 @@ function buildIncomparableDealMetrics(
     credit_unit: normalizeUnit(creditUnit),
     units_comparable: false,
     effective_savings_pct: 0,
+    bonus_pct,
     confidence: Math.min(0.4, Math.max(0, confidence)),
     source,
   };
@@ -200,6 +203,11 @@ export function extractDealMetricsRegex(
 ): DealMetrics | null {
   const text = `${subject}\n${body}`.replace(/\s+/g, " ");
 
+  if (unitTokens.length > 0) {
+    const fromPurchase = tryPurchasePackageUsdToToken(text, unitTokens);
+    if (fromPurchase) return fromPurchase;
+  }
+
   const suf = buildUnitSuffixPattern(unitTokens);
   if (suf) {
     const creditLabel = primaryCreditUnitLabel(unitTokens);
@@ -322,8 +330,63 @@ export function mergeDealExtractions(
 
 /** Max filterable deal strength (for tests and sorting helpers). */
 export function dealStrengthPct(dm: DealMetrics): number {
-  if (dm.units_comparable === false) return 0;
-  const savings = dm.effective_savings_pct ?? 0;
+  const savings = dm.units_comparable === false ? 0 : (dm.effective_savings_pct ?? 0);
   const bonus = dm.bonus_pct ?? 0;
   return Math.max(savings, bonus);
+}
+
+function extractTokenCreditAmount(text: string, token: string): number | null {
+  const suf = reEsc(token);
+  const freeBefore = new RegExp(`(${MONEY})\\s+FREE\\s*${suf}\\b`, "i").exec(text);
+  if (freeBefore) return parseMoney(freeBefore[1]!);
+  const freeAfter = new RegExp(`FREE\\s+(${MONEY})\\s*${suf}\\b`, "i").exec(text);
+  if (freeAfter) return parseMoney(freeAfter[1]!);
+  const matches = [...text.matchAll(new RegExp(`(${MONEY})\\s*${suf}\\b`, "gi"))];
+  if (matches.length === 0) return null;
+  return parseMoney(matches[matches.length - 1]![1]!);
+}
+
+/** purchase $20 package ... receive 26 FREE SC (USD pay, token credit). */
+function tryPurchasePackageUsdToToken(
+  text: string,
+  unitTokens: readonly string[],
+): DealMetrics | null {
+  const payM =
+    /\$\s*([\d,]+(?:\.\d{1,2})?)\s+package\b/i.exec(text) ??
+    /\b(?:purchase|buy)\b[\s\S]{0,120}?\$\s*([\d,]+(?:\.\d{1,2})?)/i.exec(text);
+  if (!payM) return null;
+  const pay = parseMoney(payM[1]!);
+  if (pay == null) return null;
+
+  const ordered = [...unitTokens].sort((a, b) => {
+    const au = a.trim().toUpperCase();
+    const bu = b.trim().toUpperCase();
+    if (au === "SC") return -1;
+    if (bu === "SC") return 1;
+    if (au === "FC") return -1;
+    if (bu === "FC") return 1;
+    return 0;
+  });
+
+  let best: DealMetrics | null = null;
+  for (const raw of ordered) {
+    const token = raw.trim();
+    if (!token || token === "$") continue;
+    const credited = extractTokenCreditAmount(text, token);
+    if (credited == null || credited <= pay) continue;
+    const candidate = buildIncomparableDealMetrics(
+      pay,
+      credited,
+      "pay_vs_credited_value",
+      0.5,
+      "regex",
+      "USD",
+      token,
+    );
+    if (credited > pay * 50) continue;
+    if (!best || (best.baseline_value ?? 0) > credited) {
+      best = candidate;
+    }
+  }
+  return best;
 }

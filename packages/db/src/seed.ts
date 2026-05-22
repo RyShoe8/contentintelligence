@@ -1,11 +1,19 @@
 import { getDb, closeDb, ensureIndexes } from "./client.js";
+import { listOrganizations } from "./org-repos.js";
 import { upsertContentSignal, upsertSource } from "./repos.js";
 
 async function main(): Promise<void> {
   const db = await getDb();
   await ensureIndexes(db);
 
+  const orgs = await listOrganizations(db);
+  const orgId = orgs[0]?.id;
+  if (!orgId) {
+    throw new Error("No organization found after ensureIndexes");
+  }
+
   const gambling = await upsertContentSignal(db, {
+    organization_id: orgId,
     name: "Gambling",
     description: "Casino and betting promotional signals",
     keywords: [
