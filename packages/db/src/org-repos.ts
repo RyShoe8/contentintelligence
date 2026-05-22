@@ -213,7 +213,25 @@ export async function emailHasOrgMembership(db: Db, email: string): Promise<bool
   return Boolean(u?.organization_id);
 }
 
-/** Returns organization id if email belongs to a different org than given. */
+/** Migration bucket org id (null if the Default organization row does not exist yet). */
+export async function getDefaultOrganizationId(db: Db): Promise<string | null> {
+  const existing = await organizations(db).findOne({ name: DEFAULT_ORG_NAME });
+  return existing?.id ?? null;
+}
+
+/**
+ * True when the user is only on the migration Default org and may be moved to another org via Team add.
+ */
+export function isReclaimableDefaultOrgMembership(
+  userOrgId: string | undefined,
+  targetOrgId: string,
+  defaultOrgId: string | null,
+): boolean {
+  if (!userOrgId || !defaultOrgId) return false;
+  return userOrgId === defaultOrgId && userOrgId !== targetOrgId;
+}
+
+/** Returns organization id if email belongs to a different org than given (blocks cross-tenant add). */
 export async function getEmailOtherOrganizationId(
   db: Db,
   email: string,
@@ -221,6 +239,10 @@ export async function getEmailOtherOrganizationId(
 ): Promise<string | null> {
   const u = await getUserByEmail(db, email);
   if (!u?.organization_id || u.organization_id === organizationId) return null;
+  const defaultOrgId = await getDefaultOrganizationId(db);
+  if (isReclaimableDefaultOrgMembership(u.organization_id, organizationId, defaultOrgId)) {
+    return null;
+  }
   return u.organization_id;
 }
 
@@ -276,9 +298,10 @@ export async function backfillUsersToDefaultOrg(db: Db, defaultOrgId: string): P
  * Backfill organizations, assign users, and scope content_signals / signal_items.
  */
 export async function migrateOrganizations(db: Db): Promise<{ defaultOrgId?: string }> {
-  const orgCol = organizations(db);
-  const existing = await orgCol.findOne({ name: DEFAULT_ORG_NAME });
-  const defaultOrgId = existing?.id ?? (await createOrganization(db, DEFAULT_ORG_NAME)).id;
+  let defaultOrgId = await getDefaultOrganizationId(db);
+  if (!defaultOrgId) {
+    defaultOrgId = (await createOrganization(db, DEFAULT_ORG_NAME)).id;
+  }
 
   await db.collection(COLLECTIONS.content_signals).updateMany(
     { organization_id: { $exists: false } },

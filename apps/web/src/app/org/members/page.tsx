@@ -45,7 +45,7 @@ export default async function OrgMembersPage({
           : sp.error === "self"
             ? "You cannot invite yourself."
             : sp.error === "other_org"
-              ? "That email already belongs to another organization."
+              ? "That email belongs to another organization. Ask a platform admin if they should be moved."
               : sp.error === "already_member"
                 ? "That user is already a member."
                 : sp.error === "remove_self"
