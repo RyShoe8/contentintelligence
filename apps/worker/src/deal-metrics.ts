@@ -111,6 +111,129 @@ export function buildDealMetricsFromAmounts(
 
 const MONEY = "([\\d,]+(?:\\.\\d{1,2})?)";
 
+const MULTI_TIER_OFFER_RE =
+  /(\d[\d,]*)\s*(?:Gold\s*Coins?|GC)\s+for\s+\$(\d+(?:\.\d{1,2})?)(?:\s*\+\s*(\d+)\s*Free\s*(SC|FC)\b)?/gi;
+
+function hasCreditToken(unitTokens: readonly string[], ...labels: string[]): boolean {
+  const upper = new Set(unitTokens.map((t) => t.trim().toUpperCase()).filter(Boolean));
+  return labels.some((l) => upper.has(l));
+}
+
+/** Heuristic: email lists multiple purchasable tiers (avoid cross-tier pairing). */
+export function countDistinctOffers(text: string): number {
+  const forPrices = [...text.matchAll(/\bfor\s+\$\s*[\d,]+(?:\.\d{1,2})?/gi)].length;
+  const freeSc = [...text.matchAll(/\b\d+\s*Free\s*SC\b/gi)].length;
+  const freeFc = [...text.matchAll(/\b\d+\s*Free\s*FC\b/gi)].length;
+  const goldTier = [...text.matchAll(/\d[\d,]*\s*(?:Gold\s*Coins?|GC)\s+for\s+\$/gi)].length;
+  return Math.max(forPrices, freeSc + freeFc, goldTier);
+}
+
+function extractForPrices(text: string): number[] {
+  const prices: number[] = [];
+  for (const m of text.matchAll(/\bfor\s+\$\s*([\d,]+(?:\.\d{1,2})?)/gi)) {
+    const p = parseMoney(m[1]!);
+    if (p != null) prices.push(p);
+  }
+  return prices;
+}
+
+function payMatchesListedTier(pay: number, text: string, tolerance = 0.05): boolean {
+  const prices = extractForPrices(text);
+  if (prices.length === 0) return true;
+  return prices.some((p) => Math.abs(p - pay) / Math.max(p, pay) <= tolerance);
+}
+
+function payAndCreditNearEachOther(
+  text: string,
+  pay: number,
+  credit: number,
+  creditUnit: string,
+): boolean {
+  const payStr = pay.toFixed(2).replace(/\.?0+$/, "");
+  const payPat = payStr.includes(".")
+    ? payStr.replace(".", "\\.")
+    : payStr;
+  const re = new RegExp(
+    `\\$\\s*${payPat}(?:\\s*\\+\\s*|[^$]{0,40}?)${credit}\\s*Free\\s*${reEsc(creditUnit)}\\b`,
+    "i",
+  );
+  return re.test(text);
+}
+
+function hasRetailListCue(text: string): boolean {
+  return /\b(was|list\s*price|strike|retail|regular\s*price|originally)\b/i.test(text);
+}
+
+/** Reject cross-tier or absurd pay/credit pairings. */
+export function isPlausibleDealMetrics(dm: DealMetrics, text: string): boolean {
+  const pay = dm.you_pay;
+  const baseline = dm.baseline_value;
+  if (pay == null || baseline == null || !(pay > 0) || !(baseline > 0)) return false;
+
+  const multiOffer = countDistinctOffers(text) >= 2;
+
+  if (dm.units_comparable === false) {
+    const bonus = dm.bonus_pct ?? 0;
+    const creditUnit = (dm.credit_unit ?? "SC").toString();
+    if (bonus > 0.6 && !payAndCreditNearEachOther(text, pay, baseline, creditUnit)) {
+      return false;
+    }
+    if (multiOffer && !payMatchesListedTier(pay, text)) return false;
+    return true;
+  }
+
+  if (baseline / pay > 10 && !hasRetailListCue(text)) return false;
+  if (multiOffer && !payMatchesListedTier(pay, text)) return false;
+  return true;
+}
+
+function applyPlausibility(dm: DealMetrics | null, text: string): DealMetrics | null {
+  if (!dm) return null;
+  return isPlausibleDealMetrics(dm, text) ? dm : null;
+}
+
+/** Parse "40,000 Gold Coins for $15.49 + 20 Free SC" style multi-tier offers. */
+function tryMultiTierCoinOffers(
+  text: string,
+  unitTokens: readonly string[],
+): DealMetrics | null {
+  if (!hasCreditToken(unitTokens, "SC", "FC")) return null;
+
+  const allowedFree = new Set<string>();
+  if (hasCreditToken(unitTokens, "SC")) allowedFree.add("SC");
+  if (hasCreditToken(unitTokens, "FC")) allowedFree.add("FC");
+
+  let best: DealMetrics | null = null;
+  let bestBonus = -1;
+
+  for (const m of text.matchAll(MULTI_TIER_OFFER_RE)) {
+    const freeUnit = (m[4] ?? "SC").toUpperCase();
+    if (!allowedFree.has(freeUnit)) continue;
+    const pay = parseMoney(m[2]!);
+    const scRaw = m[3];
+    if (pay == null || !scRaw) continue;
+    const credited = parseMoney(scRaw);
+    if (credited == null || credited <= pay) continue;
+
+    const candidate = buildIncomparableDealMetrics(
+      pay,
+      credited,
+      "pay_vs_credited_value",
+      0.55,
+      "regex",
+      "USD",
+      freeUnit,
+    );
+    const bonus = candidate.bonus_pct ?? 0;
+    if (bonus > bestBonus) {
+      bestBonus = bonus;
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
 function tryUnitPair(
   text: string,
   suf: string,
@@ -202,17 +325,25 @@ export function extractDealMetricsRegex(
   unitTokens: readonly string[] = [],
 ): DealMetrics | null {
   const text = `${subject}\n${body}`.replace(/\s+/g, " ");
+  const multiOffer = countDistinctOffers(text) >= 2;
 
   if (unitTokens.length > 0) {
+    const fromTiers = tryMultiTierCoinOffers(text, unitTokens);
+    if (fromTiers) return applyPlausibility(fromTiers, text);
+  }
+
+  if (!multiOffer && unitTokens.length > 0) {
     const fromPurchase = tryPurchasePackageUsdToToken(text, unitTokens);
-    if (fromPurchase) return fromPurchase;
+    const plausible = applyPlausibility(fromPurchase, text);
+    if (plausible) return plausible;
   }
 
   const suf = buildUnitSuffixPattern(unitTokens);
-  if (suf) {
+  if (suf && !multiOffer) {
     const creditLabel = primaryCreditUnitLabel(unitTokens);
     const fromUnits = tryUnitPair(text, suf, creditLabel, 0.52);
-    if (fromUnits) return fromUnits;
+    const plausible = applyPlausibility(fromUnits, text);
+    if (plausible) return plausible;
   }
 
   const wasNow = new RegExp(
@@ -224,46 +355,81 @@ export function extractDealMetricsRegex(
     const high = parseMoney(m[1]!);
     const low = parseMoney(m[2]!);
     if (high != null && low != null && high > low) {
-      return buildDealMetricsFromAmounts(low, high, "retail_list_vs_sale", 0.55, "regex", "USD", "USD");
+      return applyPlausibility(
+        buildDealMetricsFromAmounts(low, high, "retail_list_vs_sale", 0.55, "regex", "USD", "USD"),
+        text,
+      );
     }
   }
 
-  const getFor = new RegExp(
-    `\\b(?:get|receive|worth|value(?:\\s+of)?)\\s*\\$?${MONEY}\\b[\\s\\S]{0,80}?(?:for|only|just)\\s*\\$?${MONEY}\\b`,
-    "i",
-  );
-  m = getFor.exec(text);
-  if (m) {
-    const credited = parseMoney(m[1]!);
-    const pay = parseMoney(m[2]!);
-    if (credited != null && pay != null && credited > pay) {
-      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", 0.5, "regex", "USD", "USD");
+  if (!multiOffer) {
+    const getFor = new RegExp(
+      `\\b(?:get|receive|worth|value(?:\\s+of)?)\\s*\\$?${MONEY}\\b[\\s\\S]{0,80}?(?:for|only|just)\\s*\\$?${MONEY}\\b`,
+      "i",
+    );
+    m = getFor.exec(text);
+    if (m) {
+      const credited = parseMoney(m[1]!);
+      const pay = parseMoney(m[2]!);
+      if (credited != null && pay != null && credited > pay) {
+        const dm = buildDealMetricsFromAmounts(
+          pay,
+          credited,
+          "pay_vs_credited_value",
+          0.5,
+          "regex",
+          "USD",
+          "USD",
+        );
+        const plausible = applyPlausibility(dm, text);
+        if (plausible) return plausible;
+      }
     }
-  }
 
-  const forOnlyGet = new RegExp(
-    `\\b(?:for|only|just)\\s*\\$?${MONEY}\\b[\\s\\S]{0,100}?(?:get|receive|worth)\\s*\\$?${MONEY}\\b`,
-    "i",
-  );
-  m = forOnlyGet.exec(text);
-  if (m) {
-    const pay = parseMoney(m[1]!);
-    const credited = parseMoney(m[2]!);
-    if (pay != null && credited != null && credited > pay) {
-      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", 0.45, "regex", "USD", "USD");
+    const forOnlyGet = new RegExp(
+      `\\b(?:for|only|just)\\s*\\$?${MONEY}\\b[\\s\\S]{0,100}?(?:get|receive|worth)\\s*\\$?${MONEY}\\b`,
+      "i",
+    );
+    m = forOnlyGet.exec(text);
+    if (m) {
+      const pay = parseMoney(m[1]!);
+      const credited = parseMoney(m[2]!);
+      if (pay != null && credited != null && credited > pay) {
+        const dm = buildDealMetricsFromAmounts(
+          pay,
+          credited,
+          "pay_vs_credited_value",
+          0.45,
+          "regex",
+          "USD",
+          "USD",
+        );
+        const plausible = applyPlausibility(dm, text);
+        if (plausible) return plausible;
+      }
     }
-  }
 
-  const payGet = new RegExp(
-    `\\b(?:pay|buy|deposit)\\s*\\$?${MONEY}\\b[\\s\\S]{0,100}?(?:get|receive|worth)\\s*\\$?${MONEY}\\b`,
-    "i",
-  );
-  m = payGet.exec(text);
-  if (m) {
-    const pay = parseMoney(m[1]!);
-    const credited = parseMoney(m[2]!);
-    if (pay != null && credited != null && credited > pay) {
-      return buildDealMetricsFromAmounts(pay, credited, "pay_vs_credited_value", 0.55, "regex", "USD", "USD");
+    const payGet = new RegExp(
+      `\\b(?:pay|buy|deposit)\\s*\\$?${MONEY}\\b[\\s\\S]{0,100}?(?:get|receive|worth)\\s*\\$?${MONEY}\\b`,
+      "i",
+    );
+    m = payGet.exec(text);
+    if (m) {
+      const pay = parseMoney(m[1]!);
+      const credited = parseMoney(m[2]!);
+      if (pay != null && credited != null && credited > pay) {
+        const dm = buildDealMetricsFromAmounts(
+          pay,
+          credited,
+          "pay_vs_credited_value",
+          0.55,
+          "regex",
+          "USD",
+          "USD",
+        );
+        const plausible = applyPlausibility(dm, text);
+        if (plausible) return plausible;
+      }
     }
   }
 
@@ -291,39 +457,46 @@ function dealFromLlmPartial(p: DealMetricsLlmPartial, source: DealMetricsSource)
 export function mergeDealExtractions(
   llm: DealMetricsLlmPartial | null,
   regex: DealMetrics | null,
+  sourceText = "",
 ): DealMetrics | undefined {
-  if (regex?.units_comparable === false) {
-    return regex;
+  const text = sourceText.replace(/\s+/g, " ");
+  const validatedRegex = applyPlausibility(regex, text);
+
+  if (validatedRegex?.units_comparable === false) {
+    return validatedRegex;
   }
 
-  const fromLlm = llm ? dealFromLlmPartial(llm, "llm") : null;
+  const fromLlmRaw = llm ? dealFromLlmPartial(llm, "llm") : null;
+  const fromLlm = applyPlausibility(fromLlmRaw, text);
 
   if (fromLlm?.units_comparable === false) {
     return fromLlm;
   }
 
-  if (fromLlm && (llm!.confidence >= 0.45 || !regex)) {
-    if (regex && fromLlm.units_comparable && fromLlm.effective_savings_pct > 0) {
+  if (fromLlm && (llm!.confidence >= 0.45 || !validatedRegex)) {
+    if (validatedRegex && fromLlm.units_comparable && fromLlm.effective_savings_pct > 0) {
       const agree =
         fromLlm.you_pay != null &&
-        regex.you_pay != null &&
+        validatedRegex.you_pay != null &&
         fromLlm.baseline_value != null &&
-        regex.baseline_value != null &&
-        Math.abs(fromLlm.you_pay - regex.you_pay) / Math.max(fromLlm.you_pay, regex.you_pay) < 0.15 &&
-        Math.abs(fromLlm.baseline_value - regex.baseline_value) /
-          Math.max(fromLlm.baseline_value, regex.baseline_value) <
+        validatedRegex.baseline_value != null &&
+        Math.abs(fromLlm.you_pay - validatedRegex.you_pay) /
+          Math.max(fromLlm.you_pay, validatedRegex.you_pay) <
+          0.15 &&
+        Math.abs(fromLlm.baseline_value - validatedRegex.baseline_value) /
+          Math.max(fromLlm.baseline_value, validatedRegex.baseline_value) <
           0.15;
       if (agree) {
         return {
           ...fromLlm,
-          confidence: Math.min(1, (fromLlm.confidence + regex.confidence) / 2 + 0.1),
+          confidence: Math.min(1, (fromLlm.confidence + validatedRegex.confidence) / 2 + 0.1),
           source: "merged",
         };
       }
     }
     return fromLlm;
   }
-  if (regex) return regex;
+  if (validatedRegex) return validatedRegex;
   if (fromLlm) return fromLlm;
   return undefined;
 }

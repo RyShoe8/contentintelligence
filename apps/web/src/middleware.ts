@@ -22,6 +22,12 @@ export default auth((req) => {
     url.searchParams.set("next", nextPath);
     return NextResponse.redirect(url);
   }
+  if (pathname.startsWith("/admin") && req.auth.user?.role !== "admin") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/feed";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
   return NextResponse.next();
 });
 

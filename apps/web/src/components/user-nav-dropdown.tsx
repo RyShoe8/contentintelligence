@@ -6,11 +6,10 @@ import { SignOutButton } from "@/components/sign-out-button";
 
 type Props = {
   email: string;
-  isAdmin: boolean;
   isOrgOwner?: boolean;
 };
 
-export function UserNavDropdown({ email, isAdmin, isOrgOwner }: Props) {
+export function UserNavDropdown({ email, isOrgOwner }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -63,29 +62,7 @@ export function UserNavDropdown({ email, isAdmin, isOrgOwner }: Props) {
               Team
             </Link>
           ) : null}
-          {isAdmin ? (
-            <>
-              <Link
-                href="/admin/orgs"
-                role="menuitem"
-                className="block px-3 py-2 text-sm text-[var(--fg)] hover:bg-[var(--input-bg)]"
-                onClick={() => setOpen(false)}
-              >
-                Organizations
-              </Link>
-              <Link
-                href="/admin/users"
-                role="menuitem"
-                className="block px-3 py-2 text-sm text-[var(--fg)] hover:bg-[var(--input-bg)]"
-                onClick={() => setOpen(false)}
-              >
-                Users
-              </Link>
-            </>
-          ) : null}
-          <div
-            className={`px-3 py-2 ${isAdmin || isOrgOwner ? "border-t border-[var(--border)]" : ""}`}
-          >
+          <div className={isOrgOwner ? "border-t border-[var(--border)] px-3 py-2" : "px-3 py-2"}>
             <SignOutButton className="w-full text-left text-sm text-[var(--muted)] hover:text-[var(--accent)]" />
           </div>
         </div>

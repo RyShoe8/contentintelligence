@@ -67,7 +67,8 @@ ${unitLine}
 - credit_unit: unit for baseline_value / credited amount (e.g. SC, FC, USD). null if unclear.
 - If pay is USD ($) and credited amount is in SC/FC/custom tokens without a clear USD equivalent for that credit, set baseline_value to null.
 - mode: retail_list_vs_sale for list vs sale; pay_vs_credited_value when comparing cash paid to credited/pack value; unknown otherwise.
-- confidence: 0–1 how reliable the numbers are; use low values when guessing or units are mixed.`,
+- confidence: 0–1 how reliable the numbers are; use low values when guessing or units are mixed.
+- When multiple purchase tiers are listed (e.g. several "Gold Coins for $X + Y Free SC" bundles), extract metrics for ONE tier only — never combine the lowest price with the highest credit from different tiers.`,
       },
       { role: "user", content: input },
     ],

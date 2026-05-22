@@ -39,10 +39,7 @@ export default async function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Platform roles and organization membership.{" "}
-            <Link href="/admin/orgs" className="text-[var(--accent)] hover:underline">
-              View organizations
-            </Link>
+            Platform roles and organization membership.
           </p>
         </div>
       </div>

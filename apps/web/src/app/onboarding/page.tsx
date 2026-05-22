@@ -30,9 +30,10 @@ export default async function OnboardingPage() {
         sign in again (or refresh) to pick up the invite.
       </p>
       <p className="text-sm text-[var(--muted)]">
-        Platform admins can create organizations from{" "}
+        Platform admins can create organizations from the{" "}
+        <strong>Admin</strong> menu in the header →{" "}
         <Link href="/admin/orgs" className="text-[var(--accent)] hover:underline">
-          Admin → Organizations
+          Organizations
         </Link>
         .
       </p>

@@ -71,6 +71,27 @@ describe("extractDealMetricsRegex", () => {
     assert.equal(dm.mode, "retail_list_vs_sale");
     assert.ok(dealStrengthPct(dm) >= 0.75);
   });
+
+  it("Mega Bonanza multi-tier: ~30% not 99% from cross-tier pairing", () => {
+    const body =
+      "Take advantage of the Sizzlin' Stampede with three hot offers on Gold Coins, each claimable three times: 40,000 Gold Coins for $15.49 + 20 Free SC, 64,000 Gold Coins for $24.99 + 32 Free SC, and 90,000 Gold Coins for $34.99 + 45 Free SC. These offers are valid until May 22nd.";
+    const dm = extractDealMetricsRegex("Somethin' hot just rode into town", body, ["SC", "GC"]);
+    assert.ok(dm);
+    const strength = dealStrengthPct(dm);
+    assert.ok(strength >= 0.25, `expected >=25% got ${strength}`);
+    assert.ok(strength <= 0.4, `expected <=40% got ${strength}`);
+    assert.equal(dm.units_comparable, false);
+    assert.ok(dm.you_pay != null && dm.baseline_value != null);
+    const tierPairs: [number, number][] = [
+      [15.49, 20],
+      [24.99, 32],
+      [34.99, 45],
+    ];
+    assert.ok(
+      tierPairs.some(([pay, sc]) => dm.you_pay === pay && dm.baseline_value === sc),
+      `pay/sc should be one tier, got ${dm.you_pay}/${dm.baseline_value}`,
+    );
+  });
 });
 
 describe("dealStrengthPct filter threshold", () => {

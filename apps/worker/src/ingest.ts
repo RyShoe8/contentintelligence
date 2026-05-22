@@ -297,8 +297,9 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
             console.error("[ingest] deal metrics LLM failed", e);
           }
         }
+        const dealSourceText = `${normalized.subject}\n${extracted}`;
         const dealRegex = extractDealMetricsRegex(normalized.subject, extracted, unitTokens);
-        const deal_metrics = mergeDealExtractions(dealLlm, dealRegex);
+        const deal_metrics = mergeDealExtractions(dealLlm, dealRegex, dealSourceText);
 
         let email_images: EmailImage[] = [];
         try {
