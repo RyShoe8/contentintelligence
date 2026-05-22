@@ -229,6 +229,26 @@ export async function saveGmailOAuth(
     },
     { upsert: true },
   );
+  await setGmailOAuthIngestError(db, data.email_address, null);
+}
+
+export async function setGmailOAuthIngestError(
+  db: Db,
+  email: string,
+  error: string | null,
+): Promise<void> {
+  const now = new Date();
+  if (error === null) {
+    await gmailOAuth(db).updateOne(
+      { email_address: email },
+      { $unset: { last_ingest_error: "", last_ingest_error_at: "" }, $set: { updated_at: now } },
+    );
+    return;
+  }
+  await gmailOAuth(db).updateOne(
+    { email_address: email },
+    { $set: { last_ingest_error: error, last_ingest_error_at: now, updated_at: now } },
+  );
 }
 
 export async function getGmailOAuth(

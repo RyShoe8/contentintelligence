@@ -13,7 +13,16 @@ const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 async function main(): Promise<void> {
   const app = Fastify({ logger: true });
 
-  app.get("/health", async () => ({ ok: true }));
+  app.get("/health", async () => {
+    const id = env.gmailClientId;
+    return {
+      ok: true,
+      gmail: {
+        configured: Boolean(id && env.gmailClientSecret),
+        clientIdSuffix: id && id.length >= 6 ? id.slice(-6) : null,
+      },
+    };
+  });
 
   app.get("/oauth/google/start", async (req, reply) => {
     if (!env.gmailClientId || !env.gmailRedirectUri) {

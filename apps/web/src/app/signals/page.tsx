@@ -1,5 +1,6 @@
 import { ensureIndexes, getGmailOAuth, listInputSignals, listVerticals } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { GmailOAuthDiagnostics } from "@/components/gmail-oauth-diagnostics";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { deleteSignalAction, saveSignalAction } from "./actions";
 import { SIGNAL_FIELD_TIPS } from "./field-help";
@@ -48,7 +49,12 @@ export default async function SignalsPage({
   const inboxStatus = await Promise.all(
     inboxEmails.map(async (email) => {
       const doc = await getGmailOAuth(db, email);
-      return { email, connected: !!doc?.refresh_token };
+      return {
+        email,
+        connected: !!doc?.refresh_token,
+        lastIngestError: doc?.last_ingest_error ?? null,
+        lastIngestErrorAt: doc?.last_ingest_error_at ?? null,
+      };
     }),
   );
 
@@ -89,31 +95,60 @@ export default async function SignalsPage({
           <p className="text-sm text-[var(--muted)]">Save a signal with a Gmail address to see connection status here.</p>
         ) : (
           <ul className="divide-y divide-[var(--border)] rounded-md border border-[var(--border)] text-sm">
-            {inboxStatus.map(({ email, connected }) => (
-              <li key={email} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-                <span className="font-medium text-[var(--fg)]">{email}</span>
-                <span className={connected ? "text-green-400" : "text-amber-200"}>
-                  {connected ? "Connected" : "Not connected"}
-                </span>
-                {!connected ? (
-                  <a
-                    className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-                    href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+            {inboxStatus.map(({ email, connected, lastIngestError, lastIngestErrorAt }) => (
+              <li key={email} className="px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="font-medium text-[var(--fg)]">{email}</span>
+                  <span
+                    className={
+                      lastIngestError
+                        ? "text-red-400"
+                        : connected
+                          ? "text-green-400"
+                          : "text-amber-200"
+                    }
                   >
-                    Connect Gmail
-                  </a>
-                ) : (
-                  <a
-                    className="text-xs text-[var(--accent)] hover:underline"
-                    href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
-                  >
-                    Re-connect
-                  </a>
-                )}
+                    {lastIngestError
+                      ? "Ingest error"
+                      : connected
+                        ? "Connected"
+                        : "Not connected"}
+                  </span>
+                  {!connected ? (
+                    <a
+                      className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+                      href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                    >
+                      Connect Gmail
+                    </a>
+                  ) : (
+                    <a
+                      className="text-xs text-[var(--accent)] hover:underline"
+                      href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                    >
+                      Re-connect
+                    </a>
+                  )}
+                </div>
+                {lastIngestError ? (
+                  <p className="mt-2 text-xs text-red-300/90">
+                    Last ingest failed
+                    {lastIngestErrorAt
+                      ? ` (${lastIngestErrorAt.toLocaleString()})`
+                      : ""}
+                    :{" "}
+                    {lastIngestError.includes("invalid_grant")
+                      ? "Gmail authorization expired or OAuth client mismatch — use Re-connect, and ensure Render GMAIL_CLIENT_ID/SECRET match Vercel."
+                      : lastIngestError}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
+        <div className="mt-3">
+          <GmailOAuthDiagnostics />
+        </div>
         <div className="mt-4 border-t border-[var(--border)] pt-4">
           <p className="mb-2 text-sm text-[var(--muted)]">Pull new messages once (calls the Render worker).</p>
           <GmailSyncButton disabled={!workerIngestConfigured} />

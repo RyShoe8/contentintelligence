@@ -8,6 +8,7 @@ import {
   getVertical,
   insertSignalItem,
   listEnabledGmailSignals,
+  setGmailOAuthIngestError,
   touchInputSignalLastIngest,
 } from "@content-resourcer/db";
 import {
@@ -33,6 +34,12 @@ import {
 } from "./deal-metrics.js";
 import { extractDealMetricsWithLlm, summarizeEmailBody } from "./summarize.js";
 
+export type IngestSignalError = {
+  signalId: string;
+  email_address: string;
+  error: string;
+};
+
 export type IngestStats = {
   signals: number;
   messagesListed: number;
@@ -40,6 +47,7 @@ export type IngestStats = {
   skippedError: number;
   storedMinimal: number;
   storedFull: number;
+  signalErrors: IngestSignalError[];
 };
 
 const verbose = () => ingestVerbose();
@@ -67,6 +75,7 @@ export async function runIngest(): Promise<IngestStats> {
     skippedError: 0,
     storedMinimal: 0,
     storedFull: 0,
+    signalErrors: [],
   };
 
   const mongoConfigured = Boolean(env.mongodbUri);
@@ -157,10 +166,23 @@ export async function runIngest(): Promise<IngestStats> {
     let ids: string[] = [];
     try {
       ids = await listMessageIds(gmail, signal.config, 80, effectiveHours);
+      await setGmailOAuthIngestError(db, signal.config.email_address, null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[ingest] list messages failed", signal.id, e);
       ingestLog("list_messages_error", { signalId: signal.id, message: msg });
+      await setGmailOAuthIngestError(db, signal.config.email_address, msg);
+      stats.signalErrors.push({
+        signalId: signal.id,
+        email_address: signal.config.email_address,
+        error: msg,
+      });
+      if (msg.includes("invalid_grant")) {
+        console.warn(
+          `[ingest] Gmail token rejected for ${signal.config.email_address}. ` +
+            "Re-connect Gmail on Vercel /signals and ensure Render GMAIL_CLIENT_ID/SECRET match Vercel.",
+        );
+      }
       continue;
     }
 

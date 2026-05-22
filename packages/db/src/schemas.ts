@@ -188,6 +188,8 @@ export const gmailOAuthSchema = z.object({
   refresh_token: z.string(),
   access_token: z.string().optional(),
   access_token_expiry: z.coerce.date().optional(),
+  last_ingest_error: z.string().optional(),
+  last_ingest_error_at: z.coerce.date().optional(),
   updated_at: z.coerce.date(),
 });
 

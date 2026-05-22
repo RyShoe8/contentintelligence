@@ -133,6 +133,11 @@ npm install
 npm run build
 ```
 
+## Troubleshooting ingest
+
+- **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On **Email signals**, check the OAuth alignment line (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail** for the inbox.
+- **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
+
 ## OAuth notes
 
 - **Vercel (Auth.js):** Redirect must be `…/api/auth/callback/google` on your Vercel domain.

@@ -18,7 +18,11 @@ export default async function GettingStartedPage() {
   const inboxStatus = await Promise.all(
     inboxEmails.map(async (email) => {
       const doc = await getGmailOAuth(db, email);
-      return { email, connected: !!doc?.refresh_token };
+      return {
+        email,
+        connected: !!doc?.refresh_token,
+        lastIngestError: doc?.last_ingest_error ?? null,
+      };
     }),
   );
 
@@ -101,19 +105,33 @@ export default async function GettingStartedPage() {
           <p className="text-sm text-[var(--muted)]">Add a signal first, then connect each inbox from Email signals.</p>
         ) : (
           <ul className="space-y-2 text-sm">
-            {inboxStatus.map(({ email, connected }) => (
-              <li key={email} className="flex flex-wrap items-center justify-between gap-2">
-                <span>{email}</span>
-                {connected ? (
-                  <span className="text-green-400">Connected</span>
-                ) : (
-                  <a
-                    className="text-[var(--accent)] hover:underline"
-                    href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
-                  >
-                    Connect Gmail
-                  </a>
-                )}
+            {inboxStatus.map(({ email, connected, lastIngestError }) => (
+              <li key={email} className="space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>{email}</span>
+                  {lastIngestError ? (
+                    <a
+                      className="text-[var(--accent)] hover:underline"
+                      href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                    >
+                      Re-connect
+                    </a>
+                  ) : connected ? (
+                    <span className="text-green-400">Connected</span>
+                  ) : (
+                    <a
+                      className="text-[var(--accent)] hover:underline"
+                      href={`/api/gmail/oauth/start?login_hint=${encodeURIComponent(email)}`}
+                    >
+                      Connect Gmail
+                    </a>
+                  )}
+                </div>
+                {lastIngestError ? (
+                  <p className="text-xs text-red-300/90">
+                    Ingest error: re-connect Gmail on Email signals if you see invalid_grant.
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
