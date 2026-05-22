@@ -192,7 +192,33 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
     });
   }
   if (q.min_effective_savings_pct !== undefined) {
-    clauses.push({ "deal_metrics.effective_savings_pct": { $gte: q.min_effective_savings_pct } });
+    const min = q.min_effective_savings_pct;
+    clauses.push({
+      $and: [
+        {
+          $or: [
+            { "deal_metrics.units_comparable": true },
+            {
+              "deal_metrics.units_comparable": { $exists: false },
+              "deal_metrics.mode": "retail_list_vs_sale",
+            },
+          ],
+        },
+        {
+          $expr: {
+            $gte: [
+              {
+                $max: [
+                  { $ifNull: ["$deal_metrics.effective_savings_pct", 0] },
+                  { $ifNull: ["$deal_metrics.bonus_pct", 0] },
+                ],
+              },
+              min,
+            ],
+          },
+        },
+      ],
+    });
   }
   if (q.min_confidence !== undefined) {
     clauses.push({ "deal_metrics.confidence": { $gte: q.min_confidence } });

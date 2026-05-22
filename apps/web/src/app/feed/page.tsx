@@ -107,6 +107,15 @@ export default async function FeedPage({
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
         <form method="get" className="flex flex-wrap items-end gap-4">
+          {sp.keyword ? <input type="hidden" name="keyword" value={sp.keyword} /> : null}
+          {sp.min_score ? <input type="hidden" name="min_score" value={sp.min_score} /> : null}
+          {sp.min_deal_pct ? <input type="hidden" name="min_deal_pct" value={sp.min_deal_pct} /> : null}
+          {sp.min_deal_confidence ? (
+            <input type="hidden" name="min_deal_confidence" value={sp.min_deal_confidence} />
+          ) : null}
+          {sp.has_deal === "1" ? <input type="hidden" name="has_deal" value="1" /> : null}
+          <input type="hidden" name="sort" value={sort} />
+          <input type="hidden" name="order" value={order} />
           <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
             <span className="text-[var(--muted)]">Content signal</span>
             <select
@@ -192,8 +201,8 @@ export default async function FeedPage({
             className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Min deal (% off)</span>
+        <label className="flex flex-col gap-1 text-sm md:col-span-2">
+          <span className="text-[var(--muted)]">Min deal strength (%)</span>
           <input
             name="min_deal_pct"
             type="number"
@@ -202,8 +211,12 @@ export default async function FeedPage({
             step={1}
             placeholder="e.g. 50"
             defaultValue={sp.min_deal_pct ?? ""}
+            title="Passes if % off list or % bonus on spend (same units only). Mixed USD/SC offers are excluded."
             className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
           />
+          <span className="text-xs text-[var(--muted)]">
+            % off list or % bonus on spend (same units). USD pay + SC credits are not filterable.
+          </span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-[var(--muted)]">Sort by</span>

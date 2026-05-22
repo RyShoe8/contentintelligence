@@ -22,7 +22,7 @@ export const SIGNAL_FIELD_TIPS = {
   ai_summary_enabled:
     "When off, the worker does not call OpenAI for a short summary; the feed shows more extracted body text instead. Deal parsing (if API key is set) still runs.",
   deal_unit_tokens:
-    "Comma or newline. Labels used when parsing deal amounts from email text (e.g. SC, FP, $). Improves regex and LLM extraction for min-deal filters; does not change Gmail search.",
+    "Comma or newline. Suffix labels for credited amounts (e.g. SC, FC). Dollar amounts are parsed automatically; USD pay vs SC credits are not compared in deal filters. Does not change Gmail search.",
   enabled: "When off, the worker skips this signal entirely during ingestion.",
 } as const;
 

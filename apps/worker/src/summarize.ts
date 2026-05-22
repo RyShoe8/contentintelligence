@@ -58,13 +58,16 @@ export async function extractDealMetricsWithLlm(
       {
         role: "system",
         content: `Extract promotional economics from the email. Reply with JSON only:
-{"you_pay": number|null,"baseline_value": number|null,"mode":"retail_list_vs_sale"|"pay_vs_credited_value"|"unknown","confidence": number}
+{"you_pay": number|null,"baseline_value": number|null,"pay_unit": string|null,"credit_unit": string|null,"mode":"retail_list_vs_sale"|"pay_vs_credited_value"|"unknown","confidence": number}
 Rules:
 ${unitLine}
-- you_pay: what the customer pays today in USD (or clear USD equivalent). null if unclear.
-- baseline_value: for retail, regular/list/strike price before discount. For bundles/casino-style offers, total advertised dollar value of credits/coins/package worth (not bonus multipliers alone). Must be greater than you_pay when both set. null if unclear.
+- you_pay: what the customer pays today. null if unclear.
+- pay_unit: unit for you_pay (e.g. USD, $, SC, FC). Use USD when the amount is in dollars.
+- baseline_value: for retail_list_vs_sale, regular/list/strike price before discount. For pay_vs_credited_value, the credited/pack amount in the SAME unit as stated in the email (e.g. 26 when the offer says "26 SC"), NOT marketing "total worth" or inflated package value. Must be greater than you_pay when both set. null if unclear.
+- credit_unit: unit for baseline_value / credited amount (e.g. SC, FC, USD). null if unclear.
+- If pay is USD ($) and credited amount is in SC/FC/custom tokens without a clear USD equivalent for that credit, set baseline_value to null.
 - mode: retail_list_vs_sale for list vs sale; pay_vs_credited_value when comparing cash paid to credited/pack value; unknown otherwise.
-- confidence: 0–1 how reliable the numbers are; use low values when guessing.`,
+- confidence: 0–1 how reliable the numbers are; use low values when guessing or units are mixed.`,
       },
       { role: "user", content: input },
     ],
@@ -90,9 +93,15 @@ ${unitLine}
     typeof o.confidence === "number" && Number.isFinite(o.confidence)
       ? Math.min(1, Math.max(0, o.confidence))
       : 0.35;
+  const pay_unit =
+    typeof o.pay_unit === "string" && o.pay_unit.trim() ? o.pay_unit.trim() : null;
+  const credit_unit =
+    typeof o.credit_unit === "string" && o.credit_unit.trim() ? o.credit_unit.trim() : null;
   return {
     you_pay,
     baseline_value,
+    pay_unit,
+    credit_unit,
     mode: normalizeMode(o.mode),
     confidence,
   };
