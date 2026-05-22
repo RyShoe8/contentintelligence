@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test src/lib/deal-display.test.ts"
+    "test": "node --import tsx --test src/lib/deal-display.test.ts src/lib/invite-email.test.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.7.0",

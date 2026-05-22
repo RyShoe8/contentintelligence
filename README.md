@@ -85,6 +85,16 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 | `GMAIL_REDIRECT_URI` | Must exactly match Google console: `https://<vercel-host>/api/gmail/oauth/callback` |
 | `WORKER_URL` | Render worker base URL, no trailing slash (e.g. `https://contentintelligence.onrender.com`) — enables **Sync now** in the UI |
 | `INGEST_SECRET` | Optional; if set on the worker, set the **same** value on Vercel so **Sync now** can call `POST /ingest` |
+| `BREVO_API_KEY` | Optional; Brevo transactional API key for Team invite / member-added emails |
+| `INVITE_EMAIL_FROM` | Verified sender, e.g. `Content Intelligence <noreply@yourdomain.com>` (required when `BREVO_API_KEY` is set) |
+
+### Brevo (org invite emails)
+
+Used when an org owner adds a member on **Team**, or when a platform admin creates an org with a pending owner invite. If `BREVO_API_KEY` is unset, invites and membership still work; the UI notes that email was skipped.
+
+1. In [Brevo](https://www.brevo.com), verify your sending domain and add a sender address matching `INVITE_EMAIL_FROM`.
+2. Create an API key with permission to send transactional email.
+3. Set `BREVO_API_KEY`, `INVITE_EMAIL_FROM`, and `AUTH_URL` on Vercel, then redeploy the web app.
 
 **Render (`apps/worker`)**
 

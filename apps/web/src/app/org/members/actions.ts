@@ -5,6 +5,7 @@ import {
   clearUserOrganization,
   ensureIndexes,
   getEmailOtherOrganizationId,
+  getOrganization,
   getUserByEmail,
   normalizeEmail,
   revokeOrgInvite,
@@ -12,6 +13,11 @@ import {
 } from "@content-resourcer/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  appendEmailStatusQuery,
+  sendMemberAddedEmail,
+  sendOrgInviteEmail,
+} from "@/lib/invite-email";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgOwner } from "@/lib/org-auth";
 
@@ -72,8 +78,18 @@ export async function inviteMemberAction(formData: FormData) {
     invited_by: session.user.email ?? "",
   });
 
+  const org = await getOrganization(db, orgId);
+  const orgName = org?.name ?? "your organization";
+  const invitedBy = session.user.email ?? "";
+
+  const emailResult =
+    result === "member"
+      ? await sendMemberAddedEmail({ to: email, orgName, invitedBy })
+      : await sendOrgInviteEmail({ to: email, orgName, invitedBy });
+
   revalidatePath("/org/members");
-  redirect(result === "member" ? "/org/members?added=1" : "/org/members?invited=1");
+  const base = result === "member" ? "/org/members?added=1" : "/org/members?invited=1";
+  redirect(appendEmailStatusQuery(base, emailResult));
 }
 
 export async function revokeInviteAction(formData: FormData) {

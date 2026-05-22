@@ -17,7 +17,7 @@ export default async function AdminOrgDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; email_failed?: string; email_skipped?: string }>;
 }) {
   await requirePlatformAdmin();
   const { id } = await params;
@@ -37,9 +37,19 @@ export default async function AdminOrgDetailPage({
         ← Organizations
       </Link>
       {sp.created === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Organization created.
-        </p>
+        <div className="space-y-1 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          <p>Organization created.</p>
+          {sp.email_failed === "1" ? (
+            <p className="text-amber-300">
+              Owner invite saved, but the invite email could not be sent. Check Brevo on Vercel.
+            </p>
+          ) : null}
+          {sp.email_skipped === "1" ? (
+            <p className="text-[var(--muted)]">
+              Owner invite saved. No invite email was sent (Brevo is not configured).
+            </p>
+          ) : null}
+        </div>
       ) : null}
       <div>
         <h1 className="text-2xl font-semibold">{org.name}</h1>

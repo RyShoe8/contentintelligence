@@ -24,6 +24,8 @@ export default async function OrgMembersPage({
     invited?: string;
     removed?: string;
     renamed?: string;
+    email_failed?: string;
+    email_skipped?: string;
   }>;
 }) {
   const session = await requireOrgOwner();
@@ -56,13 +58,25 @@ export default async function OrgMembersPage({
                       ? "User is not in this organization."
                       : null;
 
+  const emailFailed = sp.email_failed === "1";
+  const emailSkipped = sp.email_skipped === "1";
+  const emailNote =
+    emailFailed
+      ? "We could not send the notification email. Check Brevo configuration on Vercel."
+      : emailSkipped
+        ? "No notification email was sent (Brevo is not configured)."
+        : sp.added === "1" || sp.invited === "1"
+          ? "A notification email was sent."
+          : null;
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Team</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Add members by email. If they have signed in before, they are added to your organization
-          immediately. Otherwise they join automatically on first Google sign-in with that address.
+          immediately; otherwise they join on first Google sign-in with that address. When Brevo is
+          configured, they receive a notification email for either case.
         </p>
       </div>
 
@@ -72,14 +86,27 @@ export default async function OrgMembersPage({
         </p>
       ) : null}
       {sp.added === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Member added to your organization.
-        </p>
+        <div className="space-y-1 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          <p>Member added to your organization.</p>
+          {emailNote ? (
+            <p className={emailFailed ? "text-amber-300" : emailSkipped ? "text-[var(--muted)]" : ""}>
+              {emailNote}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {sp.invited === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Invite saved. They will join your organization on first sign-in with Google using that email.
-        </p>
+        <div className="space-y-1 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          <p>
+            Invite saved. They will join your organization on first sign-in with Google using that
+            email.
+          </p>
+          {emailNote ? (
+            <p className={emailFailed ? "text-amber-300" : emailSkipped ? "text-[var(--muted)]" : ""}>
+              {emailNote}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {sp.removed === "1" ? (
         <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">

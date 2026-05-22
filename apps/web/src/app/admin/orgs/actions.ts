@@ -10,6 +10,7 @@ import {
 } from "@content-resourcer/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { appendEmailStatusQuery, sendOrgInviteEmail } from "@/lib/invite-email";
 import { connectMongo } from "@/lib/mongo";
 import { requirePlatformAdmin } from "@/lib/org-auth";
 
@@ -26,6 +27,7 @@ export async function createOrganizationAction(formData: FormData) {
   const email = normalizeEmail(ownerEmail);
 
   const existing = await getUserByEmail(db, email);
+  let redirectPath = `/admin/orgs/${org.id}?created=1`;
   if (existing) {
     await setUserOrganization(db, email, org.id, "owner");
   } else {
@@ -35,8 +37,14 @@ export async function createOrganizationAction(formData: FormData) {
       role: "owner",
       invited_by: "platform-admin",
     });
+    const emailResult = await sendOrgInviteEmail({
+      to: email,
+      orgName: name,
+      invitedBy: "platform-admin",
+    });
+    redirectPath = appendEmailStatusQuery(redirectPath, emailResult);
   }
 
   revalidatePath("/admin/orgs");
-  redirect(`/admin/orgs/${org.id}?created=1`);
+  redirect(redirectPath);
 }
