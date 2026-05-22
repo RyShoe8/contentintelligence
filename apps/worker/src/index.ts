@@ -81,16 +81,61 @@ async function main(): Promise<void> {
   /** Avoid overlapping manual/cron ingests (long runs exceed HTTP gateway timeouts). */
   let ingestInFlight: Promise<IngestStats> | null = null;
 
+  type IngestStatusSnapshot = {
+    running: boolean;
+    content_signal_id: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    stats: IngestStats | null;
+    error: string | null;
+  };
+
+  let ingestStatus: IngestStatusSnapshot = {
+    running: false,
+    content_signal_id: null,
+    started_at: null,
+    finished_at: null,
+    stats: null,
+    error: null,
+  };
+
+  const ingestSecretOk = (header: string | string[] | undefined): boolean =>
+    !env.ingestSecret || header === env.ingestSecret;
+
   const startIngest = (contentSignalId: string | undefined, source: "http_post" | "cron") => {
+    ingestStatus = {
+      running: true,
+      content_signal_id: contentSignalId ?? null,
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      stats: null,
+      error: null,
+    };
     ingestInFlight = runIngest(contentSignalId)
       .then((stats) => {
         ingestLog("ingest_response", { source, contentSignalId: contentSignalId ?? null, ...stats });
+        ingestStatus = {
+          running: false,
+          content_signal_id: contentSignalId ?? null,
+          started_at: ingestStatus.started_at,
+          finished_at: new Date().toISOString(),
+          stats,
+          error: null,
+        };
         return stats;
       })
       .catch((e) => {
         const message = e instanceof Error ? e.message : String(e);
         ingestLog("ingest_fatal", { source, message });
         app.log.error(e);
+        ingestStatus = {
+          running: false,
+          content_signal_id: contentSignalId ?? null,
+          started_at: ingestStatus.started_at,
+          finished_at: new Date().toISOString(),
+          stats: null,
+          error: message,
+        };
         throw e;
       })
       .finally(() => {
@@ -99,17 +144,25 @@ async function main(): Promise<void> {
     return ingestInFlight;
   };
 
+  app.get("/ingest/status", async (req, reply) => {
+    const secretHeader = req.headers["x-ingest-secret"];
+    if (!ingestSecretOk(secretHeader)) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    return ingestStatus;
+  });
+
   app.post("/ingest", async (req, reply) => {
     const body = req.headers["x-ingest-secret"];
     const secretRequired = Boolean(env.ingestSecret);
-    const secretMatched = !env.ingestSecret || body === env.ingestSecret;
+    const secretMatched = ingestSecretOk(body);
     ingestLog("ingest_request", {
       source: "http_post",
       secretRequired,
       secretHeaderPresent: body !== undefined && body !== "",
       secretMatched,
     });
-    if (env.ingestSecret && body !== env.ingestSecret) {
+    if (!ingestSecretOk(body)) {
       ingestLog("ingest_reject", { reason: "unauthorized" });
       return reply.code(401).send({ error: "unauthorized" });
     }
@@ -131,8 +184,7 @@ async function main(): Promise<void> {
     return reply.code(202).send({
       accepted: true,
       content_signal_id: contentSignalId ?? null,
-      message:
-        "Sync started in the background. Refresh the feed in a minute to see new items.",
+      message: "Sync started — feed will update when finished.",
     });
   });
 

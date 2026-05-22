@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { sanitizeIngestError } from "@/lib/ingest-response";
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
 type IngestSourceError = {
   sourceId?: string;
@@ -15,6 +19,15 @@ type IngestStats = {
   storedMinimal?: number;
   sourceErrors?: IngestSourceError[];
   signalErrors?: IngestSourceError[];
+};
+
+type IngestStatusResponse = {
+  running?: boolean;
+  content_signal_id?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  stats?: IngestStats | null;
+  error?: string | null;
 };
 
 type Props = {
@@ -59,12 +72,73 @@ function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: 
 }
 
 export function GmailSyncButton({ contentSignalId, disabled, className }: Props) {
+  const router = useRouter();
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [message, setMessage] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartedRef = useRef(0);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const finishPolling = useCallback(
+    (statusData: IngestStatusResponse) => {
+      stopPolling();
+      router.refresh();
+      if (statusData.stats) {
+        const result = formatSyncResult(statusData.stats);
+        setStatus(result.status);
+        setMessage(result.message);
+      } else if (statusData.error) {
+        setStatus("err");
+        setMessage(sanitizeIngestError(statusData.error));
+      } else {
+        setStatus("ok");
+        setMessage("Feed updated.");
+      }
+    },
+    [router, stopPolling],
+  );
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    setStatus("loading");
+    setMessage("Sync in progress…");
+    pollStartedRef.current = Date.now();
+
+    const tick = async () => {
+      if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
+        stopPolling();
+        setStatus("err");
+        setMessage("Sync is taking longer than expected — refresh manually.");
+        return;
+      }
+      try {
+        const r = await fetch("/api/worker/ingest/status");
+        const data = (await r.json().catch(() => ({}))) as IngestStatusResponse;
+        if (!r.ok) return;
+        if (data.running === false) {
+          finishPolling(data);
+        }
+      } catch {
+        // keep polling on transient network errors
+      }
+    };
+
+    void tick();
+    pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
+  }, [finishPolling, stopPolling]);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   async function run() {
     setStatus("loading");
     setMessage("");
+    stopPolling();
     try {
       const r = await fetch("/api/worker/ingest", {
         method: "POST",
@@ -72,20 +146,23 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
         body: JSON.stringify({ content_signal_id: contentSignalId }),
       });
       const data = (await r.json().catch(() => ({}))) as Record<string, unknown> & IngestStats;
+
+      if (r.status === 409) {
+        startPolling();
+        return;
+      }
+
       if (!r.ok) {
         setStatus("err");
         setMessage(sanitizeIngestError(data.error ?? data.message ?? `HTTP ${r.status}`));
         return;
       }
+
       if (data.accepted === true) {
-        setStatus("ok");
-        setMessage(
-          typeof data.message === "string"
-            ? data.message
-            : "Sync started in the background. Refresh the feed in a minute to see new items.",
-        );
+        startPolling();
         return;
       }
+
       const result = formatSyncResult(data);
       setStatus(result.status);
       setMessage(result.message);
@@ -95,15 +172,17 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
     }
   }
 
+  const busy = status === "loading";
+
   return (
     <div className={className}>
       <button
         type="button"
-        disabled={disabled || status === "loading"}
+        disabled={disabled || busy}
         onClick={run}
         className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
       >
-        {status === "loading" ? "Syncing…" : "Sync now"}
+        {busy ? "Syncing…" : "Sync now"}
       </button>
       {message ? (
         <p className={`mt-2 text-sm ${status === "err" ? "text-red-400" : "text-[var(--muted)]"}`}>{message}</p>
