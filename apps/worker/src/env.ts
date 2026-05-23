@@ -31,6 +31,8 @@ export const env = {
   maxAiInputChars: num("MAX_AI_INPUT_CHARS", 8000),
   maxTokensSummary: num("MAX_TOKENS_SUMMARY", 200),
   maxTokensDeal: num("MAX_TOKENS_DEAL", 250),
+  maxTokensSocialPost: num("MAX_TOKENS_SOCIAL_POST", 300),
+  signalScheduleCron: process.env.SIGNAL_SCHEDULE_CRON ?? "* * * * *",
   /** Minimum lookback window (hours) when using gap since last ingest (avoids zero-width double-sync). */
   ingestMinGapHours: num("INGEST_MIN_GAP_HOURS", 5 / 60),
   /** When true, ingest fetches hotlinked https img URLs (SSRF-guarded) into email_images. */

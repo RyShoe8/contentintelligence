@@ -1,5 +1,7 @@
 export * from "./client.js";
 export * from "./collections.js";
+export * from "./deal-strength.js";
 export * from "./org-repos.js";
+export * from "./post-repos.js";
 export * from "./repos.js";
 export * from "./schemas.js";

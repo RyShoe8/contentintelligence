@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     match: (p: string) => p === "/content-signals" || p.startsWith("/content-signals/"),
   },
   { href: "/feed", label: "Feed", match: (p: string) => p === "/feed" || p.startsWith("/feed/") },
+  { href: "/posts", label: "Posts", match: (p: string) => p === "/posts" || p.startsWith("/posts/") },
 ] as const;
 
 export function ProductNav() {

@@ -108,10 +108,20 @@ If you create the web service manually (not from [`render.yaml`](render.yaml)), 
 | `GMAIL_REDIRECT_URI` | Must match Google console (Render service URL + `/oauth/google/callback`) |
 | `OPENAI_API_KEY` | Optional; summaries skipped if unset |
 | `OPENAI_MODEL` | Default `gpt-4o-mini` |
-| `INGEST_CRON` | Cron expression (default `*/15 * * * *`) |
-| `INGEST_SECRET` | Optional; required header `x-ingest-secret` for `POST /ingest` |
+| `INGEST_CRON` | Cron expression (default `*/15 * * * *`) — global ingest of all enabled sources |
+| `SIGNAL_SCHEDULE_CRON` | Per-signal schedule poll (default `* * * * *`) — ingests signals whose **Feed sync schedule** is due on the Posts page |
+| `INGEST_SECRET` | Optional; required header `x-ingest-secret` for ingest and posts API routes |
+| `MAX_TOKENS_SOCIAL_POST` | Max tokens for LLM social post copy (default `300`) |
 | `INGEST_LOG_VERBOSE` | Optional; set to `true` or `1` for per-message `[ingest]` JSON logs (noisy; unset in steady state) |
 | `PORT` | Default `8787` |
+
+### Posts (social drafts)
+
+The **Posts** page auto-creates social-ready copy from feed deals that meet a per-signal **min deal strength** threshold (one post per deal tier). Requires **`OPENAI_API_KEY`** on the worker for LLM copy; without it, template fallback text is used.
+
+- Set threshold and **Feed sync schedule** per content signal on **Posts**.
+- After each signal ingest (Sync now or schedule), the worker runs `POST /posts/sync` logic automatically.
+- Manual **Add to Posts** on the feed calls worker `POST /posts/add`.
 
 ## Local development (optional)
 

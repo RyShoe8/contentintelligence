@@ -1,4 +1,5 @@
 import type { DealMetrics } from "@content-resourcer/db";
+import { dealStrengthPct, dealStrengthPercent } from "@content-resourcer/db";
 
 type DealItemLike = {
   deal_metrics?: DealMetrics | null;
@@ -11,17 +12,7 @@ function confidenceLabel(c: number): string {
   return "low";
 }
 
-/** Filterable deal strength 0–1 (matches worker + feed min-deal filter). */
-export function dealStrengthPct(dm: DealMetrics): number {
-  const savings = dm.units_comparable === false ? 0 : (dm.effective_savings_pct ?? 0);
-  const bonus = dm.bonus_pct ?? 0;
-  return Math.max(savings, bonus);
-}
-
-/** Rounded percent for badges (0–100). */
-export function dealStrengthPercent(dm: DealMetrics): number {
-  return Math.round(dealStrengthPct(dm) * 100);
-}
+export { dealStrengthPct, dealStrengthPercent };
 
 export function hasDeal(item: DealItemLike): boolean {
   if (item.deals_found?.length) {

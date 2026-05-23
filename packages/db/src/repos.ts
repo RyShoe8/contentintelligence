@@ -52,10 +52,15 @@ export async function getContentSignal(db: Db, id: string): Promise<ContentSigna
 
 export async function upsertContentSignal(
   db: Db,
-  data: Omit<ContentSignal, "id" | "created_at" | "updated_at" | "last_ingest_completed_at"> & {
+  data: Omit<
+    ContentSignal,
+    "id" | "created_at" | "updated_at" | "last_ingest_completed_at" | "post_min_deal_pct" | "ingest_interval_minutes"
+  > & {
     id?: string;
     organization_id: string;
     last_ingest_completed_at?: Date;
+    post_min_deal_pct?: number;
+    ingest_interval_minutes?: number | null;
   },
 ): Promise<ContentSignal> {
   const now = new Date();
@@ -70,6 +75,11 @@ export async function upsertContentSignal(
     lookback_window_hours: data.lookback_window_hours ?? 168,
     deal_unit_tokens: data.deal_unit_tokens ?? [],
     active: data.active ?? true,
+    post_min_deal_pct: data.post_min_deal_pct ?? existing?.post_min_deal_pct ?? 50,
+    ingest_interval_minutes:
+      data.ingest_interval_minutes !== undefined
+        ? data.ingest_interval_minutes
+        : (existing?.ingest_interval_minutes ?? null),
     created_at: existing?.created_at ?? now,
     updated_at: now,
     ...(existing?.last_ingest_completed_at != null

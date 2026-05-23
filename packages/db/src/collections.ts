@@ -4,6 +4,7 @@ export const COLLECTIONS = {
   content_signals: "content_signals",
   sources: "sources",
   signal_items: "signal_items",
+  posts: "posts",
   gmail_oauth: "gmail_oauth",
   users: "users",
   /** Legacy collections migrated on startup */

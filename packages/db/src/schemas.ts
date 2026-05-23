@@ -76,6 +76,14 @@ export const contentSignalSchema = z.object({
     z.array(z.string().max(12)).max(32).default([]),
   ),
   active: z.boolean().default(true),
+  post_min_deal_pct: z.preprocess(
+    (val) => (val == null || val === "" ? 50 : val),
+    z.number().int().min(0).max(100).default(50),
+  ),
+  ingest_interval_minutes: z.preprocess(
+    (val) => (val == null || val === "" ? null : val),
+    z.number().int().positive().max(24 * 60).nullable().default(null),
+  ),
   last_ingest_completed_at: z.preprocess(
     (val) => (val == null || val === "" ? undefined : val),
     z.coerce.date().optional(),
@@ -216,6 +224,33 @@ const signalItemShape = z.object({
 export const signalItemSchema = z.preprocess(normalizeSignalItemMongoDoc, signalItemShape);
 
 export type SignalItem = z.infer<typeof signalItemShape>;
+
+export const postSourceSchema = z.enum(["auto", "manual"]);
+export type PostSource = z.infer<typeof postSourceSchema>;
+
+export const postStatusSchema = z.enum(["draft", "archived"]);
+export type PostStatus = z.infer<typeof postStatusSchema>;
+
+export const postSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  content_signal_id: z.string().uuid(),
+  signal_item_id: z.string().uuid(),
+  deal_key: z.string().min(1),
+  source: postSourceSchema,
+  status: postStatusSchema.default("draft"),
+  title: z.string(),
+  social_copy: z.string(),
+  deal_metrics: dealMetricsSchema,
+  source_name: z.string(),
+  sender_from: z.string().default(""),
+  email_sent_at: z.coerce.date().optional(),
+  ai_summary: z.string().nullable().optional(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type Post = z.infer<typeof postSchema>;
 
 export const gmailOAuthSchema = z.object({
   _id: z.string().optional(),

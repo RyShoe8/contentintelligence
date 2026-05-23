@@ -64,6 +64,11 @@ async function runEnsureIndexes(db: Db): Promise<void> {
   await db.collection(COLLECTIONS.gmail_oauth).createIndexes([
     { key: { email_address: 1 }, unique: true },
   ]);
+  await db.collection(COLLECTIONS.posts).createIndexes([
+    { key: { id: 1 }, unique: true },
+    { key: { signal_item_id: 1, deal_key: 1 }, unique: true },
+    { key: { organization_id: 1, content_signal_id: 1, status: 1, created_at: -1 } },
+  ]);
 }
 
 /** Run migrations and index creation once per server instance (not per page request). */

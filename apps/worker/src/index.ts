@@ -1,5 +1,12 @@
 import "./env.js";
-import { closeDb, getDb, ensureIndexes, saveGmailOAuth } from "@content-resourcer/db";
+import {
+  closeDb,
+  ensureIndexes,
+  getDb,
+  isContentSignalIngestDue,
+  listScheduledContentSignals,
+  saveGmailOAuth,
+} from "@content-resourcer/db";
 import Fastify from "fastify";
 import { google } from "googleapis";
 import cron from "node-cron";
@@ -7,6 +14,7 @@ import { env } from "./env.js";
 import { ingestLog } from "./ingest-log.js";
 import { runIngest, type IngestStats } from "./ingest.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
+import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -102,7 +110,10 @@ async function main(): Promise<void> {
   const ingestSecretOk = (header: string | string[] | undefined): boolean =>
     !env.ingestSecret || header === env.ingestSecret;
 
-  const startIngest = (contentSignalId: string | undefined, source: "http_post" | "cron") => {
+  const startIngest = (
+    contentSignalId: string | undefined,
+    source: "http_post" | "cron" | "schedule",
+  ) => {
     ingestStatus = {
       running: true,
       content_signal_id: contentSignalId ?? null,
@@ -112,8 +123,20 @@ async function main(): Promise<void> {
       error: null,
     };
     ingestInFlight = runIngest(contentSignalId)
-      .then((stats) => {
+      .then(async (stats) => {
         ingestLog("ingest_response", { source, contentSignalId: contentSignalId ?? null, ...stats });
+        if (contentSignalId) {
+          try {
+            const db = await getDb();
+            await ensureIndexes(db);
+            const postStats = await syncPostsForContentSignal(db, contentSignalId);
+            ingestLog("posts_sync_after_ingest", { contentSignalId, ...postStats });
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            ingestLog("posts_sync_error", { contentSignalId, message });
+            app.log.error(e);
+          }
+        }
         ingestStatus = {
           running: false,
           content_signal_id: contentSignalId ?? null,
@@ -188,6 +211,51 @@ async function main(): Promise<void> {
     });
   });
 
+  app.post("/posts/sync", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const q = req.query as { content_signal_id?: string };
+    const contentSignalId = q.content_signal_id?.trim();
+    if (!contentSignalId) {
+      return reply.code(400).send({ error: "content_signal_id is required" });
+    }
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await syncPostsForContentSignal(db, contentSignalId);
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  app.post("/posts/add", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const q = req.query as { signal_item_id?: string; deal_index?: string };
+    const signalItemId = q.signal_item_id?.trim();
+    if (!signalItemId) {
+      return reply.code(400).send({ error: "signal_item_id is required" });
+    }
+    const dealIndexRaw = q.deal_index?.trim();
+    const dealIndex =
+      dealIndexRaw != null && dealIndexRaw !== "" && Number.isFinite(Number(dealIndexRaw))
+        ? Number(dealIndexRaw)
+        : undefined;
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await addPostsForSignalItem(db, signalItemId, dealIndex);
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: message });
+    }
+  });
+
   const port = env.port;
   await app.listen({ port, host: "0.0.0.0" });
 
@@ -198,6 +266,38 @@ async function main(): Promise<void> {
       return;
     }
     void startIngest(undefined, "cron");
+  });
+
+  cron.schedule(env.signalScheduleCron, () => {
+    void (async () => {
+      if (ingestInFlight) {
+        ingestLog("signal_schedule_skip", { reason: "ingest_already_running" });
+        return;
+      }
+      try {
+        const db = await getDb();
+        await ensureIndexes(db);
+        const signals = await listScheduledContentSignals(db);
+        const due = signals.filter((s) => isContentSignalIngestDue(s));
+        if (!due.length) return;
+        const next = due.sort((a, b) => {
+          const aT = a.last_ingest_completed_at?.getTime() ?? 0;
+          const bT = b.last_ingest_completed_at?.getTime() ?? 0;
+          return aT - bT;
+        })[0];
+        if (next) {
+          ingestLog("signal_schedule_start", {
+            contentSignalId: next.id,
+            intervalMinutes: next.ingest_interval_minutes,
+          });
+          void startIngest(next.id, "schedule");
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        ingestLog("signal_schedule_error", { message });
+        app.log.error(e);
+      }
+    })();
   });
 
   const shutdown = async () => {

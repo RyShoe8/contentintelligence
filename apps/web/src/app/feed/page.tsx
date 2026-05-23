@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ensureIndexes, listContentSignals, listSignalItems } from "@content-resourcer/db";
+import { ensureIndexes, listContentSignals, listPosts, listSignalItems } from "@content-resourcer/db";
 import { EmailImageGallery } from "@/components/email-image-gallery";
+import { AddToPostsButton } from "@/components/add-to-posts-button";
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
@@ -72,6 +73,15 @@ export default async function FeedPage({
         limit: 100,
       })
     : [];
+
+  const draftPosts = selectedId
+    ? await listPosts(db, {
+        organizationId: orgId,
+        content_signal_id: selectedId,
+        status: "draft",
+      })
+    : [];
+  const itemIdsInPosts = new Set(draftPosts.map((p) => p.signal_item_id));
 
   const filterQs = new URLSearchParams();
   if (selectedId) filterQs.set("content_signal_id", selectedId);
@@ -288,7 +298,17 @@ export default async function FeedPage({
                     {it.title}
                   </Link>
                 </div>
-                <span className="shrink-0 text-xs text-[var(--muted)]">{it.relevance_score}/10</span>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {hasDeal(it) && selectedId ? (
+                    <AddToPostsButton
+                      signalItemId={it.id}
+                      contentSignalId={selectedId}
+                      disabled={!workerIngestConfigured}
+                      alreadyInPosts={itemIdsInPosts.has(it.id)}
+                    />
+                  ) : null}
+                  <span className="text-xs text-[var(--muted)]">{it.relevance_score}/10</span>
+                </div>
               </div>
               {it.ai_summary ? (
                 <p className="mt-1 line-clamp-2 text-sm text-[var(--fg)]">{it.ai_summary}</p>
