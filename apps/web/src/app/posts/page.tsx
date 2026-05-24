@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  dealStrengthPercent,
   ensureIndexes,
   findVoiceForContentSignal,
   getSignalItemsByIds,
@@ -10,6 +9,8 @@ import {
 } from "@content-resourcer/db";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { CopyPostButton } from "@/components/copy-post-button";
+import { DealLinkRow } from "@/components/deal-link-row";
+import { DealStrengthBadge } from "@/components/deal-strength-badge";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { LocalDateTime } from "@/components/local-date-time";
 import { connectMongo } from "@/lib/mongo";
@@ -278,11 +279,11 @@ export default async function PostsPage({
                         >
                           {post.source === "manual" ? "Manual" : "Auto"}
                         </span>
-                        <span className="text-xs text-[var(--muted)]">
-                          {isContentOnlyPost(post.deal_key, post.deal_metrics)
-                            ? "Content post"
-                            : `${dealStrengthPercent(post.deal_metrics)}% deal`}
-                        </span>
+                        {isContentOnlyPost(post.deal_key, post.deal_metrics) ? (
+                          <span className="text-xs text-[var(--muted)]">Content post</span>
+                        ) : (
+                          <DealStrengthBadge dealMetrics={post.deal_metrics} />
+                        )}
                       </div>
                       <Link
                         href={`/feed/${post.signal_item_id}`}
@@ -323,18 +324,7 @@ export default async function PostsPage({
                   <pre className="mt-3 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm text-[var(--fg)]">
                     {post.social_copy}
                   </pre>
-                  {dealUrl ? (
-                    <p className="mt-3 text-sm">
-                      <a
-                        href={dealUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="break-all text-[var(--accent)] hover:underline"
-                      >
-                        Deal link
-                      </a>
-                    </p>
-                  ) : null}
+                  {dealUrl ? <DealLinkRow url={dealUrl} /> : null}
                   {images?.length ? <EmailImageGallery images={images} /> : null}
                 </li>
               );

@@ -47,6 +47,16 @@ function voiceCopyOpts(ctx: VoiceGenerationContext) {
   };
 }
 
+function copyOptsWithDealUrl(
+  ctx: VoiceGenerationContext,
+  dealUrl?: string | null,
+) {
+  return {
+    ...voiceCopyOpts(ctx),
+    dealUrl: dealUrl ?? undefined,
+  };
+}
+
 async function regenerateAllDraftPostsForContentSignal(
   db: Db,
   contentSignalId: string,
@@ -65,15 +75,24 @@ async function regenerateAllDraftPostsForContentSignal(
 
   const copies: string[] = [];
   let count = 0;
+  const signalItemIds = [...new Set(drafts.map((p) => p.signal_item_id))];
+  const signalItems = await Promise.all(
+    signalItemIds.map((id) => getSignalItem(db, id)),
+  );
+  const signalItemById = new Map(
+    signalItems.filter(Boolean).map((item) => [item!.id, item!]),
+  );
+
   for (const post of drafts) {
     const contentOnly = isContentOnlyPost(post.deal_key, post.deal_metrics);
+    const dealUrl = signalItemById.get(post.signal_item_id)?.original_url;
     const socialCopy = await generateSocialPostCopy({
       title: post.title,
       summary: post.ai_summary,
       senderFrom: post.sender_from,
       deal: contentOnly ? undefined : post.deal_metrics,
       signalName,
-      ...voiceCopyOpts(ctx),
+      ...copyOptsWithDealUrl(ctx, dealUrl),
     });
 
     await upsertPost(db, {
@@ -120,7 +139,7 @@ async function upsertDealPost(
       senderFrom: item.sender_from,
       deal,
       signalName,
-      ...voiceCopyOpts(ctx),
+      ...copyOptsWithDealUrl(ctx, item.original_url),
     });
   }
 
@@ -165,7 +184,7 @@ async function upsertContentOnlyPost(
       summary: item.ai_summary,
       senderFrom: item.sender_from,
       signalName,
-      ...voiceCopyOpts(ctx),
+      ...copyOptsWithDealUrl(ctx, item.original_url),
     });
   }
 

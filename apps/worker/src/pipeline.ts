@@ -1,5 +1,6 @@
 import { convert } from "html-to-text";
 import { randomUUID } from "node:crypto";
+import { pickDealLink } from "./extract-deal-link.js";
 import type {
   ContentSignal,
   DealMetrics,
@@ -249,6 +250,16 @@ export function computeRelevanceScore(
   return mapRelevanceInternalToScale(score);
 }
 
+function resolveOriginalUrl(
+  normalized: NormalizedMessage,
+  emailHtmlPreview?: string | null,
+): string | null {
+  return pickDealLink(normalized.links, {
+    html: emailHtmlPreview ?? undefined,
+    subject: normalized.subject,
+  });
+}
+
 export function buildMinimalSignalItem(
   contentSignal: ContentSignal,
   source: Source,
@@ -275,7 +286,7 @@ export function buildMinimalSignalItem(
     extracted_text: extracted,
     detected_keywords: detected,
     relevance_score: 1,
-    original_url: normalized.links[0] ?? null,
+    original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
     external_id: normalized.external_id,
     ai_summary: null,
     ai_processed: false,
@@ -318,7 +329,7 @@ export function buildFullSignalItem(
     extracted_text: extractedText,
     detected_keywords: detected,
     relevance_score: relevance,
-    original_url: normalized.links[0] ?? null,
+    original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
     external_id: normalized.external_id,
     ai_summary: trimmed || null,
     ai_processed: Boolean(trimmed),

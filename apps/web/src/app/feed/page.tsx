@@ -6,6 +6,7 @@ import { ClearFeedButton } from "@/components/clear-feed-button";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
 import { DealsList } from "@/components/deals-list";
+import { DealLinkRow } from "@/components/deal-link-row";
 import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
 
@@ -324,6 +325,7 @@ export default async function FeedPage({
                 </div>
               )}
               <DealsList deals={dealsForDisplay(it)} variant="feed" />
+              {it.original_url ? <DealLinkRow url={it.original_url} /> : null}
               <p className="mt-2 text-xs text-[var(--muted)]">
                 {it.detected_keywords.slice(0, 6).join(", ")}
               </p>

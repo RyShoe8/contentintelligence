@@ -68,6 +68,7 @@ export async function generateSocialPostCopy(opts: {
   brandName?: string;
   brandMentionLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
+  dealUrl?: string | null;
   persona?: string;
   constraints?: GenerationConstraints;
 }): Promise<string> {
@@ -97,6 +98,9 @@ export async function generateSocialPostCopy(opts: {
     opts.signalName ? `Content signal: ${opts.signalName}` : null,
     dealLine ? `Deal tier: ${dealLine}` : null,
     opts.summary ? `Summary: ${opts.summary}` : null,
+    opts.dealUrl?.trim()
+      ? `Email deal link (use when a URL fits; do not invent other URLs): ${opts.dealUrl.trim()}`
+      : null,
     opts.preferredPhrases?.length
       ? formatPreferredPhrasesForUserMessage(opts.preferredPhrases)
       : null,

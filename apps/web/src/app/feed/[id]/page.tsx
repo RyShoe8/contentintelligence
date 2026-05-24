@@ -6,6 +6,7 @@ import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { DealsList } from "@/components/deals-list";
+import { DealLinkRow } from "@/components/deal-link-row";
 import { dealsForDisplay } from "@/lib/deal-display";
 import { canAccessOrganization, requireOrgMember, isPlatformAdmin } from "@/lib/org-auth";
 
@@ -111,6 +112,13 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
       )}
 
       <DealsList deals={dealsForDisplay(item)} />
+
+      {item.original_url ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Deal link</h2>
+          <DealLinkRow url={item.original_url} />
+        </section>
+      ) : null}
 
       {item.email_images?.length ? (
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
