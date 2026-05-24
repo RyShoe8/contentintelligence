@@ -38,6 +38,7 @@ type Props = {
   busyLabel?: string;
   progressMessage?: string;
   successSuffix?: string;
+  regeneratePosts?: boolean;
 };
 
 function formatSyncResult(
@@ -86,6 +87,7 @@ export function GmailSyncButton({
   busyLabel = "Syncing…",
   progressMessage = "Sync in progress…",
   successSuffix,
+  regeneratePosts,
 }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
@@ -158,7 +160,10 @@ export function GmailSyncButton({
       const r = await fetch("/api/worker/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content_signal_id: contentSignalId }),
+        body: JSON.stringify({
+          content_signal_id: contentSignalId,
+          ...(regeneratePosts ? { regenerate_posts: true } : {}),
+        }),
       });
       const data = (await r.json().catch(() => ({}))) as Record<string, unknown> & IngestStats;
 

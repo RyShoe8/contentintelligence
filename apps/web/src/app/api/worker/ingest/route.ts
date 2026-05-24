@@ -16,7 +16,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no_organization" }, { status: 403 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { content_signal_id?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    content_signal_id?: string;
+    regenerate_posts?: boolean;
+  };
   const contentSignalId = body.content_signal_id?.trim();
   if (!contentSignalId) {
     return NextResponse.json({ error: "content_signal_id is required" }, { status: 400 });
@@ -43,7 +46,10 @@ export async function POST(req: NextRequest) {
     const r = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ content_signal_id: contentSignalId }),
+      body: JSON.stringify({
+        content_signal_id: contentSignalId,
+        ...(body.regenerate_posts ? { regenerate_posts: true } : {}),
+      }),
     });
     const text = await r.text();
     let parsed: unknown;

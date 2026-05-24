@@ -8,6 +8,7 @@ import {
 } from "@content-resourcer/db";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { CopyPostButton } from "@/components/copy-post-button";
+import { LocalDateTime } from "@/components/local-date-time";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -167,7 +168,7 @@ export default async function PostsPage({
             <form action={savePostSettingsAction} className="mt-4 grid gap-4 md:grid-cols-2">
               <input type="hidden" name="content_signal_id" value={selectedId} />
               <label className="flex flex-col gap-1 text-sm">
-                <span className="text-[var(--muted)]">Min deal strength for auto posts (%)</span>
+                <span className="text-[var(--muted)]">Min Deal Strength for Auto Posts</span>
                 <input
                   name="post_min_deal_pct"
                   type="number"
@@ -199,12 +200,11 @@ export default async function PostsPage({
               </label>
               <p className="md:col-span-2 text-xs text-[var(--muted)]">
                 Last sync:{" "}
-                {selectedSignal.last_ingest_completed_at
-                  ? selectedSignal.last_ingest_completed_at.toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })
-                  : "Never"}
+                {selectedSignal.last_ingest_completed_at ? (
+                  <LocalDateTime iso={selectedSignal.last_ingest_completed_at.toISOString()} />
+                ) : (
+                  "Never"
+                )}
                 {" · "}
                 Next scheduled:{" "}
                 {nextSyncLabel(
@@ -229,6 +229,7 @@ export default async function PostsPage({
                 busyLabel="Refreshing…"
                 progressMessage="Fetching feed and rebuilding posts…"
                 successSuffix=" Posts updated."
+                regeneratePosts
               />
               {!workerIngestConfigured ? (
                 <p className="mt-2 text-xs text-[var(--muted)]">
@@ -236,8 +237,8 @@ export default async function PostsPage({
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-[var(--muted)]">
-                  Fetches new mail into the feed, then rebuilds draft posts from deals above your
-                  threshold.
+                  Fetches new mail into the feed, rebuilds draft posts above your threshold, and
+                  rewrites all draft copy using the linked voice.
                 </p>
               )}
             </div>

@@ -114,6 +114,7 @@ async function main(): Promise<void> {
   const startIngest = (
     contentSignalId: string | undefined,
     source: "http_post" | "cron" | "schedule",
+    regeneratePosts = false,
   ) => {
     ingestStatus = {
       running: true,
@@ -130,7 +131,9 @@ async function main(): Promise<void> {
           try {
             const db = await getDb();
             await ensureIndexes(db);
-            const postStats = await syncPostsForContentSignal(db, contentSignalId);
+            const postStats = await syncPostsForContentSignal(db, contentSignalId, {
+              forceRegenerate: regeneratePosts,
+            });
             ingestLog("posts_sync_after_ingest", { contentSignalId, ...postStats });
           } catch (e) {
             const message = e instanceof Error ? e.message : String(e);
@@ -190,12 +193,16 @@ async function main(): Promise<void> {
       ingestLog("ingest_reject", { reason: "unauthorized" });
       return reply.code(401).send({ error: "unauthorized" });
     }
-    const q = req.query as { content_signal_id?: string };
-    const bodyJson = req.body as { content_signal_id?: string } | undefined;
+    const q = req.query as { content_signal_id?: string; regenerate_posts?: string };
+    const bodyJson = req.body as { content_signal_id?: string; regenerate_posts?: boolean } | undefined;
     const contentSignalId =
       (typeof q.content_signal_id === "string" && q.content_signal_id.trim()) ||
       (typeof bodyJson?.content_signal_id === "string" && bodyJson.content_signal_id.trim()) ||
       undefined;
+    const regeneratePosts =
+      bodyJson?.regenerate_posts === true ||
+      q.regenerate_posts === "true" ||
+      q.regenerate_posts === "1";
 
     if (ingestInFlight) {
       return reply.code(409).send({
@@ -204,7 +211,7 @@ async function main(): Promise<void> {
       });
     }
 
-    void startIngest(contentSignalId, "http_post");
+    void startIngest(contentSignalId, "http_post", regeneratePosts);
     return reply.code(202).send({
       accepted: true,
       content_signal_id: contentSignalId ?? null,

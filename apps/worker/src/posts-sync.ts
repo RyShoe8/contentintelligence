@@ -8,6 +8,7 @@ import {
   findVoiceForContentSignal,
   getContentSignal,
   getSignalItem,
+  listPosts,
   listSignalItems,
   upsertPost,
   type DealMetrics,
@@ -21,7 +22,59 @@ export type PostsSyncResult = {
   updated: number;
   archived: number;
   skipped: number;
+  regenerated?: number;
 };
+
+export type PostsSyncOptions = {
+  forceRegenerate?: boolean;
+};
+
+async function regenerateAllDraftPostsForContentSignal(
+  db: Db,
+  contentSignalId: string,
+  persona: string | undefined,
+  signalName: string,
+): Promise<number> {
+  const signal = await getContentSignal(db, contentSignalId);
+  if (!signal) return 0;
+
+  const drafts = await listPosts(db, {
+    organizationId: signal.organization_id,
+    content_signal_id: contentSignalId,
+    status: "draft",
+    limit: 500,
+  });
+
+  let regenerated = 0;
+  for (const post of drafts) {
+    const socialCopy = await generateSocialPostCopy({
+      title: post.title,
+      summary: post.ai_summary,
+      senderFrom: post.sender_from,
+      deal: post.deal_metrics,
+      signalName,
+      persona,
+    });
+
+    await upsertPost(db, {
+      organization_id: post.organization_id,
+      content_signal_id: post.content_signal_id,
+      signal_item_id: post.signal_item_id,
+      deal_key: post.deal_key,
+      source: post.source,
+      title: post.title,
+      social_copy: socialCopy,
+      deal_metrics: post.deal_metrics,
+      source_name: post.source_name,
+      sender_from: post.sender_from,
+      email_sent_at: post.email_sent_at,
+      ai_summary: post.ai_summary,
+    });
+    regenerated++;
+  }
+
+  return regenerated;
+}
 
 async function upsertDealPost(
   db: Db,
@@ -71,7 +124,9 @@ async function upsertDealPost(
 export async function syncPostsForContentSignal(
   db: Db,
   contentSignalId: string,
+  opts?: PostsSyncOptions,
 ): Promise<PostsSyncResult> {
+  const forceRegenerate = opts?.forceRegenerate ?? false;
   const signal = await getContentSignal(db, contentSignalId);
   if (!signal) {
     return { created: 0, updated: 0, archived: 0, skipped: 0 };
@@ -112,6 +167,7 @@ export async function syncPostsForContentSignal(
         source: "auto",
         signalName: signal.name,
         persona,
+        forceRegenerate,
       });
       if (outcome === "created") result.created++;
       else if (outcome === "updated") result.updated++;
@@ -120,6 +176,16 @@ export async function syncPostsForContentSignal(
   }
 
   result.archived = await archiveAutoPostsForSignal(db, contentSignalId, keepKeys);
+
+  if (forceRegenerate) {
+    result.regenerated = await regenerateAllDraftPostsForContentSignal(
+      db,
+      contentSignalId,
+      persona,
+      signal.name,
+    );
+  }
+
   return result;
 }
 
