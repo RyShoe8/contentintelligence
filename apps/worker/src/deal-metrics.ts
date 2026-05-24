@@ -152,7 +152,7 @@ function payAndCreditNearEachOther(
     ? payStr.replace(".", "\\.")
     : payStr;
   const re = new RegExp(
-    `\\$\\s*${payPat}(?:\\s*\\+\\s*|[^$]{0,40}?)${credit}\\s*Free\\s*${reEsc(creditUnit)}\\b`,
+    `\\$\\s*${payPat}(?:\\s*\\+\\s*|[^$]{0,40}?)${credit}\\s*(?:Free\\s*)?${reEsc(creditUnit)}\\b`,
     "i",
   );
   return re.test(text);
@@ -265,7 +265,7 @@ function tryDollarEqualsFreeSc(text: string, unitTokens: readonly string[]): Dea
   if (hasCreditToken(unitTokens, "FC")) allowedFree.add("FC");
 
   const re = new RegExp(
-    `\\$\\s*(${MONEY})\\s*=\\s*[\\s\\S]{0,120}?(\\d+)\\s*FREE\\s*(SC|FC)\\b`,
+    `\\$\\s*${MONEY}\\s*=\\s*[\\s\\S]{0,120}?(\\d+)\\s*(?:FREE\\s*)?(SC|FC)\\b`,
     "gi",
   );
   let best: DealMetrics | null = null;

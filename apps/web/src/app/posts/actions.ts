@@ -10,8 +10,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
-
-const SCHEDULE_OPTIONS = [null, 15, 30, 60, 120, 360, 1440] as const;
+import { SCHEDULE_OPTIONS } from "./constants";
 
 function parseScheduleValue(raw: string): number | null {
   if (raw === "" || raw === "off") return null;
@@ -115,5 +114,3 @@ export async function archivePostAction(formData: FormData) {
   revalidatePath("/posts");
   redirect(`/posts?content_signal_id=${contentSignalId}&archived=1`);
 }
-
-export { SCHEDULE_OPTIONS };

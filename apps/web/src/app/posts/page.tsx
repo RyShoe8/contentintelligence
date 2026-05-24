@@ -14,8 +14,8 @@ import {
   archivePostAction,
   refreshPostsAction,
   savePostSettingsAction,
-  SCHEDULE_OPTIONS,
 } from "./actions";
+import { SCHEDULE_OPTIONS } from "./constants";
 
 export const dynamic = "force-dynamic";
 
