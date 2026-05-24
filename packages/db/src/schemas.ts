@@ -241,6 +241,10 @@ export const voiceSchema = z.preprocess(
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
   name: z.string().min(1),
+  brand_mention_level: z.preprocess(
+    (v) => (v == null || v === "" ? 50 : v),
+    z.coerce.number().int().min(0).max(100).default(50),
+  ),
   website_url: optionalHttpsUrl().default(""),
   rss_feed_url: optionalHttpsUrl().default(""),
   social_links: z.array(voiceSocialLinkSchema).max(10).default([]),

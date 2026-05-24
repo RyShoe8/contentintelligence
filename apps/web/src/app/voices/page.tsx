@@ -12,6 +12,7 @@ import {
   generateVoicePersonaAction,
   saveVoiceAction,
 } from "./actions";
+import { BrandMentionSlider } from "./brand-mention-slider";
 import { VOICE_FIELD_TIPS } from "./field-help";
 import { LabelWithTip } from "../signals/label-with-tip";
 
@@ -181,6 +182,8 @@ export default async function VoicesPage({
               placeholder="Brand voice name"
             />
           </label>
+
+          <BrandMentionSlider defaultValue={activeVoice?.brand_mention_level ?? 50} />
 
           <label className="flex flex-col gap-1 text-sm">
             Website URL

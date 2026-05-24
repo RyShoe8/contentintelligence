@@ -8,6 +8,7 @@ import {
 export type VoiceGenerationContext = {
   voiceId?: string;
   brandName?: string;
+  brandMentionLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
@@ -16,6 +17,7 @@ export type VoiceGenerationContext = {
 function voiceStyleFields(voice: Voice) {
   return {
     brandName: voice.name,
+    brandMentionLevel: voice.brand_mention_level ?? 50,
     preferredPhrases: voice.preferred_phrases ?? [],
   };
 }

@@ -2,6 +2,7 @@ export type VoicePreferredPhraseLike = { phrase: string; url?: string };
 
 export type VoiceStylePromptOpts = {
   brandName?: string;
+  brandMentionLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
 };
 
@@ -12,6 +13,35 @@ export const GLOBAL_VOICE_TABOOS = [
 
 const EMOJI_RE =
   /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{1F1E6}-\u{1F1FF}]/gu;
+
+export function brandMentionLevelLabel(level: number): string {
+  const l = Math.max(0, Math.min(100, Math.round(level)));
+  if (l === 0) return "Never";
+  if (l <= 25) return "Rare";
+  if (l <= 50) return "Sometimes";
+  if (l <= 75) return "Often";
+  return "Always";
+}
+
+export function buildBrandMentionPromptLine(brandName: string, level: number): string | null {
+  const name = brandName.trim();
+  if (!name) return null;
+
+  const l = Math.max(0, Math.min(100, Math.round(level)));
+  if (l === 0) {
+    return `- Do not mention the brand name "${name}" unless it already appears in the input email`;
+  }
+  if (l <= 25) {
+    return `- Mention "${name}" rarely, only when clearly relevant`;
+  }
+  if (l <= 50) {
+    return `- Mention "${name}" at least once when it fits naturally`;
+  }
+  if (l <= 75) {
+    return `- Mention "${name}" prominently; include it at least once and again in the CTA or closing line when space allows`;
+  }
+  return `- Always lead with "${name}" and mention the brand at least twice when the post has room`;
+}
 
 export function mergeTaboosWithGlobal(taboos: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -31,11 +61,11 @@ export function mergeTaboosWithGlobal(taboos: readonly string[]): string[] {
 export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[] {
   const lines: string[] = [...GLOBAL_VOICE_TABOOS.map((t) => `- ${t}`)];
 
-  if (opts.brandName?.trim()) {
-    lines.push(
-      `- Mention the brand name "${opts.brandName.trim()}" at least once when it fits naturally`,
-    );
-  }
+  const brandLine = buildBrandMentionPromptLine(
+    opts.brandName ?? "",
+    opts.brandMentionLevel ?? 50,
+  );
+  if (brandLine) lines.push(brandLine);
 
   const pairs = (opts.preferredPhrases ?? [])
     .map((p) => ({ phrase: p.phrase?.trim() ?? "", url: p.url?.trim() }))

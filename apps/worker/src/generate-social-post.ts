@@ -66,6 +66,7 @@ export async function generateSocialPostCopy(opts: {
   deal?: DealMetrics | null;
   signalName?: string;
   brandName?: string;
+  brandMentionLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
@@ -73,6 +74,7 @@ export async function generateSocialPostCopy(opts: {
   const contentOnly = !opts.deal;
   const style: VoiceStylePromptOpts = {
     brandName: opts.brandName,
+    brandMentionLevel: opts.brandMentionLevel,
     preferredPhrases: opts.preferredPhrases,
   };
 

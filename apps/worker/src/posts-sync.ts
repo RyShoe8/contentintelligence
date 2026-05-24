@@ -40,6 +40,7 @@ export type PostsSyncOptions = {
 function voiceCopyOpts(ctx: VoiceGenerationContext) {
   return {
     brandName: ctx.brandName,
+    brandMentionLevel: ctx.brandMentionLevel,
     preferredPhrases: ctx.preferredPhrases,
     persona: ctx.persona,
     constraints: ctx.constraints,

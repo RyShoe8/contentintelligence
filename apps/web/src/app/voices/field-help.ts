@@ -1,4 +1,6 @@
 export const VOICE_FIELD_TIPS = {
+  brand_mention_level:
+    "How often generated post copy mentions this voice's name. Refresh posts after saving to apply to new drafts.",
   keywords:
     "One keyword per line, or comma-separated. Up to 5. Short tone or brand traits (e.g. playful, urgent, trusted) — used when generating the persona, not for Gmail feed filtering.",
   preferred_phrases:

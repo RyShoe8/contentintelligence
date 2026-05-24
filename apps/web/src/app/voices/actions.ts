@@ -105,8 +105,15 @@ function parsePreferredPhrases(raw: string): { phrase: string; url?: string }[] 
   return out;
 }
 
+function parseBrandMentionLevel(formData: FormData): number {
+  const raw = Number(formData.get("brand_mention_level"));
+  if (!Number.isFinite(raw)) return 50;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
 function parseVoiceFields(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
+  const brand_mention_level = parseBrandMentionLevel(formData);
   const website_url = String(formData.get("website_url") ?? "").trim();
   const rss_feed_url = String(formData.get("rss_feed_url") ?? "").trim();
   const keywords = splitLines(String(formData.get("keywords") ?? "")).slice(0, 5);
@@ -116,6 +123,7 @@ function parseVoiceFields(formData: FormData) {
   const content_signal_ids = parseSignalIds(formData);
   return {
     name,
+    brand_mention_level,
     website_url,
     rss_feed_url,
     keywords,
@@ -180,6 +188,7 @@ export async function saveVoiceAction(formData: FormData) {
     organization_id: orgId,
     created_by: session.user.email ?? "unknown",
     name: fields.name,
+    brand_mention_level: fields.brand_mention_level,
     website_url: fields.website_url,
     rss_feed_url: fields.rss_feed_url,
     social_links: fields.social_links,
