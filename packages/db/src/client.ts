@@ -12,7 +12,12 @@ export async function getDb(uri?: string): Promise<Db> {
     throw new Error("MONGODB_URI is required");
   }
   if (!dbInstance) {
-    client = new MongoClient(connectionUri);
+    client = new MongoClient(connectionUri, {
+      connectTimeoutMS: 30_000,
+      serverSelectionTimeoutMS: 30_000,
+      socketTimeoutMS: 45_000,
+      maxIdleTimeMS: 60_000,
+    });
     await client.connect();
     const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
     dbInstance = client.db(dbName);

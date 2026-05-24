@@ -11,7 +11,14 @@ type PersonaStatusResponse = {
   persona_status?: VoicePersonaStatus;
   persona_error?: string;
   persona_generated_at?: string;
+  persona?: string;
 };
+
+function applyPersonaToForm(persona: string | undefined) {
+  if (persona == null) return;
+  const el = document.querySelector<HTMLTextAreaElement>('textarea[name="persona"]');
+  if (el) el.value = persona;
+}
 
 type Props = {
   voiceId: string;
@@ -62,6 +69,7 @@ export function PersonaGenerationIndicator({
       if (next === "ready") {
         setMessage("Persona ready.");
         setError("");
+        applyPersonaToForm(data.persona);
         clearGeneratingParam();
         router.refresh();
       } else if (next === "failed") {

@@ -14,6 +14,7 @@ import {
 } from "./actions";
 import { BrandMentionSlider } from "./brand-mention-slider";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
+import { PersonaGeneratedAt } from "./persona-generated-at";
 import { VOICE_FIELD_TIPS } from "./field-help";
 import { LabelWithTip } from "../signals/label-with-tip";
 
@@ -196,7 +197,11 @@ export default async function VoicesPage({
         <h2 className="mb-4 text-lg font-medium">
           {activeVoice ? `Edit: ${activeVoice.name}` : "Create voice"}
         </h2>
-        <form key={activeVoice?.id ?? "new-voice"} action={saveVoiceAction} className="space-y-4">
+        <form
+          key={`${activeVoice?.id ?? "new-voice"}-${activeVoice?.persona_generated_at?.getTime() ?? 0}-${activeVoice?.persona_status ?? "pending"}`}
+          action={saveVoiceAction}
+          className="space-y-4"
+        >
           {activeVoice ? (
             <input type="hidden" name="voice_id" value={activeVoice.id} />
           ) : null}
@@ -334,13 +339,7 @@ export default async function VoicesPage({
               <span className="text-xs text-red-600">{activeVoice.persona_error}</span>
             ) : null}
             {activeVoice?.persona_generated_at ? (
-              <span className="text-xs text-[var(--muted)]">
-                Last generated:{" "}
-                {activeVoice.persona_generated_at.toLocaleString(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              </span>
+              <PersonaGeneratedAt iso={activeVoice.persona_generated_at.toISOString()} />
             ) : null}
           </label>
 

@@ -6,7 +6,11 @@ import {
 } from "@content-resourcer/db";
 import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
 
-export async function runVoicePersonaGeneration(db: Db, voiceId: string): Promise<void> {
+export async function runVoicePersonaGeneration(
+  db: Db,
+  voiceId: string,
+  options?: { forceRebuild?: boolean },
+): Promise<void> {
   const voice = await getVoice(db, voiceId);
   if (!voice) {
     throw new Error("voice_not_found");
@@ -18,7 +22,9 @@ export async function runVoicePersonaGeneration(db: Db, voiceId: string): Promis
   });
 
   try {
-    const { profile, persona, corpusHash, cached } = await analyzeBrandProfile(db, voice);
+    const { profile, persona, corpusHash, cached } = await analyzeBrandProfile(db, voice, {
+      forceRebuild: options?.forceRebuild,
+    });
     const nextVersion = cached
       ? (voice.brand_profile_version ?? 0)
       : (voice.brand_profile_version ?? 0) + 1;
@@ -34,10 +40,14 @@ export async function runVoicePersonaGeneration(db: Db, voiceId: string): Promis
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await updateVoicePersonaStatus(db, voiceId, {
-      persona_status: "failed",
-      persona_error: message,
-    });
+    try {
+      await updateVoicePersonaStatus(db, voiceId, {
+        persona_status: "failed",
+        persona_error: message,
+      });
+    } catch {
+      // swallow secondary mongo errors
+    }
     throw e;
   }
 }

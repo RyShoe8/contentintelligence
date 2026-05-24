@@ -31,11 +31,13 @@ export type AnalyzeBrandProfileResult = {
 export async function analyzeBrandProfile(
   db: Db,
   voice: Voice,
+  options?: { forceRebuild?: boolean },
 ): Promise<AnalyzeBrandProfileResult> {
   const corpus = await buildBrandContentCorpus(db, voice);
   const hash = corpus.hash;
 
   const canUseCache =
+    !options?.forceRebuild &&
     !env.brandProfileForceRebuild &&
     voice.brand_profile &&
     voice.corpus_hash === hash &&
@@ -44,7 +46,7 @@ export async function analyzeBrandProfile(
   if (canUseCache && voice.brand_profile) {
     return {
       profile: voice.brand_profile,
-      persona: voice.persona || derivePersonaSummary(voice.brand_profile, voice.name),
+      persona: derivePersonaSummary(voice.brand_profile, voice.name),
       corpusHash: hash,
       cached: true,
     };

@@ -27,5 +27,6 @@ export async function GET(
     persona_status: voice.persona_status,
     persona_error: voice.persona_error ?? undefined,
     persona_generated_at: voice.persona_generated_at?.toISOString(),
+    ...(voice.persona_status === "ready" ? { persona: voice.persona } : {}),
   });
 }

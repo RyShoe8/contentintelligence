@@ -134,7 +134,7 @@ function parseVoiceFields(formData: FormData) {
   };
 }
 
-async function workerVoiceGenerate(voiceId: string) {
+async function workerVoiceGenerate(voiceId: string, force = false) {
   const base = process.env.WORKER_URL?.replace(/\/$/, "");
   if (!base) throw new Error("WORKER_URL is not configured");
 
@@ -145,6 +145,7 @@ async function workerVoiceGenerate(voiceId: string) {
 
   const url = new URL(`${base}/voices/generate`);
   url.searchParams.set("voice_id", voiceId);
+  if (force) url.searchParams.set("force", "1");
 
   const r = await fetch(url.toString(), {
     method: "POST",
@@ -222,20 +223,28 @@ export async function generateVoicePersonaAction(formData: FormData) {
   if (!fields.name) redirect(`/voices?voice_id=${voiceId}&error=name`);
 
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
+  const isRegenerate = existing.persona_status === "ready";
 
   await upsertVoice(db, {
     ...existing,
-    ...fields,
+    name: fields.name,
+    brand_mention_level: fields.brand_mention_level,
+    website_url: fields.website_url,
+    rss_feed_url: fields.rss_feed_url,
+    social_links: fields.social_links,
+    keywords: fields.keywords,
+    preferred_phrases: fields.preferred_phrases,
     content_signal_ids: signalIds,
     organization_id: orgId,
     created_by: existing.created_by,
+    persona: isRegenerate ? existing.persona : fields.persona,
     persona_status: "pending",
     persona_error: undefined,
   });
   await linkVoiceToSignals(db, voiceId, orgId, signalIds);
 
   try {
-    await workerVoiceGenerate(voiceId);
+    await workerVoiceGenerate(voiceId, isRegenerate);
   } catch (e) {
     revalidatePath("/voices");
     const detail = encodeURIComponent(

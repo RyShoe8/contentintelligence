@@ -6,6 +6,7 @@ import {
   isContentSignalIngestDue,
   listScheduledContentSignals,
   saveGmailOAuth,
+  updateVoicePersonaStatus,
 } from "@content-resourcer/db";
 import Fastify from "fastify";
 import { google } from "googleapis";
@@ -270,11 +271,12 @@ async function main(): Promise<void> {
     if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
       return reply.code(401).send({ error: "unauthorized" });
     }
-    const q = req.query as { voice_id?: string };
+    const q = req.query as { voice_id?: string; force?: string };
     const voiceId = q.voice_id?.trim();
     if (!voiceId) {
       return reply.code(400).send({ error: "voice_id is required" });
     }
+    const forceRebuild = q.force === "1" || q.force === "true";
     if (voiceGenerateInFlight) {
       return reply.code(409).send({ error: "voice_generate_already_running" });
     }
@@ -282,10 +284,20 @@ async function main(): Promise<void> {
     voiceGenerateInFlight = (async () => {
       const db = await getDb();
       await ensureIndexes(db);
-      await runVoicePersonaGeneration(db, voiceId);
+      await runVoicePersonaGeneration(db, voiceId, { forceRebuild });
     })()
-      .catch((e) => {
+      .catch(async (e) => {
         app.log.error(e);
+        try {
+          const db = await getDb();
+          const message = e instanceof Error ? e.message : String(e);
+          await updateVoicePersonaStatus(db, voiceId, {
+            persona_status: "failed",
+            persona_error: message,
+          });
+        } catch (secondary) {
+          app.log.error(secondary);
+        }
       })
       .finally(() => {
         voiceGenerateInFlight = null;
