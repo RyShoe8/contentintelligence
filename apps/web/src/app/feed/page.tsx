@@ -173,6 +173,9 @@ export default async function FeedPage({
               <GmailSyncButton
                 contentSignalId={selectedId}
                 disabled={!workerIngestConfigured || contentSignals.length === 0}
+                label="Run Feed"
+                busyLabel="Running feed…"
+                progressMessage="Feed ingest in progress…"
               />
               <ClearFeedButton
                 contentSignalId={selectedId}
@@ -183,14 +186,14 @@ export default async function FeedPage({
             </div>
             {!workerIngestConfigured ? (
               <p className="mt-2 text-xs text-[var(--muted)]">
-                Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable sync.
+                Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable feed ingest.
               </p>
             ) : null}
             <p className="mt-2 text-xs text-[var(--muted)]">
               Clear feed removes ingested rows for this signal and resets the lookback cursor so the next
-              sync can pick up mail again after you change keywords, labels, or sources. Items older than
+              feed run can pick up mail again after you change keywords, labels, or sources. Items older than
               the signal lookback ({selectedSignal?.lookback_window_hours ?? 168}h) are removed
-              automatically on sync.{" "}
+              automatically when you run the feed.{" "}
               <Link href={`/content-signals/${selectedId}`} className="text-[var(--accent)] hover:underline">
                 Manage sources
               </Link>

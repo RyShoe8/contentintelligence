@@ -34,9 +34,16 @@ type Props = {
   contentSignalId: string;
   disabled?: boolean;
   className?: string;
+  label?: string;
+  busyLabel?: string;
+  progressMessage?: string;
+  successSuffix?: string;
 };
 
-function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: string } {
+function formatSyncResult(
+  stats: IngestStats,
+  successSuffix?: string,
+): { status: "ok" | "err"; message: string } {
   const listed = stats.messagesListed ?? 0;
   const stored = (stats.storedFull ?? 0) + (stats.storedMinimal ?? 0);
   const errors = stats.sourceErrors ?? stats.signalErrors ?? [];
@@ -67,11 +74,19 @@ function formatSyncResult(stats: IngestStats): { status: "ok" | "err"; message: 
 
   return {
     status: "ok",
-    message: `Sync finished: ${listed} listed, ${stored} stored.`,
+    message: `Sync finished: ${listed} listed, ${stored} stored.${successSuffix ?? ""}`,
   };
 }
 
-export function GmailSyncButton({ contentSignalId, disabled, className }: Props) {
+export function GmailSyncButton({
+  contentSignalId,
+  disabled,
+  className,
+  label = "Sync now",
+  busyLabel = "Syncing…",
+  progressMessage = "Sync in progress…",
+  successSuffix,
+}: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [message, setMessage] = useState("");
@@ -90,7 +105,7 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
       stopPolling();
       router.refresh();
       if (statusData.stats) {
-        const result = formatSyncResult(statusData.stats);
+        const result = formatSyncResult(statusData.stats, successSuffix);
         setStatus(result.status);
         setMessage(result.message);
       } else if (statusData.error) {
@@ -98,16 +113,16 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
         setMessage(sanitizeIngestError(statusData.error));
       } else {
         setStatus("ok");
-        setMessage("Feed updated.");
+        setMessage(`Feed updated.${successSuffix ?? ""}`);
       }
     },
-    [router, stopPolling],
+    [router, stopPolling, successSuffix],
   );
 
   const startPolling = useCallback(() => {
     stopPolling();
     setStatus("loading");
-    setMessage("Sync in progress…");
+    setMessage(progressMessage);
     pollStartedRef.current = Date.now();
 
     const tick = async () => {
@@ -131,7 +146,7 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
 
     void tick();
     pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
-  }, [finishPolling, stopPolling]);
+  }, [finishPolling, progressMessage, stopPolling]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
@@ -163,7 +178,7 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
         return;
       }
 
-      const result = formatSyncResult(data);
+      const result = formatSyncResult(data, successSuffix);
       setStatus(result.status);
       setMessage(result.message);
     } catch {
@@ -182,7 +197,7 @@ export function GmailSyncButton({ contentSignalId, disabled, className }: Props)
         onClick={run}
         className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
       >
-        {busy ? "Syncing…" : "Sync now"}
+        {busy ? busyLabel : label}
       </button>
       {message ? (
         <p className={`mt-2 text-sm ${status === "err" ? "text-red-400" : "text-[var(--muted)]"}`}>{message}</p>

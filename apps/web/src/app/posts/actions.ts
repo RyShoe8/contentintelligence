@@ -83,26 +83,6 @@ export async function savePostSettingsAction(formData: FormData) {
   redirect(`/posts?content_signal_id=${contentSignalId}&saved=1`);
 }
 
-export async function refreshPostsAction(formData: FormData) {
-  const session = await requireOrgMember();
-  const contentSignalId = String(formData.get("content_signal_id") ?? "").trim();
-  if (!contentSignalId) redirect("/posts?error=missing_signal");
-
-  const db = await connectMongo();
-  const cs = await getContentSignal(db, contentSignalId);
-  if (!cs || !canAccessContentSignal(cs, session)) {
-    redirect("/posts?error=not_found");
-  }
-
-  try {
-    await workerFetch("/posts/sync", contentSignalId);
-    revalidatePath("/posts");
-    redirect(`/posts?content_signal_id=${contentSignalId}&refreshed=1`);
-  } catch {
-    redirect(`/posts?content_signal_id=${contentSignalId}&error=sync_failed`);
-  }
-}
-
 export async function archivePostAction(formData: FormData) {
   const session = await requireOrgMember();
   const postId = String(formData.get("post_id") ?? "").trim();

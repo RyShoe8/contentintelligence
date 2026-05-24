@@ -13,7 +13,6 @@ import { formatDealRow } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
 import {
   archivePostAction,
-  refreshPostsAction,
   savePostSettingsAction,
 } from "./actions";
 import { SCHEDULE_OPTIONS } from "./constants";
@@ -47,7 +46,6 @@ export default async function PostsPage({
   searchParams: Promise<{
     content_signal_id?: string;
     saved?: string;
-    refreshed?: string;
     archived?: string;
     sync_failed?: string;
     error?: string;
@@ -97,11 +95,6 @@ export default async function PostsPage({
           {sp.sync_failed === "1"
             ? " Post refresh failed — try Refresh posts."
             : " Posts refreshed."}
-        </p>
-      ) : null}
-      {sp.refreshed === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Posts refreshed from feed.
         </p>
       ) : null}
       {sp.archived === "1" ? (
@@ -228,20 +221,25 @@ export default async function PostsPage({
                 </button>
               </div>
             </form>
-            <div className="mt-4 flex flex-wrap gap-3 border-t border-[var(--border)] pt-4">
-              <form action={refreshPostsAction}>
-                <input type="hidden" name="content_signal_id" value={selectedId} />
-                <button
-                  type="submit"
-                  className="rounded border border-[var(--border)] px-4 py-2 text-sm hover:border-[var(--accent)]"
-                >
-                  Refresh posts
-                </button>
-              </form>
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
               <GmailSyncButton
                 contentSignalId={selectedId}
                 disabled={!workerIngestConfigured}
+                label="Refresh posts"
+                busyLabel="Refreshing…"
+                progressMessage="Fetching feed and rebuilding posts…"
+                successSuffix=" Posts updated."
               />
+              {!workerIngestConfigured ? (
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable refresh.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  Fetches new mail into the feed, then rebuilds draft posts from deals above your
+                  threshold.
+                </p>
+              )}
             </div>
           </section>
 
@@ -312,7 +310,7 @@ export default async function PostsPage({
             </ul>
             {posts.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">
-                No posts yet. Lower the threshold, sync the feed, or add deals manually from the feed
+                No posts yet. Lower the threshold, refresh posts, or add deals manually from the feed
                 page.
               </p>
             ) : null}
