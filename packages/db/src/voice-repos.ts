@@ -56,7 +56,7 @@ export async function upsertVoice(
     content_signal_ids: data.content_signal_ids ?? [],
     persona: data.persona ?? "",
     persona_status: data.persona_status ?? existing?.persona_status ?? "pending",
-    persona_error: data.persona_error,
+    persona_error: data.persona_error ?? undefined,
     persona_generated_at: data.persona_generated_at ?? existing?.persona_generated_at,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,
@@ -84,7 +84,7 @@ export async function updateVoicePersonaStatus(
     ...existing,
     persona: update.persona ?? existing.persona,
     persona_status: update.persona_status,
-    persona_error: update.persona_error,
+    persona_error: update.persona_error ?? undefined,
     persona_generated_at: update.persona_generated_at ?? existing.persona_generated_at,
     updated_at: now,
   });

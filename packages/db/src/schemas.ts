@@ -173,7 +173,10 @@ export const voiceSchema = z.object({
   content_signal_ids: z.array(z.string().uuid()).default([]),
   persona: z.string().default(""),
   persona_status: voicePersonaStatusSchema.default("pending"),
-  persona_error: z.string().optional(),
+  persona_error: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().optional(),
+  ),
   persona_generated_at: z.coerce.date().optional(),
   created_by: z.string().email(),
   created_at: z.coerce.date(),

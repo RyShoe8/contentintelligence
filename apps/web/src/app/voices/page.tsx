@@ -12,6 +12,8 @@ import {
   generateVoicePersonaAction,
   saveVoiceAction,
 } from "./actions";
+import { VOICE_FIELD_TIPS } from "./field-help";
+import { LabelWithTip } from "../signals/label-with-tip";
 
 export const dynamic = "force-dynamic";
 
@@ -196,13 +198,19 @@ export default async function VoicesPage({
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
-            Keywords (up to 5)
+            <LabelWithTip htmlFor="voice-keywords" tip={VOICE_FIELD_TIPS.keywords}>
+              Keywords (up to 5)
+            </LabelWithTip>
+            <span className="text-xs text-[var(--muted)]">
+              One per line or comma-separated.
+            </span>
             <textarea
+              id="voice-keywords"
               name="keywords"
               rows={2}
               defaultValue={activeVoice?.keywords.join("\n") ?? ""}
               className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-              placeholder="playful&#10;urgent&#10;trusted"
+              placeholder={"playful\nurgent\ntrusted"}
             />
           </label>
 
