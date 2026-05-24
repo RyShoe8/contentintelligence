@@ -1,9 +1,8 @@
-export type VoiceSocialLinkLike = { label?: string; url: string };
+export type VoicePreferredPhraseLike = { phrase: string; url?: string };
 
 export type VoiceStylePromptOpts = {
   brandName?: string;
-  preferredPhrases?: string[];
-  preferredLinks?: VoiceSocialLinkLike[];
+  preferredPhrases?: VoicePreferredPhraseLike[];
 };
 
 export const GLOBAL_VOICE_TABOOS = [
@@ -38,29 +37,34 @@ export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[]
     );
   }
 
-  const phrases = (opts.preferredPhrases ?? []).map((p) => p.trim()).filter(Boolean);
-  if (phrases.length) {
+  const pairs = (opts.preferredPhrases ?? [])
+    .map((p) => ({ phrase: p.phrase?.trim() ?? "", url: p.url?.trim() }))
+    .filter((p) => p.phrase);
+  if (pairs.length) {
     lines.push(
-      `- Optionally weave in at most one of these preferred phrases when natural (do not force all): ${phrases.join("; ")}`,
+      `- Optionally use at most one preferred phrase+link pair from the user message when natural (do not force all)`,
     );
-  }
-
-  const links = (opts.preferredLinks ?? []).filter((l) => l.url?.trim());
-  if (links.length) {
     lines.push(
-      `- When a URL belongs in the post, use at most one from the approved links list in the user message (do not invent other URLs)`,
+      `- When you use a phrase that has a paired URL, include that URL; do not invent other URLs`,
     );
   }
 
   return lines;
 }
 
-export function formatPreferredLinksForUserMessage(links: VoiceSocialLinkLike[]): string {
-  const formatted = links
-    .filter((l) => l.url?.trim())
-    .map((l) => (l.label?.trim() ? `${l.label.trim()}|${l.url.trim()}` : l.url.trim()));
+export function formatPreferredPhrasesForUserMessage(
+  phrases: VoicePreferredPhraseLike[],
+): string {
+  const formatted = phrases
+    .map((p) => {
+      const phrase = p.phrase?.trim();
+      if (!phrase) return "";
+      const url = p.url?.trim();
+      return url?.startsWith("https://") ? `${phrase}|${url}` : phrase;
+    })
+    .filter(Boolean);
   if (!formatted.length) return "";
-  return `Approved links (use at most one when a URL fits): ${formatted.join("; ")}`;
+  return `Preferred phrase pairs (use at most one when natural): ${formatted.join("; ")}`;
 }
 
 /** Strip emojis and em/en dashes; leave ASCII hyphen untouched. */

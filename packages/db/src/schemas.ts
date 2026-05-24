@@ -129,6 +129,20 @@ export const voiceSocialLinkSchema = z.object({
 
 export type VoiceSocialLink = z.infer<typeof voiceSocialLinkSchema>;
 
+export const voicePreferredPhraseSchema = z.object({
+  phrase: z.string().min(1),
+  url: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : String(v).trim()),
+    z
+      .string()
+      .url()
+      .refine((s) => s.startsWith("https://"), { message: "URL must use https" })
+      .optional(),
+  ),
+});
+
+export type VoicePreferredPhrase = z.infer<typeof voicePreferredPhraseSchema>;
+
 export const voicePersonaStatusSchema = z.enum(["pending", "ready", "failed"]);
 export type VoicePersonaStatus = z.infer<typeof voicePersonaStatusSchema>;
 
@@ -149,21 +163,62 @@ function normalizeVoiceKeywords(val: unknown): string[] {
   return out;
 }
 
-function normalizePreferredPhrases(val: unknown): string[] {
-  if (!Array.isArray(val)) return [];
+function normalizePreferredPhrasesFromLegacy(
+  phrasesRaw: unknown,
+  linksRaw: unknown,
+): VoicePreferredPhrase[] {
+  const legacyLinks = Array.isArray(linksRaw) ? linksRaw : [];
+  const linkUrls: (string | undefined)[] = legacyLinks.map((l) => {
+    if (!l || typeof l !== "object") return undefined;
+    const url = (l as { url?: unknown }).url;
+    if (typeof url !== "string" || !url.startsWith("https://")) return undefined;
+    return url;
+  });
+
   const seen = new Set<string>();
-  const out: string[] = [];
-  for (const x of val) {
-    if (typeof x !== "string") continue;
-    const s = x.trim();
-    if (!s) continue;
-    const key = s.toLowerCase();
-    if (seen.has(key)) continue;
+  const out: VoicePreferredPhrase[] = [];
+
+  const pushPair = (phrase: string, url?: string) => {
+    const p = phrase.trim();
+    if (!p) return;
+    const key = p.toLowerCase();
+    if (seen.has(key)) return;
     seen.add(key);
-    out.push(s);
-    if (out.length >= 15) break;
+    const entry: VoicePreferredPhrase = { phrase: p };
+    if (url?.startsWith("https://")) entry.url = url;
+    out.push(entry);
+    if (out.length >= 15) return;
+  };
+
+  if (Array.isArray(phrasesRaw)) {
+    for (let i = 0; i < phrasesRaw.length && out.length < 15; i++) {
+      const x = phrasesRaw[i];
+      if (typeof x === "string") {
+        pushPair(x, linkUrls[i]);
+        continue;
+      }
+      if (x && typeof x === "object" && "phrase" in x) {
+        const phrase = String((x as { phrase?: unknown }).phrase ?? "").trim();
+        const urlVal = (x as { url?: unknown }).url;
+        const url =
+          typeof urlVal === "string" && urlVal.startsWith("https://") ? urlVal : linkUrls[i];
+        pushPair(phrase, url);
+      }
+    }
   }
+
   return out;
+}
+
+function preprocessVoiceDocument(val: unknown): unknown {
+  if (!val || typeof val !== "object") return val;
+  const doc = { ...(val as Record<string, unknown>) };
+  doc.preferred_phrases = normalizePreferredPhrasesFromLegacy(
+    doc.preferred_phrases,
+    doc.preferred_links,
+  );
+  delete doc.preferred_links;
+  return doc;
 }
 
 function optionalHttpsUrl() {
@@ -180,7 +235,9 @@ function optionalHttpsUrl() {
   );
 }
 
-export const voiceSchema = z.object({
+export const voiceSchema = z.preprocess(
+  preprocessVoiceDocument,
+  z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
   name: z.string().min(1),
@@ -188,14 +245,7 @@ export const voiceSchema = z.object({
   rss_feed_url: optionalHttpsUrl().default(""),
   social_links: z.array(voiceSocialLinkSchema).max(10).default([]),
   keywords: z.preprocess(normalizeVoiceKeywords, z.array(z.string()).max(5).default([])),
-  preferred_phrases: z.preprocess(
-    normalizePreferredPhrases,
-    z.array(z.string()).max(15).default([]),
-  ),
-  preferred_links: z.preprocess(
-    (val) => (Array.isArray(val) ? val : []),
-    z.array(voiceSocialLinkSchema).max(10).default([]),
-  ),
+  preferred_phrases: z.array(voicePreferredPhraseSchema).max(15).default([]),
   content_signal_ids: z.array(z.string().uuid()).default([]),
   persona: z.string().default(""),
   persona_status: voicePersonaStatusSchema.default("pending"),
@@ -219,7 +269,8 @@ export const voiceSchema = z.object({
   created_by: z.string().email(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
-});
+  }),
+);
 
 export type Voice = z.infer<typeof voiceSchema>;
 

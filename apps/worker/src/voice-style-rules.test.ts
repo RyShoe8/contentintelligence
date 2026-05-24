@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildVoiceStylePromptLines,
+  formatPreferredPhrasesForUserMessage,
   GLOBAL_VOICE_TABOOS,
   mergeTaboosWithGlobal,
   sanitizeVoicePostCopy,
@@ -35,11 +36,24 @@ describe("buildVoiceStylePromptLines", () => {
     assert.ok(lines.some((l) => l.includes("Spinfinite")));
   });
 
-  it("includes preferred phrase instruction when provided", () => {
+  it("includes phrase pair instructions when provided", () => {
     const lines = buildVoiceStylePromptLines({
-      preferredPhrases: ["Grab it while it lasts"],
+      preferredPhrases: [{ phrase: "Grab it while it lasts", url: "https://example.com/promo" }],
     });
-    assert.ok(lines.some((l) => l.includes("Grab it while it lasts")));
+    assert.ok(lines.some((l) => l.includes("phrase+link pair")));
+    assert.ok(lines.some((l) => l.includes("paired URL")));
+  });
+});
+
+describe("formatPreferredPhrasesForUserMessage", () => {
+  it("formats phrase with url and phrase-only rows", () => {
+    const text = formatPreferredPhrasesForUserMessage([
+      { phrase: "Grab it", url: "https://example.com/promo" },
+      { phrase: "Daily drop" },
+    ]);
+    assert.match(text, /Grab it\|https:\/\/example\.com\/promo/);
+    assert.match(text, /Daily drop/);
+    assert.doesNotMatch(text, /Daily drop\|/);
   });
 });
 

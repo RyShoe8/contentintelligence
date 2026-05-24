@@ -23,6 +23,12 @@ function personaStatusLabel(status: string): string {
   return "Pending";
 }
 
+function preferredPhrasesToText(phrases: { phrase: string; url?: string }[]): string {
+  return phrases
+    .map((p) => (p.url ? `${p.phrase}|${p.url}` : p.phrase))
+    .join("\n");
+}
+
 function socialLinksToText(links: { label?: string; url: string }[]): string {
   return links
     .map((l) => (l.label ? `${l.label}|${l.url}` : l.url))
@@ -234,32 +240,15 @@ export default async function VoicesPage({
               Preferred phrases for posts
             </LabelWithTip>
             <span className="text-xs text-[var(--muted)]">
-              One per line. Used sometimes in generated post copy, not every time.
+              One per line: Your phrase|https://optional-link.com. Link is optional. Used sometimes in generated post copy, not every time.
             </span>
             <textarea
               id="voice-preferred-phrases"
               name="preferred_phrases"
               rows={3}
-              defaultValue={activeVoice?.preferred_phrases.join("\n") ?? ""}
+              defaultValue={activeVoice ? preferredPhrasesToText(activeVoice.preferred_phrases) : ""}
               className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-              placeholder={"Grab it while it lasts\nYour daily bonus drop"}
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <LabelWithTip htmlFor="voice-preferred-links" tip={VOICE_FIELD_TIPS.preferred_links}>
-              Preferred links for posts
-            </LabelWithTip>
-            <span className="text-xs text-[var(--muted)]">
-              One URL per line. Optional label: Platform|https://…
-            </span>
-            <textarea
-              id="voice-preferred-links"
-              name="preferred_links"
-              rows={3}
-              defaultValue={activeVoice ? socialLinksToText(activeVoice.preferred_links) : ""}
-              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-              placeholder="https://example.com/promo"
+              placeholder={"Grab it while it lasts|https://example.com/promo\nYour daily bonus drop"}
             />
           </label>
 

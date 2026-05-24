@@ -41,7 +41,6 @@ function voiceCopyOpts(ctx: VoiceGenerationContext) {
   return {
     brandName: ctx.brandName,
     preferredPhrases: ctx.preferredPhrases,
-    preferredLinks: ctx.preferredLinks,
     persona: ctx.persona,
     constraints: ctx.constraints,
   };

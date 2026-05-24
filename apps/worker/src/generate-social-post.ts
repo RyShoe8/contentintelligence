@@ -4,9 +4,9 @@ import { formatConstraintsForPrompt } from "./services/constraints/assemble-gene
 import { env } from "./env.js";
 import {
   buildVoiceStylePromptLines,
-  formatPreferredLinksForUserMessage,
+  formatPreferredPhrasesForUserMessage,
   sanitizeVoicePostCopy,
-  type VoiceSocialLinkLike,
+  type VoicePreferredPhraseLike,
   type VoiceStylePromptOpts,
 } from "./voice-style-rules.js";
 
@@ -66,8 +66,7 @@ export async function generateSocialPostCopy(opts: {
   deal?: DealMetrics | null;
   signalName?: string;
   brandName?: string;
-  preferredPhrases?: string[];
-  preferredLinks?: VoiceSocialLinkLike[];
+  preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
 }): Promise<string> {
@@ -75,7 +74,6 @@ export async function generateSocialPostCopy(opts: {
   const style: VoiceStylePromptOpts = {
     brandName: opts.brandName,
     preferredPhrases: opts.preferredPhrases,
-    preferredLinks: opts.preferredLinks,
   };
 
   if (!env.openaiApiKey) {
@@ -97,8 +95,8 @@ export async function generateSocialPostCopy(opts: {
     opts.signalName ? `Content signal: ${opts.signalName}` : null,
     dealLine ? `Deal tier: ${dealLine}` : null,
     opts.summary ? `Summary: ${opts.summary}` : null,
-    opts.preferredLinks?.length
-      ? formatPreferredLinksForUserMessage(opts.preferredLinks)
+    opts.preferredPhrases?.length
+      ? formatPreferredPhrasesForUserMessage(opts.preferredPhrases)
       : null,
   ].filter(Boolean);
 

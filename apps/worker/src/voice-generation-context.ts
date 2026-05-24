@@ -1,12 +1,14 @@
 import type { GenerationConstraints, Voice } from "@content-resourcer/db";
 import { assembleGenerationConstraints } from "./services/constraints/assemble-generation-constraints.js";
-import { mergeTaboosWithGlobal, type VoiceSocialLinkLike } from "./voice-style-rules.js";
+import {
+  mergeTaboosWithGlobal,
+  type VoicePreferredPhraseLike,
+} from "./voice-style-rules.js";
 
 export type VoiceGenerationContext = {
   voiceId?: string;
   brandName?: string;
-  preferredPhrases?: string[];
-  preferredLinks?: VoiceSocialLinkLike[];
+  preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
 };
@@ -15,7 +17,6 @@ function voiceStyleFields(voice: Voice) {
   return {
     brandName: voice.name,
     preferredPhrases: voice.preferred_phrases ?? [],
-    preferredLinks: voice.preferred_links ?? [],
   };
 }
 
