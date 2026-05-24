@@ -99,7 +99,11 @@ async function workerVoiceGenerate(voiceId: string) {
   const url = new URL(`${base}/voices/generate`);
   url.searchParams.set("voice_id", voiceId);
 
-  const r = await fetch(url.toString(), { method: "POST", headers });
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ voice_id: voiceId }),
+  });
   const text = await r.text();
   let parsed: unknown;
   try {
@@ -185,9 +189,12 @@ export async function generateVoicePersonaAction(formData: FormData) {
     await workerVoiceGenerate(voiceId);
     revalidatePath("/voices");
     redirect(`/voices?voice_id=${voiceId}&generating=1`);
-  } catch {
+  } catch (e) {
     revalidatePath("/voices");
-    redirect(`/voices?voice_id=${voiceId}&error=generate_failed`);
+    const detail = encodeURIComponent(
+      (e instanceof Error ? e.message : String(e)).slice(0, 240),
+    );
+    redirect(`/voices?voice_id=${voiceId}&error=generate_failed&error_detail=${detail}`);
   }
 }
 

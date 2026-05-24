@@ -20,7 +20,11 @@ async function forwardToWorker(path: string, query: Record<string, string>) {
     url.searchParams.set(k, v);
   }
 
-  const r = await fetch(url.toString(), { method: "POST", headers });
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(query),
+  });
   const text = await r.text();
   let parsed: unknown;
   try {

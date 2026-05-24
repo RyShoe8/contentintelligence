@@ -32,7 +32,15 @@ async function workerFetch(path: string, contentSignalId?: string, signalItemId?
   if (contentSignalId) url.searchParams.set("content_signal_id", contentSignalId);
   if (signalItemId) url.searchParams.set("signal_item_id", signalItemId);
 
-  const r = await fetch(url.toString(), { method: "POST", headers });
+  const body: Record<string, string> = {};
+  if (contentSignalId) body.content_signal_id = contentSignalId;
+  if (signalItemId) body.signal_item_id = signalItemId;
+
+  const r = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
   const text = await r.text();
   let parsed: unknown;
   try {

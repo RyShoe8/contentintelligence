@@ -29,6 +29,15 @@ function socialLinksToText(links: { label?: string; url: string }[]): string {
     .join("\n");
 }
 
+function decodeErrorDetail(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 export default async function VoicesPage({
   searchParams,
 }: {
@@ -38,6 +47,7 @@ export default async function VoicesPage({
     deleted?: string;
     generating?: string;
     error?: string;
+    error_detail?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -60,7 +70,12 @@ export default async function VoicesPage({
       : sp.error === "not_found"
         ? "Voice not found."
         : sp.error === "generate_failed"
-          ? "Could not start persona generation. Check worker configuration."
+          ? (() => {
+              const detail = decodeErrorDetail(sp.error_detail);
+              return detail
+                ? `Could not start persona generation: ${detail}`
+                : "Could not start persona generation. Check worker configuration.";
+            })()
           : sp.error === "missing_voice"
             ? "Select a voice to generate."
             : null;
