@@ -187,8 +187,6 @@ export async function generateVoicePersonaAction(formData: FormData) {
 
   try {
     await workerVoiceGenerate(voiceId);
-    revalidatePath("/voices");
-    redirect(`/voices?voice_id=${voiceId}&generating=1`);
   } catch (e) {
     revalidatePath("/voices");
     const detail = encodeURIComponent(
@@ -196,6 +194,9 @@ export async function generateVoicePersonaAction(formData: FormData) {
     );
     redirect(`/voices?voice_id=${voiceId}&error=generate_failed&error_detail=${detail}`);
   }
+
+  revalidatePath("/voices");
+  redirect(`/voices?voice_id=${voiceId}&generating=1`);
 }
 
 export async function deleteVoiceAction(formData: FormData) {
