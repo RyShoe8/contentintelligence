@@ -3,12 +3,14 @@ import {
   dealStrengthPercent,
   ensureIndexes,
   findVoiceForContentSignal,
+  getSignalItemsByIds,
   isContentOnlyPost,
   listContentSignals,
   listPosts,
 } from "@content-resourcer/db";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { CopyPostButton } from "@/components/copy-post-button";
+import { EmailImageGallery } from "@/components/email-image-gallery";
 import { LocalDateTime } from "@/components/local-date-time";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
@@ -71,6 +73,12 @@ export default async function PostsPage({
         status: "draft",
       })
     : [];
+
+  const signalItemsById = await getSignalItemsByIds(
+    db,
+    orgId,
+    posts.map((p) => p.signal_item_id),
+  );
 
   const errorMsg =
     sp.error === "missing_signal"
@@ -251,7 +259,9 @@ export default async function PostsPage({
               {selectedSignal.post_min_deal_pct ?? 50}%
             </p>
             <ul className="space-y-4">
-              {posts.map((post) => (
+              {posts.map((post) => {
+                const images = signalItemsById.get(post.signal_item_id)?.email_images;
+                return (
                 <li
                   key={post.id}
                   className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
@@ -311,8 +321,10 @@ export default async function PostsPage({
                   <pre className="mt-3 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm text-[var(--fg)]">
                     {post.social_copy}
                   </pre>
+                  {images?.length ? <EmailImageGallery images={images} /> : null}
                 </li>
-              ))}
+              );
+              })}
             </ul>
             {posts.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">

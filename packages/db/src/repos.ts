@@ -289,6 +289,27 @@ export async function getSignalItem(db: Db, id: string): Promise<SignalItem | nu
   return doc ? signalItemSchema.parse(doc) : null;
 }
 
+/** Batch-load feed rows for Posts page image join (keyed by signal item id). */
+export async function getSignalItemsByIds(
+  db: Db,
+  organizationId: string,
+  ids: string[],
+): Promise<Map<string, SignalItem>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map();
+
+  const docs = await signalItems(db)
+    .find({ organization_id: organizationId, id: { $in: unique } })
+    .toArray();
+
+  const map = new Map<string, SignalItem>();
+  for (const doc of docs) {
+    const item = signalItemSchema.parse(doc);
+    map.set(item.id, item);
+  }
+  return map;
+}
+
 export async function findSignalByExternalId(
   db: Db,
   externalId: string,
