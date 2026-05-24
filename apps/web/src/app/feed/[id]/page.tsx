@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ensureIndexes, getContentSignal, getSignalItem, isWithinLookback } from "@content-resourcer/db";
+import { ensureIndexes, getContentSignal, getSignalItem, isWithinLookback, listPosts } from "@content-resourcer/db";
+import { AddToPostsButton } from "@/components/add-to-posts-button";
 import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
@@ -30,6 +31,15 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
   ) {
     notFound();
   }
+
+  const workerIngestConfigured = !!process.env.WORKER_URL;
+  const draftPosts = await listPosts(db, {
+    organizationId: item.organization_id,
+    content_signal_id: item.content_signal_id,
+    status: "draft",
+    limit: 500,
+  });
+  const alreadyInPosts = draftPosts.some((p) => p.signal_item_id === item.id);
 
   return (
     <div className="space-y-6">
@@ -64,6 +74,14 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         {item.skip_reason ? (
           <p className="mt-2 text-sm text-amber-400">Pre-filter: {item.skip_reason}</p>
         ) : null}
+        <div className="mt-3">
+          <AddToPostsButton
+            signalItemId={item.id}
+            contentSignalId={item.content_signal_id}
+            disabled={!workerIngestConfigured}
+            alreadyInPosts={alreadyInPosts}
+          />
+        </div>
       </div>
 
       {item.ai_summary ? (

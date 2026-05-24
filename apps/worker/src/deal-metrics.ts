@@ -152,7 +152,7 @@ function payAndCreditNearEachOther(
     ? payStr.replace(".", "\\.")
     : payStr;
   const re = new RegExp(
-    `\\$\\s*${payPat}(?:\\s*\\+\\s*|[^$]{0,40}?)${credit}\\s*(?:Free\\s*)?${reEsc(creditUnit)}\\b`,
+    `\\$\\s*${payPat}(?:\\s*\\+\\s*|[^$]{0,80}?)${credit}\\s*(?:Free\\s*)?${reEsc(creditUnit)}\\b`,
     "i",
   );
   return re.test(text);
@@ -162,8 +162,14 @@ function hasRetailListCue(text: string): boolean {
   return /\b(was|list\s*price|strike|retail|regular\s*price|originally)\b/i.test(text);
 }
 
+type PlausibilityOpts = { fromDollarEquals?: boolean };
+
 /** Reject cross-tier or absurd pay/credit pairings. */
-export function isPlausibleDealMetrics(dm: DealMetrics, text: string): boolean {
+export function isPlausibleDealMetrics(
+  dm: DealMetrics,
+  text: string,
+  opts?: PlausibilityOpts,
+): boolean {
   const pay = dm.you_pay;
   const baseline = dm.baseline_value;
   if (pay == null || baseline == null || !(pay > 0) || !(baseline > 0)) return false;
@@ -173,7 +179,11 @@ export function isPlausibleDealMetrics(dm: DealMetrics, text: string): boolean {
   if (dm.units_comparable === false) {
     const bonus = dm.bonus_pct ?? 0;
     const creditUnit = (dm.credit_unit ?? "SC").toString();
-    if (bonus > 0.6 && !payAndCreditNearEachOther(text, pay, baseline, creditUnit)) {
+    if (
+      bonus > 0.6 &&
+      !opts?.fromDollarEquals &&
+      !payAndCreditNearEachOther(text, pay, baseline, creditUnit)
+    ) {
       return false;
     }
     if (multiOffer && !payMatchesListedTier(pay, text)) return false;
@@ -185,9 +195,13 @@ export function isPlausibleDealMetrics(dm: DealMetrics, text: string): boolean {
   return true;
 }
 
-function applyPlausibility(dm: DealMetrics | null, text: string): DealMetrics | null {
+function applyPlausibility(
+  dm: DealMetrics | null,
+  text: string,
+  opts?: PlausibilityOpts,
+): DealMetrics | null {
   if (!dm) return null;
-  return isPlausibleDealMetrics(dm, text) ? dm : null;
+  return isPlausibleDealMetrics(dm, text, opts) ? dm : null;
 }
 
 function dealDedupeKey(dm: DealMetrics): string {
@@ -303,7 +317,7 @@ function extractSingleDealRegex(
 
   if (unitTokens.length > 0) {
     const fromEquals = tryDollarEqualsFreeSc(text, unitTokens);
-    const plausibleEquals = applyPlausibility(fromEquals, text);
+    const plausibleEquals = applyPlausibility(fromEquals, text, { fromDollarEquals: !!fromEquals });
     if (plausibleEquals) return plausibleEquals;
   }
 

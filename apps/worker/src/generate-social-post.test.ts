@@ -66,4 +66,16 @@ describe("generateSocialPostCopy persona", () => {
 
     assert.match(copy, /Bonus drop|10|20/);
   });
+
+  it("returns fallback copy without OpenAI when no deal is provided", async () => {
+    const copy = await generateSocialPostCopy({
+      title: "Weekly newsletter",
+      summary: "New games and community highlights this week.",
+      signalName: "Casinos",
+      persona: "Write like a friendly insider.",
+    });
+
+    assert.match(copy, /Weekly newsletter/);
+    assert.match(copy, /community highlights/);
+  });
 });

@@ -32,14 +32,20 @@ export function AddToPostsButton({
         error?: string;
         created?: number;
         updated?: number;
+        skipped?: number;
       };
       if (!r.ok) {
         setStatus("err");
         setMessage(data.error ?? `HTTP ${r.status}`);
         return;
       }
-      setStatus("ok");
       const n = (data.created ?? 0) + (data.updated ?? 0);
+      if ((data.skipped ?? 0) > 0 && n === 0) {
+        setStatus("err");
+        setMessage("Could not add to Posts — no deal detected and content push failed.");
+        return;
+      }
+      setStatus("ok");
       setMessage(n > 0 ? `Added ${n} post${n === 1 ? "" : "s"}.` : "Already in Posts.");
     } catch {
       setStatus("err");

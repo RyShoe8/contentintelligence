@@ -3,6 +3,7 @@ import {
   dealStrengthPercent,
   ensureIndexes,
   findVoiceForContentSignal,
+  isContentOnlyPost,
   listContentSignals,
   listPosts,
 } from "@content-resourcer/db";
@@ -266,7 +267,9 @@ export default async function PostsPage({
                           {post.source === "manual" ? "Manual" : "Auto"}
                         </span>
                         <span className="text-xs text-[var(--muted)]">
-                          {dealStrengthPercent(post.deal_metrics)}% deal
+                          {isContentOnlyPost(post.deal_key, post.deal_metrics)
+                            ? "Content post"
+                            : `${dealStrengthPercent(post.deal_metrics)}% deal`}
                         </span>
                       </div>
                       <Link
@@ -285,9 +288,11 @@ export default async function PostsPage({
                             })}`
                           : ""}
                       </p>
-                      <p className="mt-2 text-sm text-[var(--muted)]">
-                        {formatDealRow(post.deal_metrics)}
-                      </p>
+                      {!isContentOnlyPost(post.deal_key, post.deal_metrics) ? (
+                        <p className="mt-2 text-sm text-[var(--muted)]">
+                          {formatDealRow(post.deal_metrics)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <CopyPostButton text={post.social_copy} />

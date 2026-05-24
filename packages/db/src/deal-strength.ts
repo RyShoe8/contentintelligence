@@ -11,6 +11,26 @@ export function dealStrengthPercent(dm: DealMetrics): number {
   return Math.round(dealStrengthPct(dm) * 100);
 }
 
+/** deal_key for manual posts when no deal metrics were detected on the feed item. */
+export const CONTENT_ONLY_DEAL_KEY = "content-only";
+
+/** Placeholder metrics stored on content-only posts. */
+export const CONTENT_ONLY_DEAL_METRICS: DealMetrics = {
+  mode: "unknown",
+  effective_savings_pct: 0,
+  confidence: 0,
+  source: "none",
+  units_comparable: true,
+};
+
+export function isContentOnlyDealMetrics(dm: DealMetrics): boolean {
+  return dm.source === "none";
+}
+
+export function isContentOnlyPost(dealKey: string, dm: DealMetrics): boolean {
+  return dealKey === CONTENT_ONLY_DEAL_KEY || isContentOnlyDealMetrics(dm);
+}
+
 /** Stable key for one deal tier within a signal item. */
 export function buildDealKey(dm: DealMetrics): string {
   const pay = dm.you_pay ?? "";

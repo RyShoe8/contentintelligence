@@ -2,12 +2,15 @@ import type { Db } from "mongodb";
 import {
   archiveAutoPostsForSignal,
   buildDealKey,
+  CONTENT_ONLY_DEAL_KEY,
+  CONTENT_ONLY_DEAL_METRICS,
   dealStrengthPct,
   dealsForPostEval,
   findPostByItemDeal,
   findVoiceForContentSignal,
   getContentSignal,
   getSignalItem,
+  isContentOnlyPost,
   listPosts,
   listSignalItems,
   upsertPost,
@@ -53,11 +56,12 @@ async function regenerateAllDraftPostsForContentSignal(
   const copies: string[] = [];
   let count = 0;
   for (const post of drafts) {
+    const contentOnly = isContentOnlyPost(post.deal_key, post.deal_metrics);
     const socialCopy = await generateSocialPostCopy({
       title: post.title,
       summary: post.ai_summary,
       senderFrom: post.sender_from,
-      deal: post.deal_metrics,
+      deal: contentOnly ? undefined : post.deal_metrics,
       signalName,
       persona: ctx.persona,
       constraints: ctx.constraints,
@@ -121,6 +125,52 @@ async function upsertDealPost(
     title: item.title,
     social_copy: socialCopy,
     deal_metrics: deal,
+    source_name: item.source_name,
+    sender_from: item.sender_from,
+    email_sent_at: item.email_sent_at,
+    ai_summary: item.ai_summary,
+  });
+
+  const regenerated = !existing?.social_copy || forceRegenerate;
+  return {
+    outcome: created ? "created" : "updated",
+    socialCopy: regenerated ? socialCopy : undefined,
+  };
+}
+
+async function upsertContentOnlyPost(
+  db: Db,
+  opts: {
+    item: SignalItem;
+    signalName: string;
+    ctx: VoiceGenerationContext;
+    forceRegenerate?: boolean;
+  },
+): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopy?: string }> {
+  const { item, signalName, ctx, forceRegenerate } = opts;
+  const existing = await findPostByItemDeal(db, item.id, CONTENT_ONLY_DEAL_KEY);
+
+  let socialCopy = existing?.social_copy ?? "";
+  if (!socialCopy || forceRegenerate) {
+    socialCopy = await generateSocialPostCopy({
+      title: item.title,
+      summary: item.ai_summary,
+      senderFrom: item.sender_from,
+      signalName,
+      persona: ctx.persona,
+      constraints: ctx.constraints,
+    });
+  }
+
+  const { created } = await upsertPost(db, {
+    organization_id: item.organization_id,
+    content_signal_id: item.content_signal_id,
+    signal_item_id: item.id,
+    deal_key: CONTENT_ONLY_DEAL_KEY,
+    source: "manual",
+    title: item.title,
+    social_copy: socialCopy,
+    deal_metrics: CONTENT_ONLY_DEAL_METRICS,
     source_name: item.source_name,
     sender_from: item.sender_from,
     email_sent_at: item.email_sent_at,
@@ -226,7 +276,27 @@ export async function addPostsForSignalItem(
   const deals = dealsForPostEval(item);
 
   if (!deals.length) {
-    return { created: 0, updated: 0, archived: 0, skipped: 1, posts: [] };
+    const result: PostsSyncResult = { created: 0, updated: 0, archived: 0, skipped: 0 };
+    const { outcome, socialCopy } = await upsertContentOnlyPost(db, {
+      item,
+      signalName,
+      ctx,
+      forceRegenerate: true,
+    });
+    const newCopies: string[] = [];
+    if (socialCopy) newCopies.push(socialCopy);
+    if (outcome === "created") result.created++;
+    else if (outcome === "updated") result.updated++;
+    else result.skipped++;
+
+    const post = await findPostByItemDeal(db, item.id, CONTENT_ONLY_DEAL_KEY);
+    const posts = post ? [post] : [];
+
+    if (ctx.voiceId && newCopies.length) {
+      await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
+    }
+
+    return { ...result, posts };
   }
 
   const targets =

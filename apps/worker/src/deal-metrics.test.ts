@@ -80,6 +80,18 @@ describe("extractDealMetricsRegex", () => {
     assert.ok(deals.length >= 1, "expected at least one deal in deals_found");
   });
 
+  it("Spinfinite Prime+ full email copy with emoji and Terms and Conditions", () => {
+    const subject = "Unlock Prime+ Today for 150 FREE SC!";
+    const body =
+      "Your Prime+ access is here! Lock in 150 FREE SC over the next 30 days 💰 $44 = 44,000 GC + 1,000 Stars + 150 SC Tap in and start your streak PURCHASE NOW Terms and Conditions: * Following purchase you will receive Gold Coins and an initial amount of free SC * The remaining free SC is credited over the course of the 30-day pass period.";
+    const dm = extractDealMetricsRegex(subject, body, ["SC", "GC"]);
+    assert.ok(dm, "expected deal");
+    assert.equal(dm.you_pay, 44);
+    assert.equal(dm.baseline_value, 150);
+    const deals = extractDealsFoundRegex(subject, body, ["SC", "GC"]);
+    assert.ok(deals.length >= 1, "expected at least one deal in deals_found");
+  });
+
   it("deposit $20 get 26 SC has ~30% filterable bonus", () => {
     const dm = extractDealMetricsRegex(
       "Deposit $20 and get 26 SC free",

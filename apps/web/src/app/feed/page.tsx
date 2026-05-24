@@ -305,7 +305,7 @@ export default async function FeedPage({
                   </Link>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
-                  {hasDeal(it) && selectedId ? (
+                  {selectedId ? (
                     <AddToPostsButton
                       signalItemId={it.id}
                       contentSignalId={selectedId}
