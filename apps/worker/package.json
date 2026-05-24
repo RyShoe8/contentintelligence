@@ -7,11 +7,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "node --import tsx --test src/deal-metrics.test.ts"
+    "test": "node --import tsx --test src/deal-metrics.test.ts src/generate-social-post.test.ts"
   },
   "dependencies": {
     "@content-resourcer/db": "*",
     "dotenv": "^16.4.7",
+    "fast-xml-parser": "^4.5.6",
     "fastify": "^5.2.1",
     "googleapis": "^144.0.0",
     "html-to-text": "^9.0.5",

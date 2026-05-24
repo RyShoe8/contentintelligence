@@ -29,6 +29,7 @@ export async function generateSocialPostCopy(opts: {
   senderFrom?: string;
   deal: DealMetrics;
   signalName?: string;
+  persona?: string;
 }): Promise<string> {
   if (!env.openaiApiKey) {
     const dealLine = formatDealLine(opts.deal);
@@ -45,6 +46,25 @@ export async function generateSocialPostCopy(opts: {
     opts.summary ? `Summary: ${opts.summary}` : null,
   ].filter(Boolean);
 
+  const systemPrompt = opts.persona?.trim()
+    ? `Write a short social media post promoting this deal email using the brand voice persona below.
+Rules:
+- Follow the persona's tone, vocabulary, and formatting habits.
+- Lead with the deal hook (price → value/bonus).
+- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.
+
+Brand voice persona:
+${opts.persona.trim()}`
+    : `Write a short social media post promoting this casino/promotional deal email.
+Rules:
+- Lead with the deal hook (price → value/bonus).
+- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
+- Friendly, urgent promotional tone. No hashtags unless natural (max 2).
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.`;
+
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensSocialPost,
@@ -52,13 +72,7 @@ export async function generateSocialPostCopy(opts: {
     messages: [
       {
         role: "system",
-        content: `Write a short social media post promoting this casino/promotional deal email.
-Rules:
-- Lead with the deal hook (price → value/bonus).
-- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
-- Friendly, urgent promotional tone. No hashtags unless natural (max 2).
-- Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.`,
+        content: systemPrompt,
       },
       { role: "user", content: userParts.join("\n") },
     ],

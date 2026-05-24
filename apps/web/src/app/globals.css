@@ -3,21 +3,39 @@
 @tailwind utilities;
 
 :root {
-  /* Palette aligned with ContentIntelligence logo: navy, cyan/teal accents, pale blue canvas */
-  --bg-top: #eef6fc;
-  --bg-bottom: #f8fafc;
+  --primary: #0082a6;
+  --secondary: #00d2d6;
+  --surface-light: #e1f9fa;
+  --background: #f4f8fa;
+  /* backward-compatible aliases */
+  --accent: var(--primary);
+  --accent-bright: var(--secondary);
+  --bg-top: var(--surface-light);
+  --bg-bottom: var(--background);
   --fg: #1a2744;
   --muted: #5c6b82;
   --card: #ffffff;
   --input-bg: #ffffff;
   --border: #c9dae9;
-  --accent: #1e6bb8;
-  --accent-bright: #22b8cf;
-  --header-border: rgba(30, 107, 184, 0.15);
+  --header-border: color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 body {
   color: var(--fg);
   background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
   min-height: 100vh;
+}
+
+@layer components {
+  .badge-auto {
+    @apply rounded px-2 py-0.5 text-xs font-medium;
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+  }
+
+  .badge-manual {
+    @apply rounded px-2 py-0.5 text-xs font-medium;
+    background: color-mix(in srgb, var(--secondary) 22%, transparent);
+    color: color-mix(in srgb, var(--primary) 85%, black);
+  }
 }

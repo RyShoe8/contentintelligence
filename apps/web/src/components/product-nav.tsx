@@ -12,6 +12,11 @@ const NAV_ITEMS = [
   },
   { href: "/feed", label: "Feed", match: (p: string) => p === "/feed" || p.startsWith("/feed/") },
   { href: "/posts", label: "Posts", match: (p: string) => p === "/posts" || p.startsWith("/posts/") },
+  {
+    href: "/voices",
+    label: "Voices",
+    match: (p: string) => p === "/voices" || p.startsWith("/voices/"),
+  },
 ] as const;
 
 export function ProductNav() {

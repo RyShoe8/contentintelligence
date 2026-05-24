@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ensureIndexes,
+  findVoiceForContentSignal,
   getContentSignal,
   getGmailOAuth,
   listSourcesByContentSignal,
@@ -34,6 +35,7 @@ export default async function ContentSignalDetailPage({
   if (!contentSignal || !canAccessContentSignal(contentSignal, session)) notFound();
 
   const sources = await listSourcesByContentSignal(db, id);
+  const linkedVoice = await findVoiceForContentSignal(db, id);
   const sourcesWithOAuth = await Promise.all(
     sources.map(async (s) => {
       const email = s.config.email_address?.trim();
@@ -57,6 +59,14 @@ export default async function ContentSignalDetailPage({
           {contentSignal.active ? "Active" : "Inactive"} · Lookback {contentSignal.lookback_window_hours}h ·{" "}
           Keywords: {contentSignal.keywords.join(", ") || "—"}
         </p>
+        {linkedVoice ? (
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Linked voice:{" "}
+            <Link href={`/voices?voice_id=${linkedVoice.id}`} className="text-[var(--primary)] hover:underline">
+              {linkedVoice.name}
+            </Link>
+          </p>
+        ) : null}
         {sp.signal_created === "1" ? (
           <p className="mt-2 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
             Content signal created from template. Add a Gmail source below to start ingesting.

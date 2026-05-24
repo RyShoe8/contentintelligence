@@ -49,6 +49,11 @@ async function runEnsureIndexes(db: Db): Promise<void> {
     { key: { id: 1 }, unique: true },
     { key: { organization_id: 1, name: 1 } },
   ]);
+  await db.collection(COLLECTIONS.voices).createIndexes([
+    { key: { id: 1 }, unique: true },
+    { key: { organization_id: 1 } },
+    { key: { content_signal_ids: 1 } },
+  ]);
   await db.collection(COLLECTIONS.sources).createIndexes([
     { key: { id: 1 }, unique: true },
     { key: { content_signal_id: 1 } },

@@ -15,6 +15,7 @@ import { ingestLog } from "./ingest-log.js";
 import { runIngest, type IngestStats } from "./ingest.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
+import { runVoicePersonaGeneration } from "./voice-generate.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -254,6 +255,40 @@ async function main(): Promise<void> {
       const message = e instanceof Error ? e.message : String(e);
       return reply.code(500).send({ error: message });
     }
+  });
+
+  let voiceGenerateInFlight: Promise<void> | null = null;
+
+  app.post("/voices/generate", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const q = req.query as { voice_id?: string };
+    const voiceId = q.voice_id?.trim();
+    if (!voiceId) {
+      return reply.code(400).send({ error: "voice_id is required" });
+    }
+    if (voiceGenerateInFlight) {
+      return reply.code(409).send({ error: "voice_generate_already_running" });
+    }
+
+    voiceGenerateInFlight = (async () => {
+      const db = await getDb();
+      await ensureIndexes(db);
+      await runVoicePersonaGeneration(db, voiceId);
+    })()
+      .catch((e) => {
+        app.log.error(e);
+      })
+      .finally(() => {
+        voiceGenerateInFlight = null;
+      });
+
+    return reply.code(202).send({
+      accepted: true,
+      voice_id: voiceId,
+      message: "Voice persona generation started.",
+    });
   });
 
   const port = env.port;

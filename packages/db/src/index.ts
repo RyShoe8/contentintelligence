@@ -6,4 +6,5 @@ export * from "./retention.js";
 export * from "./org-repos.js";
 export * from "./post-repos.js";
 export * from "./repos.js";
+export * from "./voice-repos.js";
 export * from "./schemas.js";

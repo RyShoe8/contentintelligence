@@ -121,6 +121,67 @@ export const contentSignalTemplateSchema = z.object({
 
 export type ContentSignalTemplate = z.infer<typeof contentSignalTemplateSchema>;
 
+export const voiceSocialLinkSchema = z.object({
+  label: z.string().optional(),
+  url: z.string().url(),
+});
+
+export type VoiceSocialLink = z.infer<typeof voiceSocialLinkSchema>;
+
+export const voicePersonaStatusSchema = z.enum(["pending", "ready", "failed"]);
+export type VoicePersonaStatus = z.infer<typeof voicePersonaStatusSchema>;
+
+function normalizeVoiceKeywords(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of val) {
+    if (typeof x !== "string") continue;
+    const s = x.trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+function optionalHttpsUrl() {
+  return z.preprocess(
+    (v) => (v == null ? "" : String(v).trim()),
+    z
+      .string()
+      .refine((s) => s === "" || z.string().url().safeParse(s).success, {
+        message: "Invalid URL",
+      })
+      .refine((s) => s === "" || s.startsWith("https://"), {
+        message: "URL must use https",
+      }),
+  );
+}
+
+export const voiceSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  name: z.string().min(1),
+  website_url: optionalHttpsUrl().default(""),
+  rss_feed_url: optionalHttpsUrl().default(""),
+  social_links: z.array(voiceSocialLinkSchema).max(10).default([]),
+  keywords: z.preprocess(normalizeVoiceKeywords, z.array(z.string()).max(5).default([])),
+  content_signal_ids: z.array(z.string().uuid()).default([]),
+  persona: z.string().default(""),
+  persona_status: voicePersonaStatusSchema.default("pending"),
+  persona_error: z.string().optional(),
+  persona_generated_at: z.coerce.date().optional(),
+  created_by: z.string().email(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type Voice = z.infer<typeof voiceSchema>;
+
 export const sourceSchema = z.object({
   id: z.string().uuid(),
   content_signal_id: z.string().uuid(),

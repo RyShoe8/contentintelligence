@@ -5,6 +5,7 @@ import {
   dealStrengthPct,
   dealsForPostEval,
   findPostByItemDeal,
+  findVoiceForContentSignal,
   getContentSignal,
   getSignalItem,
   listSignalItems,
@@ -29,10 +30,11 @@ async function upsertDealPost(
     deal: DealMetrics;
     source: "auto" | "manual";
     signalName: string;
+    persona?: string;
     forceRegenerate?: boolean;
   },
 ): Promise<"created" | "updated" | "skipped"> {
-  const { item, deal, source, signalName, forceRegenerate } = opts;
+  const { item, deal, source, signalName, persona, forceRegenerate } = opts;
   const dealKey = buildDealKey(deal);
   const existing = await findPostByItemDeal(db, item.id, dealKey);
 
@@ -44,6 +46,7 @@ async function upsertDealPost(
       senderFrom: item.sender_from,
       deal,
       signalName,
+      persona,
     });
   }
 
@@ -75,6 +78,9 @@ export async function syncPostsForContentSignal(
   }
 
   const minPct = (signal.post_min_deal_pct ?? 50) / 100;
+  const voice = await findVoiceForContentSignal(db, contentSignalId);
+  const persona =
+    voice?.persona_status === "ready" && voice.persona.trim() ? voice.persona : undefined;
   const items = await listSignalItems(db, {
     organizationId: signal.organization_id,
     content_signal_id: contentSignalId,
@@ -105,6 +111,7 @@ export async function syncPostsForContentSignal(
         deal,
         source: "auto",
         signalName: signal.name,
+        persona,
       });
       if (outcome === "created") result.created++;
       else if (outcome === "updated") result.updated++;
@@ -128,6 +135,9 @@ export async function addPostsForSignalItem(
 
   const signal = await getContentSignal(db, item.content_signal_id);
   const signalName = signal?.name ?? "Content signal";
+  const voice = await findVoiceForContentSignal(db, item.content_signal_id);
+  const persona =
+    voice?.persona_status === "ready" && voice.persona.trim() ? voice.persona : undefined;
   const deals = dealsForPostEval(item);
 
   if (!deals.length) {
@@ -148,6 +158,7 @@ export async function addPostsForSignalItem(
       deal,
       source: "manual",
       signalName,
+      persona,
       forceRegenerate: true,
     });
     if (outcome === "created") result.created++;

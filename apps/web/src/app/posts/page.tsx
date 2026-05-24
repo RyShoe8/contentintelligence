@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   dealStrengthPercent,
   ensureIndexes,
+  findVoiceForContentSignal,
   listContentSignals,
   listPosts,
 } from "@content-resourcer/db";
@@ -60,6 +61,7 @@ export default async function PostsPage({
   const contentSignals = await listContentSignals(db, { organizationId: orgId });
   const selectedId = sp.content_signal_id || contentSignals[0]?.id || "";
   const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
+  const linkedVoice = selectedId ? await findVoiceForContentSignal(db, selectedId) : null;
   const workerIngestConfigured = !!process.env.WORKER_URL;
 
   const posts = selectedId
@@ -147,6 +149,28 @@ export default async function PostsPage({
         <>
           <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
             <h2 className="text-lg font-medium">Settings for {selectedSignal.name}</h2>
+            {linkedVoice ? (
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Voice:{" "}
+                <Link href={`/voices?voice_id=${linkedVoice.id}`} className="text-[var(--primary)] hover:underline">
+                  {linkedVoice.name}
+                </Link>
+                {linkedVoice.persona_status !== "ready" ? (
+                  <span className="text-amber-700">
+                    {" "}
+                    · Persona {linkedVoice.persona_status} — generate or edit on Voices page
+                  </span>
+                ) : null}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                No voice linked.{" "}
+                <Link href="/voices" className="text-[var(--primary)] hover:underline">
+                  Create a voice
+                </Link>{" "}
+                and link this content signal to shape post copy.
+              </p>
+            )}
             <form action={savePostSettingsAction} className="mt-4 grid gap-4 md:grid-cols-2">
               <input type="hidden" name="content_signal_id" value={selectedId} />
               <label className="flex flex-col gap-1 text-sm">
@@ -236,11 +260,9 @@ export default async function PostsPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`rounded px-2 py-0.5 text-xs font-medium ${
-                            post.source === "manual"
-                              ? "bg-amber-500/20 text-amber-200"
-                              : "bg-blue-500/20 text-blue-200"
-                          }`}
+                          className={
+                            post.source === "manual" ? "badge-manual" : "badge-auto"
+                          }
                         >
                           {post.source === "manual" ? "Manual" : "Auto"}
                         </span>
