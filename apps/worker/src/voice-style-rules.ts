@@ -1,4 +1,8 @@
-export type VoicePreferredPhraseLike = { phrase: string; url?: string };
+export type VoicePreferredPhraseLike = {
+  phrase: string;
+  url?: string;
+  frequency_level?: number;
+};
 
 export type VoiceStylePromptOpts = {
   brandName?: string;
@@ -43,6 +47,36 @@ export function buildBrandMentionPromptLine(brandName: string, level: number): s
   return `- Always lead with "${name}" and mention the brand at least twice when the post has room`;
 }
 
+export function buildPhraseFrequencyPromptLine(phrase: string, level: number): string | null {
+  const text = phrase.trim();
+  if (!text) return null;
+
+  const l = Math.max(0, Math.min(100, Math.round(level)));
+  if (l === 0) {
+    return `- Do not use the phrase "${text}" in this post`;
+  }
+  if (l <= 25) {
+    return `- Use "${text}" rarely, only when clearly relevant`;
+  }
+  if (l <= 50) {
+    return `- Consider "${text}" when it fits naturally`;
+  }
+  if (l <= 75) {
+    return `- Prefer "${text}" when choosing a preferred phrase for this post`;
+  }
+  return `- Strongly prefer "${text}" when choosing a preferred phrase for this post`;
+}
+
+function activePreferredPhrases(phrases: VoicePreferredPhraseLike[]): VoicePreferredPhraseLike[] {
+  return phrases
+    .map((p) => ({
+      phrase: p.phrase?.trim() ?? "",
+      url: p.url?.trim(),
+      frequency_level: Math.max(0, Math.min(100, Math.round(p.frequency_level ?? 50))),
+    }))
+    .filter((p) => p.phrase && p.frequency_level > 0);
+}
+
 export function mergeTaboosWithGlobal(taboos: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -67,16 +101,21 @@ export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[]
   );
   if (brandLine) lines.push(brandLine);
 
-  const pairs = (opts.preferredPhrases ?? [])
-    .map((p) => ({ phrase: p.phrase?.trim() ?? "", url: p.url?.trim() }))
-    .filter((p) => p.phrase);
+  const pairs = activePreferredPhrases(opts.preferredPhrases ?? []);
   if (pairs.length) {
     lines.push(
-      `- Optionally use at most one preferred phrase+link pair from the user message when natural (do not force all)`,
+      `- Use at most one preferred phrase+link pair from the user message when natural (do not force all)`,
+    );
+    lines.push(
+      `- When choosing a phrase, prefer higher-frequency entries over lower-frequency ones`,
     );
     lines.push(
       `- When you use a phrase that has a paired URL, include that URL; do not invent other URLs`,
     );
+    for (const p of pairs) {
+      const phraseLine = buildPhraseFrequencyPromptLine(p.phrase, p.frequency_level ?? 50);
+      if (phraseLine) lines.push(phraseLine);
+    }
   }
 
   return lines;
@@ -85,16 +124,17 @@ export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[]
 export function formatPreferredPhrasesForUserMessage(
   phrases: VoicePreferredPhraseLike[],
 ): string {
-  const formatted = phrases
+  const formatted = activePreferredPhrases(phrases)
+    .sort((a, b) => (b.frequency_level ?? 0) - (a.frequency_level ?? 0))
     .map((p) => {
-      const phrase = p.phrase?.trim();
-      if (!phrase) return "";
+      const label = brandMentionLevelLabel(p.frequency_level ?? 50);
+      const level = p.frequency_level ?? 50;
+      const annotated = `${p.phrase} (${label}, ${level})`;
       const url = p.url?.trim();
-      return url?.startsWith("https://") ? `${phrase}|${url}` : phrase;
-    })
-    .filter(Boolean);
+      return url?.startsWith("https://") ? `${annotated}|${url}` : annotated;
+    });
   if (!formatted.length) return "";
-  return `Preferred phrase pairs (use at most one when natural): ${formatted.join("; ")}`;
+  return `Preferred phrase pairs (use at most one; prefer higher frequency): ${formatted.join("; ")}`;
 }
 
 /** Strip emojis and em/en dashes; leave ASCII hyphen untouched. */

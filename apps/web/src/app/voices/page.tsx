@@ -13,6 +13,7 @@ import {
   saveVoiceAction,
 } from "./actions";
 import { BrandMentionSlider } from "./brand-mention-slider";
+import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
 import { PersonaGeneratedAt } from "./persona-generated-at";
 import { VOICE_FIELD_TIPS } from "./field-help";
@@ -43,12 +44,6 @@ function shouldPollPersona(
     (voice.persona_status === "pending" &&
       (voice.persona_generated_at != null || Boolean(voice.persona?.trim())))
   );
-}
-
-function preferredPhrasesToText(phrases: { phrase: string; url?: string }[]): string {
-  return phrases
-    .map((p) => (p.url ? `${p.phrase}|${p.url}` : p.phrase))
-    .join("\n");
 }
 
 function socialLinksToText(links: { label?: string; url: string }[]): string {
@@ -272,22 +267,15 @@ export default async function VoicesPage({
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm">
+          <div className="flex flex-col gap-1 text-sm">
             <LabelWithTip htmlFor="voice-preferred-phrases" tip={VOICE_FIELD_TIPS.preferred_phrases}>
               Preferred phrases for posts
             </LabelWithTip>
             <span className="text-xs text-[var(--muted)]">
-              One per line: Your phrase|https://optional-link.com. Link is optional. Used sometimes in generated post copy, not every time.
+              Each phrase has its own frequency slider. At most one phrase is used per generated post; higher frequency phrases are preferred.
             </span>
-            <textarea
-              id="voice-preferred-phrases"
-              name="preferred_phrases"
-              rows={3}
-              defaultValue={activeVoice ? preferredPhrasesToText(activeVoice.preferred_phrases) : ""}
-              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-              placeholder={"Grab it while it lasts|https://example.com/promo\nYour daily bonus drop"}
-            />
-          </label>
+            <PreferredPhrasesEditor defaultPhrases={activeVoice?.preferred_phrases ?? []} />
+          </div>
 
           <fieldset className="space-y-2 text-sm">
             <legend className="font-medium">Linked content signals</legend>

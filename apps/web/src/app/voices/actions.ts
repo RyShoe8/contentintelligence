@@ -76,31 +76,34 @@ async function validateSignalIds(
   return valid;
 }
 
-function parsePreferredPhrases(raw: string): { phrase: string; url?: string }[] {
-  const lines = raw.split(/\n+/).map((x) => x.trim()).filter(Boolean);
+function parsePreferredPhrasesFromForm(formData: FormData): {
+  phrase: string;
+  url?: string;
+  frequency_level: number;
+}[] {
+  const phrases = formData.getAll("preferred_phrase_phrase").map((v) => String(v).trim());
+  const urls = formData.getAll("preferred_phrase_url").map((v) => String(v).trim());
+  const frequencies = formData.getAll("preferred_phrase_frequency").map((v) => String(v).trim());
   const seen = new Set<string>();
-  const out: { phrase: string; url?: string }[] = [];
-  for (const line of lines) {
-    if (out.length >= 15) break;
-    const pipe = line.indexOf("|");
-    if (pipe > 0) {
-      const phrase = line.slice(0, pipe).trim();
-      const url = line.slice(pipe + 1).trim();
-      if (!phrase) continue;
-      const key = phrase.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const entry: { phrase: string; url?: string } = { phrase };
-      if (url && isHttpsUrl(url)) entry.url = url;
-      out.push(entry);
-    } else {
-      const phrase = line.trim();
-      if (!phrase) continue;
-      const key = phrase.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ phrase });
-    }
+  const out: { phrase: string; url?: string; frequency_level: number }[] = [];
+
+  for (let i = 0; i < phrases.length && out.length < 15; i++) {
+    const phrase = phrases[i]?.trim() ?? "";
+    if (!phrase) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const rawFreq = Number(frequencies[i]);
+    const frequency_level = Number.isFinite(rawFreq)
+      ? Math.max(0, Math.min(100, Math.round(rawFreq)))
+      : 50;
+    const urlRaw = urls[i]?.trim() ?? "";
+    const entry: { phrase: string; url?: string; frequency_level: number } = {
+      phrase,
+      frequency_level,
+    };
+    if (urlRaw && isHttpsUrl(urlRaw)) entry.url = urlRaw;
+    out.push(entry);
   }
   return out;
 }
@@ -117,7 +120,7 @@ function parseVoiceFields(formData: FormData) {
   const website_url = String(formData.get("website_url") ?? "").trim();
   const rss_feed_url = String(formData.get("rss_feed_url") ?? "").trim();
   const keywords = splitLines(String(formData.get("keywords") ?? "")).slice(0, 5);
-  const preferred_phrases = parsePreferredPhrases(String(formData.get("preferred_phrases") ?? ""));
+  const preferred_phrases = parsePreferredPhrasesFromForm(formData);
   const social_links = parseSocialLinks(String(formData.get("social_links") ?? ""));
   const persona = String(formData.get("persona") ?? "");
   const content_signal_ids = parseSignalIds(formData);

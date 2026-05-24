@@ -34,8 +34,8 @@ describe("derivePersonaSummary", () => {
       ],
     });
     assert.match(summary, /## Preferred phrases for posts/);
-    assert.match(summary, /- Grab it while it lasts\|https:\/\/example.com\/promo/);
-    assert.match(summary, /- Your daily bonus drop/);
+    assert.match(summary, /- Grab it while it lasts\|https:\/\/example.com\/promo \(Sometimes, 50\)/);
+    assert.match(summary, /- Your daily bonus drop \(Sometimes, 50\)/);
     assert.match(summary, /Use at most one phrase\+link pair when natural/);
   });
 

@@ -76,22 +76,45 @@ describe("buildVoiceStylePromptLines", () => {
 
   it("includes phrase pair instructions when provided", () => {
     const lines = buildVoiceStylePromptLines({
-      preferredPhrases: [{ phrase: "Grab it while it lasts", url: "https://example.com/promo" }],
+      preferredPhrases: [
+        { phrase: "Grab it while it lasts", url: "https://example.com/promo", frequency_level: 75 },
+      ],
     });
     assert.ok(lines.some((l) => l.includes("phrase+link pair")));
     assert.ok(lines.some((l) => l.includes("paired URL")));
+    assert.ok(lines.some((l) => l.includes("Prefer \"Grab it while it lasts\"")));
+  });
+
+  it("skips phrases with frequency 0", () => {
+    const lines = buildVoiceStylePromptLines({
+      preferredPhrases: [
+        { phrase: "Never use this", frequency_level: 0 },
+        { phrase: "Sometimes use", frequency_level: 50 },
+      ],
+    });
+    assert.ok(!lines.some((l) => l.includes("Never use this")));
+    assert.ok(lines.some((l) => l.includes("Sometimes use")));
   });
 });
 
 describe("formatPreferredPhrasesForUserMessage", () => {
-  it("formats phrase with url and phrase-only rows", () => {
+  it("formats phrase with url and frequency labels", () => {
     const text = formatPreferredPhrasesForUserMessage([
-      { phrase: "Grab it", url: "https://example.com/promo" },
-      { phrase: "Daily drop" },
+      { phrase: "Grab it", url: "https://example.com/promo", frequency_level: 75 },
+      { phrase: "Daily drop", frequency_level: 50 },
     ]);
-    assert.match(text, /Grab it\|https:\/\/example\.com\/promo/);
-    assert.match(text, /Daily drop/);
+    assert.match(text, /Grab it \(Often, 75\)\|https:\/\/example\.com\/promo/);
+    assert.match(text, /Daily drop \(Sometimes, 50\)/);
     assert.doesNotMatch(text, /Daily drop\|/);
+  });
+
+  it("omits phrases with frequency 0", () => {
+    const text = formatPreferredPhrasesForUserMessage([
+      { phrase: "Skip me", frequency_level: 0 },
+      { phrase: "Keep me", frequency_level: 50 },
+    ]);
+    assert.doesNotMatch(text, /Skip me/);
+    assert.match(text, /Keep me/);
   });
 });
 

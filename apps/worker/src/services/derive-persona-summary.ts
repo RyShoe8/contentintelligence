@@ -82,8 +82,13 @@ function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): strin
     .map((p) => {
       const phrase = p.phrase?.trim() ?? "";
       if (!phrase) return null;
+      const freq = Math.max(0, Math.min(100, Math.round(p.frequency_level ?? 50)));
+      const label = brandMentionLevelLabel(freq);
       const url = p.url?.trim();
-      return url?.startsWith("https://") ? `- ${phrase}|${url}` : `- ${phrase}`;
+      const suffix = ` (${label}, ${freq})`;
+      return url?.startsWith("https://")
+        ? `- ${phrase}|${url}${suffix}`
+        : `- ${phrase}${suffix}`;
     })
     .filter((x): x is string => Boolean(x));
 

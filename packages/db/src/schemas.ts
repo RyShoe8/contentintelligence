@@ -139,6 +139,10 @@ export const voicePreferredPhraseSchema = z.object({
       .refine((s) => s.startsWith("https://"), { message: "URL must use https" })
       .optional(),
   ),
+  frequency_level: z.preprocess(
+    (v) => (v == null || v === "" ? 50 : v),
+    z.coerce.number().int().min(0).max(100).default(50),
+  ),
 });
 
 export type VoicePreferredPhrase = z.infer<typeof voicePreferredPhraseSchema>;
@@ -178,13 +182,14 @@ function normalizePreferredPhrasesFromLegacy(
   const seen = new Set<string>();
   const out: VoicePreferredPhrase[] = [];
 
-  const pushPair = (phrase: string, url?: string) => {
+  const pushPair = (phrase: string, url?: string, frequencyLevel = 50) => {
     const p = phrase.trim();
     if (!p) return;
     const key = p.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    const entry: VoicePreferredPhrase = { phrase: p };
+    const level = Math.max(0, Math.min(100, Math.round(frequencyLevel)));
+    const entry: VoicePreferredPhrase = { phrase: p, frequency_level: level };
     if (url?.startsWith("https://")) entry.url = url;
     out.push(entry);
     if (out.length >= 15) return;
@@ -202,7 +207,12 @@ function normalizePreferredPhrasesFromLegacy(
         const urlVal = (x as { url?: unknown }).url;
         const url =
           typeof urlVal === "string" && urlVal.startsWith("https://") ? urlVal : linkUrls[i];
-        pushPair(phrase, url);
+        const freqRaw = (x as { frequency_level?: unknown }).frequency_level;
+        const frequencyLevel =
+          freqRaw == null || freqRaw === ""
+            ? 50
+            : Math.max(0, Math.min(100, Math.round(Number(freqRaw) || 50)));
+        pushPair(phrase, url, frequencyLevel);
       }
     }
   }
