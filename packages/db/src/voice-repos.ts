@@ -1,6 +1,7 @@
 import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
+import type { BrandProfile } from "./brand-profile.js";
 import type { Voice } from "./schemas.js";
 import { voiceSchema } from "./schemas.js";
 
@@ -10,10 +11,22 @@ function voices(db: Db): Collection<Voice> {
 
 export type VoiceConfig = Omit<
   Voice,
-  "id" | "organization_id" | "created_by" | "created_at" | "updated_at" | "persona_status" | "persona_generated_at"
+  | "id"
+  | "organization_id"
+  | "created_by"
+  | "created_at"
+  | "updated_at"
+  | "persona_status"
+  | "persona_generated_at"
+  | "brand_profile"
+  | "corpus_hash"
+  | "brand_profile_version"
 > & {
   persona_status?: Voice["persona_status"];
   persona_generated_at?: Date;
+  brand_profile?: BrandProfile;
+  corpus_hash?: string;
+  brand_profile_version?: number;
 };
 
 export async function listVoices(db: Db, organizationId: string): Promise<Voice[]> {
@@ -58,6 +71,9 @@ export async function upsertVoice(
     persona_status: data.persona_status ?? existing?.persona_status ?? "pending",
     persona_error: data.persona_error ?? undefined,
     persona_generated_at: data.persona_generated_at ?? existing?.persona_generated_at,
+    brand_profile: data.brand_profile ?? existing?.brand_profile,
+    corpus_hash: data.corpus_hash ?? existing?.corpus_hash,
+    brand_profile_version: data.brand_profile_version ?? existing?.brand_profile_version ?? 0,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,
     updated_at: now,
@@ -65,6 +81,80 @@ export async function upsertVoice(
   const parsed = voiceSchema.parse(row);
   await voices(db).replaceOne({ id: parsed.id }, parsed, { upsert: true });
   return parsed;
+}
+
+export async function updateVoiceBrandProfile(
+  db: Db,
+  id: string,
+  update: {
+    brand_profile: BrandProfile;
+    corpus_hash: string;
+    brand_profile_version: number;
+    persona: string;
+    persona_status: Voice["persona_status"];
+    persona_generated_at?: Date;
+    persona_error?: string;
+  },
+): Promise<Voice | null> {
+  const existing = await voices(db).findOne({ id });
+  if (!existing) return null;
+  const now = new Date();
+  const row: Voice = voiceSchema.parse({
+    ...existing,
+    brand_profile: update.brand_profile,
+    corpus_hash: update.corpus_hash,
+    brand_profile_version: update.brand_profile_version,
+    persona: update.persona,
+    persona_status: update.persona_status,
+    persona_error: update.persona_error ?? undefined,
+    persona_generated_at: update.persona_generated_at ?? existing.persona_generated_at,
+    updated_at: now,
+  });
+  await voices(db).replaceOne({ id }, row);
+  return row;
+}
+
+export async function mergeVoiceBrandMemory(
+  db: Db,
+  voiceId: string,
+  memoryPatch: Partial<BrandProfile["memory"]>,
+): Promise<Voice | null> {
+  const existing = await voices(db).findOne({ id: voiceId });
+  if (!existing?.brand_profile) return null;
+
+  const mergeList = (a: string[], b: string[] | undefined, max: number) => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const x of [...a, ...(b ?? [])]) {
+      const s = x.trim();
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (out.length >= max) break;
+    }
+    return out;
+  };
+
+  const mem = existing.brand_profile.memory;
+  const merged = {
+    favoritePhrases: mergeList(mem.favoritePhrases, memoryPatch.favoritePhrases, 20),
+    recurringTopics: mergeList(mem.recurringTopics, memoryPatch.recurringTopics, 20),
+    recurringJokes: mergeList(mem.recurringJokes, memoryPatch.recurringJokes, 20),
+    recurringCTAs: mergeList(mem.recurringCTAs, memoryPatch.recurringCTAs, 20),
+    recurringEnemies: mergeList(mem.recurringEnemies, memoryPatch.recurringEnemies, 20),
+    memoryUpdatedAt: new Date(),
+  };
+
+  const now = new Date();
+  const row: Voice = voiceSchema.parse({
+    ...existing,
+    brand_profile: { ...existing.brand_profile, memory: merged },
+    updated_at: now,
+  });
+  await voices(db).replaceOne({ id: voiceId }, row);
+  return row;
 }
 
 export async function updateVoicePersonaStatus(

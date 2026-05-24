@@ -1,5 +1,6 @@
-import type { DealMetrics } from "@content-resourcer/db";
+import type { DealMetrics, GenerationConstraints } from "@content-resourcer/db";
 import OpenAI from "openai";
+import { formatConstraintsForPrompt } from "./services/constraints/assemble-generation-constraints.js";
 import { env } from "./env.js";
 
 function formatDealLine(dm: DealMetrics): string {
@@ -23,6 +24,22 @@ function formatDealLine(dm: DealMetrics): string {
   return `${amounts} (~${pct}% deal strength)`;
 }
 
+function buildConstraintSystemPrompt(constraints: GenerationConstraints): string {
+  return `Write a short social media post promoting this deal email using the structured brand constraints below.
+Rules:
+- Follow positioning, audience relationship, and emotional baseline exactly.
+- Apply rhetorical patterns consistently.
+- Respect all taboos and avoid sounding like the "doesNotSoundLike" list.
+- Use favorite phrases and recurring topics naturally when relevant (do not force all of them).
+- Lead with the deal hook (price → value/bonus).
+- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.
+
+Brand generation constraints (JSON):
+${formatConstraintsForPrompt(constraints)}`;
+}
+
 export async function generateSocialPostCopy(opts: {
   title: string;
   summary?: string | null;
@@ -30,6 +47,7 @@ export async function generateSocialPostCopy(opts: {
   deal: DealMetrics;
   signalName?: string;
   persona?: string;
+  constraints?: GenerationConstraints;
 }): Promise<string> {
   if (!env.openaiApiKey) {
     const dealLine = formatDealLine(opts.deal);
@@ -46,8 +64,10 @@ export async function generateSocialPostCopy(opts: {
     opts.summary ? `Summary: ${opts.summary}` : null,
   ].filter(Boolean);
 
-  const systemPrompt = opts.persona?.trim()
-    ? `Write a short social media post promoting this deal email using the brand voice persona below.
+  const systemPrompt = opts.constraints
+    ? buildConstraintSystemPrompt(opts.constraints)
+    : opts.persona?.trim()
+      ? `Write a short social media post promoting this deal email using the brand voice persona below.
 Rules:
 - Follow the persona's tone, vocabulary, and formatting habits.
 - Lead with the deal hook (price → value/bonus).
@@ -57,7 +77,7 @@ Rules:
 
 Brand voice persona:
 ${opts.persona.trim()}`
-    : `Write a short social media post promoting this casino/promotional deal email.
+      : `Write a short social media post promoting this casino/promotional deal email.
 Rules:
 - Lead with the deal hook (price → value/bonus).
 - Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
@@ -68,7 +88,7 @@ Rules:
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensSocialPost,
-    temperature: 0.5,
+    temperature: opts.constraints ? 0.35 : 0.5,
     messages: [
       {
         role: "system",

@@ -16,6 +16,11 @@ import {
   type SignalItem,
 } from "@content-resourcer/db";
 import { generateSocialPostCopy } from "./generate-social-post.js";
+import { updateBrandMemoryFromCopies } from "./jobs/update-brand-memory.js";
+import {
+  resolveVoiceGenerationContext,
+  type VoiceGenerationContext,
+} from "./voice-generation-context.js";
 
 export type PostsSyncResult = {
   created: number;
@@ -32,11 +37,11 @@ export type PostsSyncOptions = {
 async function regenerateAllDraftPostsForContentSignal(
   db: Db,
   contentSignalId: string,
-  persona: string | undefined,
+  ctx: VoiceGenerationContext,
   signalName: string,
-): Promise<number> {
+): Promise<{ count: number; copies: string[] }> {
   const signal = await getContentSignal(db, contentSignalId);
-  if (!signal) return 0;
+  if (!signal) return { count: 0, copies: [] };
 
   const drafts = await listPosts(db, {
     organizationId: signal.organization_id,
@@ -45,7 +50,8 @@ async function regenerateAllDraftPostsForContentSignal(
     limit: 500,
   });
 
-  let regenerated = 0;
+  const copies: string[] = [];
+  let count = 0;
   for (const post of drafts) {
     const socialCopy = await generateSocialPostCopy({
       title: post.title,
@@ -53,7 +59,8 @@ async function regenerateAllDraftPostsForContentSignal(
       senderFrom: post.sender_from,
       deal: post.deal_metrics,
       signalName,
-      persona,
+      persona: ctx.persona,
+      constraints: ctx.constraints,
     });
 
     await upsertPost(db, {
@@ -70,10 +77,11 @@ async function regenerateAllDraftPostsForContentSignal(
       email_sent_at: post.email_sent_at,
       ai_summary: post.ai_summary,
     });
-    regenerated++;
+    copies.push(socialCopy);
+    count++;
   }
 
-  return regenerated;
+  return { count, copies };
 }
 
 async function upsertDealPost(
@@ -83,11 +91,11 @@ async function upsertDealPost(
     deal: DealMetrics;
     source: "auto" | "manual";
     signalName: string;
-    persona?: string;
+    ctx: VoiceGenerationContext;
     forceRegenerate?: boolean;
   },
-): Promise<"created" | "updated" | "skipped"> {
-  const { item, deal, source, signalName, persona, forceRegenerate } = opts;
+): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopy?: string }> {
+  const { item, deal, source, signalName, ctx, forceRegenerate } = opts;
   const dealKey = buildDealKey(deal);
   const existing = await findPostByItemDeal(db, item.id, dealKey);
 
@@ -99,7 +107,8 @@ async function upsertDealPost(
       senderFrom: item.sender_from,
       deal,
       signalName,
-      persona,
+      persona: ctx.persona,
+      constraints: ctx.constraints,
     });
   }
 
@@ -118,7 +127,11 @@ async function upsertDealPost(
     ai_summary: item.ai_summary,
   });
 
-  return created ? "created" : "updated";
+  const regenerated = !existing?.social_copy || forceRegenerate;
+  return {
+    outcome: created ? "created" : "updated",
+    socialCopy: regenerated ? socialCopy : undefined,
+  };
 }
 
 export async function syncPostsForContentSignal(
@@ -134,8 +147,7 @@ export async function syncPostsForContentSignal(
 
   const minPct = (signal.post_min_deal_pct ?? 50) / 100;
   const voice = await findVoiceForContentSignal(db, contentSignalId);
-  const persona =
-    voice?.persona_status === "ready" && voice.persona.trim() ? voice.persona : undefined;
+  const ctx = resolveVoiceGenerationContext(voice);
   const items = await listSignalItems(db, {
     organizationId: signal.organization_id,
     content_signal_id: contentSignalId,
@@ -147,6 +159,7 @@ export async function syncPostsForContentSignal(
 
   const result: PostsSyncResult = { created: 0, updated: 0, archived: 0, skipped: 0 };
   const keepKeys = new Set<string>();
+  const newCopies: string[] = [];
 
   for (const item of items) {
     const deals = dealsForPostEval(item);
@@ -161,14 +174,15 @@ export async function syncPostsForContentSignal(
       const dealKey = buildDealKey(deal);
       keepKeys.add(`${item.id}:${dealKey}`);
 
-      const outcome = await upsertDealPost(db, {
+      const { outcome, socialCopy } = await upsertDealPost(db, {
         item,
         deal,
         source: "auto",
         signalName: signal.name,
-        persona,
+        ctx,
         forceRegenerate,
       });
+      if (socialCopy) newCopies.push(socialCopy);
       if (outcome === "created") result.created++;
       else if (outcome === "updated") result.updated++;
       else result.skipped++;
@@ -178,12 +192,18 @@ export async function syncPostsForContentSignal(
   result.archived = await archiveAutoPostsForSignal(db, contentSignalId, keepKeys);
 
   if (forceRegenerate) {
-    result.regenerated = await regenerateAllDraftPostsForContentSignal(
+    const regen = await regenerateAllDraftPostsForContentSignal(
       db,
       contentSignalId,
-      persona,
+      ctx,
       signal.name,
     );
+    result.regenerated = regen.count;
+    newCopies.push(...regen.copies);
+  }
+
+  if (ctx.voiceId && newCopies.length) {
+    await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
   }
 
   return result;
@@ -202,8 +222,7 @@ export async function addPostsForSignalItem(
   const signal = await getContentSignal(db, item.content_signal_id);
   const signalName = signal?.name ?? "Content signal";
   const voice = await findVoiceForContentSignal(db, item.content_signal_id);
-  const persona =
-    voice?.persona_status === "ready" && voice.persona.trim() ? voice.persona : undefined;
+  const ctx = resolveVoiceGenerationContext(voice);
   const deals = dealsForPostEval(item);
 
   if (!deals.length) {
@@ -217,16 +236,18 @@ export async function addPostsForSignalItem(
 
   const result: PostsSyncResult = { created: 0, updated: 0, archived: 0, skipped: 0 };
   const posts: Post[] = [];
+  const newCopies: string[] = [];
 
   for (const deal of targets) {
-    const outcome = await upsertDealPost(db, {
+    const { outcome, socialCopy } = await upsertDealPost(db, {
       item,
       deal,
       source: "manual",
       signalName,
-      persona,
+      ctx,
       forceRegenerate: true,
     });
+    if (socialCopy) newCopies.push(socialCopy);
     if (outcome === "created") result.created++;
     else if (outcome === "updated") result.updated++;
     else result.skipped++;
@@ -234,6 +255,10 @@ export async function addPostsForSignalItem(
     const dealKey = buildDealKey(deal);
     const post = await findPostByItemDeal(db, item.id, dealKey);
     if (post) posts.push(post);
+  }
+
+  if (ctx.voiceId && newCopies.length) {
+    await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
   }
 
   return { ...result, posts };

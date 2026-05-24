@@ -1,3 +1,4 @@
+export * from "./brand-profile.js";
 export * from "./client.js";
 export * from "./collections.js";
 export * from "./deal-strength.js";

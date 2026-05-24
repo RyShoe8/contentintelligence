@@ -19,6 +19,28 @@ export type PostListQuery = {
   limit?: number;
 };
 
+export async function listPostsForVoice(
+  db: Db,
+  organizationId: string,
+  contentSignalIds: string[],
+  opts?: { status?: PostStatus; limit?: number },
+): Promise<Post[]> {
+  const ids = [...new Set(contentSignalIds.filter(Boolean))];
+  if (!ids.length) return [];
+
+  const filter: Record<string, unknown> = {
+    organization_id: organizationId,
+    content_signal_id: { $in: ids },
+    status: opts?.status ?? "draft",
+  };
+  const docs = await posts(db)
+    .find(filter)
+    .sort({ updated_at: -1 })
+    .limit(opts?.limit ?? 200)
+    .toArray();
+  return docs.map((d) => postSchema.parse(d));
+}
+
 export async function listPosts(db: Db, q: PostListQuery): Promise<Post[]> {
   const filter: Record<string, unknown> = {
     organization_id: q.organizationId,

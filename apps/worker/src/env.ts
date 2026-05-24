@@ -32,6 +32,10 @@ export const env = {
   maxTokensSummary: num("MAX_TOKENS_SUMMARY", 200),
   maxTokensDeal: num("MAX_TOKENS_DEAL", 250),
   maxTokensSocialPost: num("MAX_TOKENS_SOCIAL_POST", 300),
+  maxTokensBrandAnalyze: num("MAX_TOKENS_BRAND_ANALYZE", 1200),
+  brandCorpusMaxChars: num("BRAND_CORPUS_MAX_CHARS", 24000),
+  brandMemoryMaxItems: num("BRAND_MEMORY_MAX_ITEMS", 20),
+  brandProfileForceRebuild: bool("BRAND_PROFILE_FORCE_REBUILD", false),
   signalScheduleCron: process.env.SIGNAL_SCHEDULE_CRON ?? "* * * * *",
   /** Minimum lookback window (hours) when using gap since last ingest (avoids zero-width double-sync). */
   ingestMinGapHours: num("INGEST_MIN_GAP_HOURS", 5 / 60),

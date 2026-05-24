@@ -1,11 +1,10 @@
 import type { Db } from "mongodb";
 import {
-  getContentSignal,
   getVoice,
+  updateVoiceBrandProfile,
   updateVoicePersonaStatus,
 } from "@content-resourcer/db";
-import { generateVoicePersona } from "./generate-voice-persona.js";
-import { buildVoiceResearchCorpus } from "./voice-research.js";
+import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
 
 export async function runVoicePersonaGeneration(db: Db, voiceId: string): Promise<void> {
   const voice = await getVoice(db, voiceId);
@@ -19,16 +18,15 @@ export async function runVoicePersonaGeneration(db: Db, voiceId: string): Promis
   });
 
   try {
-    const linkedSignals = [];
-    for (const signalId of voice.content_signal_ids) {
-      const cs = await getContentSignal(db, signalId);
-      if (cs) linkedSignals.push(cs);
-    }
+    const { profile, persona, corpusHash, cached } = await analyzeBrandProfile(db, voice);
+    const nextVersion = cached
+      ? (voice.brand_profile_version ?? 0)
+      : (voice.brand_profile_version ?? 0) + 1;
 
-    const researchCorpus = await buildVoiceResearchCorpus(voice);
-    const persona = await generateVoicePersona({ voice, researchCorpus, linkedSignals });
-
-    await updateVoicePersonaStatus(db, voiceId, {
+    await updateVoiceBrandProfile(db, voiceId, {
+      brand_profile: profile,
+      corpus_hash: corpusHash,
+      brand_profile_version: nextVersion,
       persona,
       persona_status: "ready",
       persona_generated_at: new Date(),

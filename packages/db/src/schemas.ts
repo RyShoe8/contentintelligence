@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { brandProfileSchema } from "./brand-profile.js";
 
 export const SOURCE_TYPE_EMAIL_GMAIL = "email_gmail" as const;
 
@@ -178,6 +179,18 @@ export const voiceSchema = z.object({
     z.string().optional(),
   ),
   persona_generated_at: z.coerce.date().optional(),
+  brand_profile: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    brandProfileSchema.optional(),
+  ),
+  corpus_hash: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : String(v)),
+    z.string().optional(),
+  ),
+  brand_profile_version: z.preprocess(
+    (v) => (v == null || v === "" ? 0 : v),
+    z.number().int().min(0).default(0),
+  ),
   created_by: z.string().email(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
