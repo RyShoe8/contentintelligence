@@ -1,6 +1,7 @@
 export * from "./client.js";
 export * from "./collections.js";
 export * from "./deal-strength.js";
+export * from "./template-repos.js";
 export * from "./retention.js";
 export * from "./org-repos.js";
 export * from "./post-repos.js";

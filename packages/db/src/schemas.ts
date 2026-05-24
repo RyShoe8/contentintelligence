@@ -94,6 +94,33 @@ export const contentSignalSchema = z.object({
 
 export type ContentSignal = z.infer<typeof contentSignalSchema>;
 
+export const contentSignalTemplateSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  keywords: z.array(z.string()).default([]),
+  lookback_window_hours: z.number().int().positive().max(24 * 90).default(168),
+  deal_unit_tokens: z.preprocess(
+    normalizeDealUnitTokensIn,
+    z.array(z.string().max(12)).max(32).default([]),
+  ),
+  active: z.boolean().default(true),
+  post_min_deal_pct: z.preprocess(
+    (val) => (val == null || val === "" ? 50 : val),
+    z.number().int().min(0).max(100).default(50),
+  ),
+  ingest_interval_minutes: z.preprocess(
+    (val) => (val == null || val === "" ? null : val),
+    z.number().int().positive().max(24 * 60).nullable().default(null),
+  ),
+  created_by: z.string().email(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type ContentSignalTemplate = z.infer<typeof contentSignalTemplateSchema>;
+
 export const sourceSchema = z.object({
   id: z.string().uuid(),
   content_signal_id: z.string().uuid(),

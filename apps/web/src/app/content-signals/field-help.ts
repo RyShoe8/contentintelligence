@@ -1,5 +1,8 @@
 export const CONTENT_SIGNAL_FIELD_TIPS = {
   name: "A short label for this content signal (e.g. Gambling, Sports).",
+  template_name: "A reusable name for this template (e.g. Casinos starter).",
+  templates:
+    "Templates store signal settings only — keywords, lookback, deal units, and Posts defaults. Gmail sources are not included; connect sources after creating a live signal.",
   description: "Optional notes for your team.",
   keywords:
     "Comma or newline. After Gmail fetch, message subject + body must contain at least one keyword (case-insensitive). If empty, keyword check is skipped.",

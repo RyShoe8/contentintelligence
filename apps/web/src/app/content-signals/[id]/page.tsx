@@ -14,15 +14,19 @@ import {
   deleteSourceAction,
   toggleSourceAction,
 } from "../actions";
+import { saveTemplateFromSignalAction } from "../template-actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContentSignalDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ signal_created?: string; template_saved?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const session = await requireOrgMember();
   const db = await connectMongo();
   await ensureIndexes(db);
@@ -53,6 +57,37 @@ export default async function ContentSignalDetailPage({
           {contentSignal.active ? "Active" : "Inactive"} · Lookback {contentSignal.lookback_window_hours}h ·{" "}
           Keywords: {contentSignal.keywords.join(", ") || "—"}
         </p>
+        {sp.signal_created === "1" ? (
+          <p className="mt-2 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+            Content signal created from template. Add a Gmail source below to start ingesting.
+          </p>
+        ) : null}
+        {sp.template_saved === "1" ? (
+          <p className="mt-2 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+            Template saved.
+          </p>
+        ) : null}
+        <form
+          action={saveTemplateFromSignalAction}
+          className="mt-3 flex flex-wrap items-end gap-2"
+        >
+          <input type="hidden" name="content_signal_id" value={id} />
+          <input type="hidden" name="return_to" value={`/content-signals/${id}`} />
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
+            <span className="text-[var(--muted)]">Save as template</span>
+            <input
+              name="template_name"
+              placeholder={`${contentSignal.name} template`}
+              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+          >
+            Save template
+          </button>
+        </form>
       </div>
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">

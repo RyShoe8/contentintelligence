@@ -22,7 +22,7 @@ function splitLines(s: string): string[] {
     .filter(Boolean);
 }
 
-async function getSignalForSession(
+export async function getSignalForSession(
   db: Awaited<ReturnType<typeof connectMongo>>,
   id: string,
   session: AppSession,
