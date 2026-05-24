@@ -2,6 +2,13 @@ import type { DealMetrics, GenerationConstraints } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { formatConstraintsForPrompt } from "./services/constraints/assemble-generation-constraints.js";
 import { env } from "./env.js";
+import {
+  buildVoiceStylePromptLines,
+  formatPreferredLinksForUserMessage,
+  sanitizeVoicePostCopy,
+  type VoiceSocialLinkLike,
+  type VoiceStylePromptOpts,
+} from "./voice-style-rules.js";
 
 function formatDealLine(dm: DealMetrics): string {
   const pay =
@@ -24,7 +31,16 @@ function formatDealLine(dm: DealMetrics): string {
   return `${amounts} (~${pct}% deal strength)`;
 }
 
-function buildConstraintSystemPrompt(constraints: GenerationConstraints, contentOnly: boolean): string {
+function styleRulesBlock(style: VoiceStylePromptOpts): string {
+  const lines = buildVoiceStylePromptLines(style);
+  return lines.length ? `\n${lines.join("\n")}` : "";
+}
+
+function buildConstraintSystemPrompt(
+  constraints: GenerationConstraints,
+  contentOnly: boolean,
+  style: VoiceStylePromptOpts,
+): string {
   const leadRule = contentOnly
     ? "- Lead with the most newsworthy or interesting hook from the email."
     : "- Lead with the deal hook (price → value/bonus).";
@@ -37,7 +53,7 @@ Rules:
 ${leadRule}
 - Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.
+- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}
 
 Brand generation constraints (JSON):
 ${formatConstraintsForPrompt(constraints)}`;
@@ -49,17 +65,28 @@ export async function generateSocialPostCopy(opts: {
   senderFrom?: string;
   deal?: DealMetrics | null;
   signalName?: string;
+  brandName?: string;
+  preferredPhrases?: string[];
+  preferredLinks?: VoiceSocialLinkLike[];
   persona?: string;
   constraints?: GenerationConstraints;
 }): Promise<string> {
   const contentOnly = !opts.deal;
+  const style: VoiceStylePromptOpts = {
+    brandName: opts.brandName,
+    preferredPhrases: opts.preferredPhrases,
+    preferredLinks: opts.preferredLinks,
+  };
 
   if (!env.openaiApiKey) {
+    let copy: string;
     if (contentOnly) {
-      return `${opts.title}${opts.summary ? `\n\n${opts.summary}` : ""}`.trim();
+      copy = `${opts.title}${opts.summary ? `\n\n${opts.summary}` : ""}`.trim();
+    } else {
+      const dealLine = formatDealLine(opts.deal!);
+      copy = `${opts.title}\n\n${dealLine}${opts.summary ? `\n\n${opts.summary}` : ""}`.trim();
     }
-    const dealLine = formatDealLine(opts.deal!);
-    return `${opts.title}\n\n${dealLine}${opts.summary ? `\n\n${opts.summary}` : ""}`.trim();
+    return sanitizeVoicePostCopy(copy);
   }
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
@@ -70,10 +97,13 @@ export async function generateSocialPostCopy(opts: {
     opts.signalName ? `Content signal: ${opts.signalName}` : null,
     dealLine ? `Deal tier: ${dealLine}` : null,
     opts.summary ? `Summary: ${opts.summary}` : null,
+    opts.preferredLinks?.length
+      ? formatPreferredLinksForUserMessage(opts.preferredLinks)
+      : null,
   ].filter(Boolean);
 
   const systemPrompt = opts.constraints
-    ? buildConstraintSystemPrompt(opts.constraints, contentOnly)
+    ? buildConstraintSystemPrompt(opts.constraints, contentOnly, style)
     : opts.persona?.trim()
       ? `Write a short social media post promoting this ${contentOnly ? "email content" : "deal email"} using the brand voice persona below.
 Rules:
@@ -81,7 +111,7 @@ Rules:
 ${contentOnly ? "- Lead with the most newsworthy or interesting hook from the email." : "- Lead with the deal hook (price → value/bonus)."}
 - Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.
+- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}
 
 Brand voice persona:
 ${opts.persona.trim()}`
@@ -92,14 +122,14 @@ Rules:
 - Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
 - Friendly, informative promotional tone. No hashtags unless natural (max 2).
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.`
+- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}`
         : `Write a short social media post promoting this casino/promotional deal email.
 Rules:
 - Lead with the deal hook (price → value/bonus).
 - Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
 - Friendly, urgent promotional tone. No hashtags unless natural (max 2).
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.`;
+- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}`;
 
   const res = await client.chat.completions.create({
     model: env.openaiModel,
@@ -115,7 +145,8 @@ Rules:
   });
 
   const fallback = contentOnly ? opts.title : dealLine ?? opts.title;
-  return res.choices[0]?.message?.content?.trim() ?? fallback;
+  const raw = res.choices[0]?.message?.content?.trim() ?? fallback;
+  return sanitizeVoicePostCopy(raw);
 }
 
 export { formatDealLine };

@@ -149,6 +149,23 @@ function normalizeVoiceKeywords(val: unknown): string[] {
   return out;
 }
 
+function normalizePreferredPhrases(val: unknown): string[] {
+  if (!Array.isArray(val)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of val) {
+    if (typeof x !== "string") continue;
+    const s = x.trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= 15) break;
+  }
+  return out;
+}
+
 function optionalHttpsUrl() {
   return z.preprocess(
     (v) => (v == null ? "" : String(v).trim()),
@@ -171,6 +188,14 @@ export const voiceSchema = z.object({
   rss_feed_url: optionalHttpsUrl().default(""),
   social_links: z.array(voiceSocialLinkSchema).max(10).default([]),
   keywords: z.preprocess(normalizeVoiceKeywords, z.array(z.string()).max(5).default([])),
+  preferred_phrases: z.preprocess(
+    normalizePreferredPhrases,
+    z.array(z.string()).max(15).default([]),
+  ),
+  preferred_links: z.preprocess(
+    (val) => (Array.isArray(val) ? val : []),
+    z.array(voiceSocialLinkSchema).max(10).default([]),
+  ),
   content_signal_ids: z.array(z.string().uuid()).default([]),
   persona: z.string().default(""),
   persona_status: voicePersonaStatusSchema.default("pending"),

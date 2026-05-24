@@ -1,4 +1,5 @@
 import type { BrandProfile } from "@content-resourcer/db";
+import { GLOBAL_VOICE_TABOOS } from "../voice-style-rules.js";
 
 export function derivePersonaSummary(profile: BrandProfile, voiceName: string): string {
   const lines = [
@@ -29,9 +30,7 @@ export function derivePersonaSummary(profile: BrandProfile, voiceName: string): 
       : ["- Lead with deal hook", "- Keep sentences short"]),
     "",
     "## Taboos",
-    ...(profile.taboos.length
-      ? profile.taboos.map((t) => `- ${t}`)
-      : ["- Avoid generic AI phrasing", "- Avoid corporate jargon"]),
+    ...tabooLines(profile.taboos),
     "",
     "## Content objectives",
     profile.contentObjectives.length
@@ -51,4 +50,17 @@ export function derivePersonaSummary(profile: BrandProfile, voiceName: string): 
   ].filter((x): x is string => Boolean(x));
 
   return lines.join("\n");
+}
+
+function tabooLines(taboos: string[]): string[] {
+  const merged = [...taboos];
+  for (const t of GLOBAL_VOICE_TABOOS) {
+    if (!merged.some((x) => x.toLowerCase() === t.toLowerCase())) {
+      merged.push(t);
+    }
+  }
+  if (!merged.length) {
+    return ["- Avoid generic AI phrasing", "- Avoid corporate jargon"];
+  }
+  return merged.map((t) => `- ${t}`);
 }

@@ -37,6 +37,16 @@ export type PostsSyncOptions = {
   forceRegenerate?: boolean;
 };
 
+function voiceCopyOpts(ctx: VoiceGenerationContext) {
+  return {
+    brandName: ctx.brandName,
+    preferredPhrases: ctx.preferredPhrases,
+    preferredLinks: ctx.preferredLinks,
+    persona: ctx.persona,
+    constraints: ctx.constraints,
+  };
+}
+
 async function regenerateAllDraftPostsForContentSignal(
   db: Db,
   contentSignalId: string,
@@ -63,8 +73,7 @@ async function regenerateAllDraftPostsForContentSignal(
       senderFrom: post.sender_from,
       deal: contentOnly ? undefined : post.deal_metrics,
       signalName,
-      persona: ctx.persona,
-      constraints: ctx.constraints,
+      ...voiceCopyOpts(ctx),
     });
 
     await upsertPost(db, {
@@ -111,8 +120,7 @@ async function upsertDealPost(
       senderFrom: item.sender_from,
       deal,
       signalName,
-      persona: ctx.persona,
-      constraints: ctx.constraints,
+      ...voiceCopyOpts(ctx),
     });
   }
 
@@ -157,8 +165,7 @@ async function upsertContentOnlyPost(
       summary: item.ai_summary,
       senderFrom: item.sender_from,
       signalName,
-      persona: ctx.persona,
-      constraints: ctx.constraints,
+      ...voiceCopyOpts(ctx),
     });
   }
 

@@ -229,6 +229,40 @@ export default async function VoicesPage({
             />
           </label>
 
+          <label className="flex flex-col gap-1 text-sm">
+            <LabelWithTip htmlFor="voice-preferred-phrases" tip={VOICE_FIELD_TIPS.preferred_phrases}>
+              Preferred phrases for posts
+            </LabelWithTip>
+            <span className="text-xs text-[var(--muted)]">
+              One per line. Used sometimes in generated post copy, not every time.
+            </span>
+            <textarea
+              id="voice-preferred-phrases"
+              name="preferred_phrases"
+              rows={3}
+              defaultValue={activeVoice?.preferred_phrases.join("\n") ?? ""}
+              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
+              placeholder={"Grab it while it lasts\nYour daily bonus drop"}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <LabelWithTip htmlFor="voice-preferred-links" tip={VOICE_FIELD_TIPS.preferred_links}>
+              Preferred links for posts
+            </LabelWithTip>
+            <span className="text-xs text-[var(--muted)]">
+              One URL per line. Optional label: Platform|https://…
+            </span>
+            <textarea
+              id="voice-preferred-links"
+              name="preferred_links"
+              rows={3}
+              defaultValue={activeVoice ? socialLinksToText(activeVoice.preferred_links) : ""}
+              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
+              placeholder="https://example.com/promo"
+            />
+          </label>
+
           <fieldset className="space-y-2 text-sm">
             <legend className="font-medium">Linked content signals</legend>
             <p className="text-xs text-[var(--muted)]">

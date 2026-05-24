@@ -81,10 +81,22 @@ function parseVoiceFields(formData: FormData) {
   const website_url = String(formData.get("website_url") ?? "").trim();
   const rss_feed_url = String(formData.get("rss_feed_url") ?? "").trim();
   const keywords = splitLines(String(formData.get("keywords") ?? "")).slice(0, 5);
+  const preferred_phrases = splitLines(String(formData.get("preferred_phrases") ?? "")).slice(0, 15);
+  const preferred_links = parseSocialLinks(String(formData.get("preferred_links") ?? "")).slice(0, 10);
   const social_links = parseSocialLinks(String(formData.get("social_links") ?? ""));
   const persona = String(formData.get("persona") ?? "");
   const content_signal_ids = parseSignalIds(formData);
-  return { name, website_url, rss_feed_url, keywords, social_links, persona, content_signal_ids };
+  return {
+    name,
+    website_url,
+    rss_feed_url,
+    keywords,
+    preferred_phrases,
+    preferred_links,
+    social_links,
+    persona,
+    content_signal_ids,
+  };
 }
 
 async function workerVoiceGenerate(voiceId: string) {
@@ -144,6 +156,8 @@ export async function saveVoiceAction(formData: FormData) {
     website_url: fields.website_url,
     rss_feed_url: fields.rss_feed_url,
     social_links: fields.social_links,
+    preferred_phrases: fields.preferred_phrases,
+    preferred_links: fields.preferred_links,
     keywords: fields.keywords,
     content_signal_ids: signalIds,
     persona: fields.persona,

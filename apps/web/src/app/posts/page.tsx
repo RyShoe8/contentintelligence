@@ -260,7 +260,9 @@ export default async function PostsPage({
             </p>
             <ul className="space-y-4">
               {posts.map((post) => {
-                const images = signalItemsById.get(post.signal_item_id)?.email_images;
+                const signalItem = signalItemsById.get(post.signal_item_id);
+                const images = signalItem?.email_images;
+                const dealUrl = signalItem?.original_url;
                 return (
                 <li
                   key={post.id}
@@ -321,6 +323,18 @@ export default async function PostsPage({
                   <pre className="mt-3 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm text-[var(--fg)]">
                     {post.social_copy}
                   </pre>
+                  {dealUrl ? (
+                    <p className="mt-3 text-sm">
+                      <a
+                        href={dealUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-all text-[var(--accent)] hover:underline"
+                      >
+                        Deal link
+                      </a>
+                    </p>
+                  ) : null}
                   {images?.length ? <EmailImageGallery images={images} /> : null}
                 </li>
               );

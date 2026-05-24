@@ -19,6 +19,7 @@ import {
 } from "../services/corpus/build-brand-content-corpus.js";
 import { extractContradictions } from "../services/contradictions/extract-contradictions.js";
 import { derivePersonaSummary } from "../services/derive-persona-summary.js";
+import { mergeTaboosWithGlobal } from "../voice-style-rules.js";
 
 export type AnalyzeBrandProfileResult = {
   profile: BrandProfile;
@@ -70,7 +71,7 @@ export async function analyzeBrandProfile(
     positioning: core.positioning,
     audienceRelationship: core.audienceRelationship,
     emotionalBaseline: core.emotionalBaseline,
-    taboos: core.taboos,
+    taboos: mergeTaboosWithGlobal(core.taboos),
     rhetoricalPatterns,
     contentObjectives: core.contentObjectives,
     contradictions,

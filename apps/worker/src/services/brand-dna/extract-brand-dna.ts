@@ -126,7 +126,13 @@ export function fallbackCoreBrandAnalysis(voiceName: string, keywords: string[])
     positioning: { primary: `${voiceName} brand voice`, secondary: kw },
     audienceRelationship: { style: "trusted advisor" },
     emotionalBaseline: { primary: "confident urgency" },
-    taboos: ["avoid generic AI phrasing", "avoid corporate jargon", "avoid exaggerated hype"],
+    taboos: [
+      "avoid generic AI phrasing",
+      "avoid corporate jargon",
+      "avoid exaggerated hype",
+      "no emojis",
+      "no em dash or en dash punctuation (use commas or periods instead)",
+    ],
     contentObjectives: ["engagement", "conversion"],
     contradictions: { primaryTrait: "analytical", secondaryTrait: "accessible" },
     contrastive: {
