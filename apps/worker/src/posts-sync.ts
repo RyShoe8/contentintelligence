@@ -78,6 +78,7 @@ export async function syncPostsForContentSignal(
   const items = await listSignalItems(db, {
     organizationId: signal.organization_id,
     content_signal_id: contentSignalId,
+    max_age_hours: signal.lookback_window_hours,
     sort: "created_at",
     order: "desc",
     limit: 500,

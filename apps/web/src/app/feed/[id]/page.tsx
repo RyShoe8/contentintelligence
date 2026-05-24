@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ensureIndexes, getSignalItem } from "@content-resourcer/db";
+import { ensureIndexes, getContentSignal, getSignalItem, isWithinLookback } from "@content-resourcer/db";
 import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
@@ -19,6 +19,14 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
   if (
     !item ||
     (!isPlatformAdmin(session) && !canAccessOrganization(item.organization_id, session))
+  ) {
+    notFound();
+  }
+
+  const contentSignal = await getContentSignal(db, item.content_signal_id);
+  if (
+    contentSignal &&
+    !isWithinLookback(item, contentSignal.lookback_window_hours)
   ) {
     notFound();
   }

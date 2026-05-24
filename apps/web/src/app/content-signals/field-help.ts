@@ -4,7 +4,7 @@ export const CONTENT_SIGNAL_FIELD_TIPS = {
   keywords:
     "Comma or newline. After Gmail fetch, message subject + body must contain at least one keyword (case-insensitive). If empty, keyword check is skipped.",
   lookback_window_hours:
-    "Maximum age for the Gmail after: filter on first sync. After a successful ingest, the worker uses the smaller of this value and time since last ingest.",
+    "How far back to fetch mail and how long to keep items in the feed and database. Older rows are removed on sync and when you save this setting. After a successful ingest, the worker also uses the smaller of this value and time since last ingest for Gmail fetch.",
   deal_unit_tokens:
     "Comma or newline. Suffix labels for credited amounts (e.g. SC, FC, GC). Dollar amounts are parsed automatically; do not compare USD pay to SC credits in deal filters. If empty, ingest uses SC, FC, and GC for deal parsing. Does not change Gmail search.",
   active: "When off, ingest skips all sources attached to this content signal.",

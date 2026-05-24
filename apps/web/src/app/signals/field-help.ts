@@ -16,7 +16,7 @@ export const SIGNAL_FIELD_TIPS = {
   keywords:
     "Comma or newline. Merged with this vertical’s default keywords. After fetch, the message subject plus body text must contain at least one of those keywords (case-insensitive). If the merged list is empty, this check is skipped.",
   lookback_window_hours:
-    "Maximum age for the Gmail after: filter on a cold or first sync. After a successful ingest pass, the worker uses the smaller of this value and the time since the last pass (with a small minimum gap). Gmail after: is date-only (no hour), so same-calendar-day repeats may still list overlapping message IDs until the date rolls.",
+    "How far back to fetch mail and how long to keep items in the feed and database. Older rows are removed on sync and when you save this setting. After a successful ingest pass, the worker uses the smaller of this value and the time since the last pass (with a small minimum gap). Gmail after: is date-only (no hour), so same-calendar-day repeats may still list overlapping message IDs until the date rolls.",
   scan_body:
     "When on, more of the email body is converted to text for scoring and summaries. When off, only about the first five lines of extracted body text are used.",
   ai_summary_enabled:

@@ -2,6 +2,7 @@
 
 import {
   ensureIndexes,
+  purgeExpiredSignalItems,
   upsertContentSignal,
   deleteContentSignal,
   getContentSignal,
@@ -60,9 +61,11 @@ export async function saveContentSignalAction(formData: FormData) {
     deal_unit_tokens,
     active,
   });
+  await purgeExpiredSignalItems(db, saved.id, saved.lookback_window_hours);
   revalidatePath("/content-signals");
   revalidatePath(`/content-signals/${saved.id}`);
   revalidatePath("/feed");
+  revalidatePath("/posts");
   redirect(id ? `/content-signals/${saved.id}` : "/content-signals");
 }
 

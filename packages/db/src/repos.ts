@@ -17,6 +17,12 @@ import {
   sourceSchema,
 } from "./schemas.js";
 import { SOURCE_TYPE_EMAIL_GMAIL } from "./schemas.js";
+import {
+  buildExpiredSignalItemsFilter,
+  lookbackCutoffDate,
+  maxAgeExprFilter,
+  contentSignalScopeFilter,
+} from "./retention.js";
 
 function contentSignals(db: Db): Collection<ContentSignal> {
   return db.collection<ContentSignal>(COLLECTIONS.content_signals);
@@ -183,6 +189,7 @@ export type SignalFeedQuery = {
   min_effective_savings_pct?: number;
   min_confidence?: number;
   has_deal_metrics?: boolean;
+  max_age_hours?: number;
   sort: "created_at" | "relevance_score" | "deal_savings";
   order: "asc" | "desc";
   limit?: number;
@@ -239,6 +246,9 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
         { "deal_metrics.bonus_pct": { $gt: 0 } },
       ],
     });
+  }
+  if (q.max_age_hours !== undefined) {
+    clauses.push(maxAgeExprFilter(lookbackCutoffDate(q.max_age_hours)));
   }
 
   const filter: Record<string, unknown> =
@@ -303,11 +313,35 @@ export async function upsertSignalItem(db: Db, item: SignalItem): Promise<"inser
   return result.upsertedCount > 0 ? "inserted" : "updated";
 }
 
+/** Delete feed rows older than lookback and archive linked draft posts. */
+export async function purgeExpiredSignalItems(
+  db: Db,
+  contentSignalId: string,
+  lookbackHours: number,
+): Promise<{ deletedItems: number; archivedPosts: number }> {
+  const expiredFilter = buildExpiredSignalItemsFilter(contentSignalId, lookbackHours);
+  const expired = await signalItems(db).find(expiredFilter).project({ id: 1 }).toArray();
+  const ids = expired.map((d) => d.id).filter(Boolean);
+  if (ids.length === 0) {
+    return { deletedItems: 0, archivedPosts: 0 };
+  }
+
+  const deleteResult = await signalItems(db).deleteMany({ id: { $in: ids } });
+  const now = new Date();
+  const postsResult = await db.collection(COLLECTIONS.posts).updateMany(
+    { signal_item_id: { $in: ids }, status: "draft" },
+    { $set: { status: "archived", updated_at: now } },
+  );
+
+  return {
+    deletedItems: deleteResult.deletedCount,
+    archivedPosts: postsResult.modifiedCount,
+  };
+}
+
 /** Remove all feed rows for a content signal and reset ingest cursor for a full re-sync. */
 export async function clearFeedForContentSignal(db: Db, contentSignalId: string): Promise<number> {
-  const result = await signalItems(db).deleteMany({
-    $or: [{ content_signal_id: contentSignalId }, { vertical_id: contentSignalId }],
-  });
+  const result = await signalItems(db).deleteMany(contentSignalScopeFilter(contentSignalId));
   const now = new Date();
   await contentSignals(db).updateOne(
     { id: contentSignalId },

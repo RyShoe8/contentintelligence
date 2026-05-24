@@ -68,6 +68,7 @@ export default async function FeedPage({
         min_effective_savings_pct,
         min_confidence,
         has_deal_metrics: has_deal_metrics || undefined,
+        max_age_hours: selectedSignal?.lookback_window_hours,
         sort,
         order,
         limit: 100,
@@ -187,7 +188,9 @@ export default async function FeedPage({
             ) : null}
             <p className="mt-2 text-xs text-[var(--muted)]">
               Clear feed removes ingested rows for this signal and resets the lookback cursor so the next
-              sync can pick up mail again after you change keywords, labels, or sources.{" "}
+              sync can pick up mail again after you change keywords, labels, or sources. Items older than
+              the signal lookback ({selectedSignal?.lookback_window_hours ?? 168}h) are removed
+              automatically on sync.{" "}
               <Link href={`/content-signals/${selectedId}`} className="text-[var(--accent)] hover:underline">
                 Manage sources
               </Link>

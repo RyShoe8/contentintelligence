@@ -8,6 +8,7 @@ import {
   getGmailOAuth,
   upsertSignalItem,
   listEnabledSources,
+  purgeExpiredSignalItems,
   setGmailOAuthIngestError,
   touchContentSignalLastIngest,
 } from "@content-resourcer/db";
@@ -50,6 +51,8 @@ export type IngestStats = {
   skippedError: number;
   storedMinimal: number;
   storedFull: number;
+  purgedItems: number;
+  archivedPosts: number;
   sourceErrors: IngestSourceError[];
 };
 
@@ -78,6 +81,8 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
     skippedError: 0,
     storedMinimal: 0,
     storedFull: 0,
+    purgedItems: 0,
+    archivedPosts: 0,
     sourceErrors: [],
   };
 
@@ -106,6 +111,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
   });
 
   const contentSignalCache = new Map<string, Awaited<ReturnType<typeof getContentSignal>>>();
+  const purgedSignals = new Set<string>();
 
   for (const source of sourceList) {
     ingestLog("source_begin", {
@@ -354,6 +360,28 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       await touchContentSignalLastIngest(db, contentSignal.id, new Date());
     } catch (e) {
       console.error("[ingest] touchContentSignalLastIngest failed", contentSignal.id, e);
+    }
+
+    if (!purgedSignals.has(contentSignal.id)) {
+      purgedSignals.add(contentSignal.id);
+      try {
+        const purge = await purgeExpiredSignalItems(
+          db,
+          contentSignal.id,
+          contentSignal.lookback_window_hours,
+        );
+        stats.purgedItems += purge.deletedItems;
+        stats.archivedPosts += purge.archivedPosts;
+        if (purge.deletedItems > 0 || purge.archivedPosts > 0) {
+          ingestLog("retention_purge", {
+            contentSignalId: contentSignal.id,
+            lookbackHours: contentSignal.lookback_window_hours,
+            ...purge,
+          });
+        }
+      } catch (e) {
+        console.error("[ingest] purgeExpiredSignalItems failed", contentSignal.id, e);
+      }
     }
   }
 
