@@ -1,7 +1,21 @@
 import type { BrandProfile } from "@content-resourcer/db";
-import { GLOBAL_VOICE_TABOOS } from "../voice-style-rules.js";
+import {
+  brandMentionLevelLabel,
+  buildBrandMentionPromptLine,
+  GLOBAL_VOICE_TABOOS,
+  type VoicePreferredPhraseLike,
+} from "../voice-style-rules.js";
 
-export function derivePersonaSummary(profile: BrandProfile, voiceName: string): string {
+export type PersonaVoiceOpts = {
+  brandMentionLevel?: number;
+  preferredPhrases?: VoicePreferredPhraseLike[];
+};
+
+export function derivePersonaSummary(
+  profile: BrandProfile,
+  voiceName: string,
+  voiceOpts?: PersonaVoiceOpts,
+): string {
   const lines = [
     `# ${voiceName} voice`,
     "",
@@ -47,9 +61,40 @@ export function derivePersonaSummary(profile: BrandProfile, voiceName: string): 
     profile.memory.recurringEnemies.length
       ? `Recurring enemies: ${profile.memory.recurringEnemies.join("; ")}`
       : null,
+    ...(voiceOpts ? voiceSettingsSections(voiceName, voiceOpts) : []),
   ].filter((x): x is string => Boolean(x));
 
   return lines.join("\n");
+}
+
+function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): string[] {
+  const level = Math.max(0, Math.min(100, Math.round(opts.brandMentionLevel ?? 50)));
+  const mentionLine = buildBrandMentionPromptLine(voiceName, level);
+
+  const brandMention = [
+    "",
+    "## Brand mention frequency",
+    `- Setting: ${level} (${brandMentionLevelLabel(level)})`,
+    mentionLine,
+  ].filter((x): x is string => Boolean(x));
+
+  const pairs = (opts.preferredPhrases ?? [])
+    .map((p) => {
+      const phrase = p.phrase?.trim() ?? "";
+      if (!phrase) return null;
+      const url = p.url?.trim();
+      return url?.startsWith("https://") ? `- ${phrase}|${url}` : `- ${phrase}`;
+    })
+    .filter((x): x is string => Boolean(x));
+
+  const preferredPhrases = [
+    "",
+    "## Preferred phrases for posts",
+    "- Use at most one phrase+link pair when natural (do not force every post)",
+    ...(pairs.length ? pairs : ["- None configured"]),
+  ];
+
+  return [...brandMention, ...preferredPhrases];
 }
 
 function tabooLines(taboos: string[]): string[] {

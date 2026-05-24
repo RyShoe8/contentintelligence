@@ -1,10 +1,10 @@
 export const VOICE_FIELD_TIPS = {
   brand_mention_level:
-    "How often generated post copy mentions this voice's name. Refresh posts after saving to apply to new drafts.",
+    "How often generated post copy mentions this voice's name. Included in the generated persona template and enforced when building Posts.",
   persona_generation:
     "Persona generation usually takes 1–3 minutes. A progress indicator appears while it runs.",
   keywords:
     "One keyword per line, or comma-separated. Up to 5. Short tone or brand traits (e.g. playful, urgent, trusted) — used when generating the persona, not for Gmail feed filtering.",
   preferred_phrases:
-    "Phrases the voice may weave into post copy sometimes (not every post). One per line: Phrase|https://optional-link.com. Link is optional.",
+    "Phrases the voice may weave into post copy sometimes (not every post). One per line: Phrase|https://optional-link.com. Link is optional. Included in the generated persona template and enforced when building Posts.",
 } as const;

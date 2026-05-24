@@ -18,7 +18,7 @@ import {
   buildBrandContentCorpus,
 } from "../services/corpus/build-brand-content-corpus.js";
 import { extractContradictions } from "../services/contradictions/extract-contradictions.js";
-import { derivePersonaSummary } from "../services/derive-persona-summary.js";
+import { derivePersonaSummary, type PersonaVoiceOpts } from "../services/derive-persona-summary.js";
 import { mergeTaboosWithGlobal } from "../voice-style-rules.js";
 
 export type AnalyzeBrandProfileResult = {
@@ -27,6 +27,13 @@ export type AnalyzeBrandProfileResult = {
   corpusHash: string;
   cached: boolean;
 };
+
+function personaVoiceOpts(voice: Voice): PersonaVoiceOpts {
+  return {
+    brandMentionLevel: voice.brand_mention_level ?? 50,
+    preferredPhrases: voice.preferred_phrases ?? [],
+  };
+}
 
 export async function analyzeBrandProfile(
   db: Db,
@@ -46,7 +53,7 @@ export async function analyzeBrandProfile(
   if (canUseCache && voice.brand_profile) {
     return {
       profile: voice.brand_profile,
-      persona: derivePersonaSummary(voice.brand_profile, voice.name),
+      persona: derivePersonaSummary(voice.brand_profile, voice.name, personaVoiceOpts(voice)),
       corpusHash: hash,
       cached: true,
     };
@@ -100,7 +107,7 @@ export async function analyzeBrandProfile(
     corpusHash: hash,
   });
 
-  const persona = derivePersonaSummary(profile, voice.name);
+  const persona = derivePersonaSummary(profile, voice.name, personaVoiceOpts(voice));
 
   return { profile, persona, corpusHash: hash, cached: false };
 }
