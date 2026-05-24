@@ -257,6 +257,7 @@ function resolveOriginalUrl(
   return pickDealLink(normalized.links, {
     html: emailHtmlPreview ?? undefined,
     subject: normalized.subject,
+    from: normalized.from,
   });
 }
 

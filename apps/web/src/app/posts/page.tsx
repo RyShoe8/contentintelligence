@@ -12,7 +12,7 @@ import { CopyPostButton } from "@/components/copy-post-button";
 import { DealLinkRow } from "@/components/deal-link-row";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
 import { EmailImageGallery } from "@/components/email-image-gallery";
-import { LocalDateTime } from "@/components/local-date-time";
+import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -34,15 +34,10 @@ function scheduleLabel(minutes: number | null | undefined): string {
   return `${minutes} minutes`;
 }
 
-function nextSyncLabel(
-  last: Date | undefined,
-  intervalMinutes: number | null | undefined,
-): string {
-  if (intervalMinutes == null || intervalMinutes <= 0) return "Not scheduled";
-  if (!last || !Number.isFinite(last.getTime())) return "Due on next schedule tick";
-  const next = new Date(last.getTime() + intervalMinutes * 60_000);
-  if (next.getTime() <= Date.now()) return "Due now (waits for worker schedule tick)";
-  return next.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+function scheduleStatusText(minutes: number | null | undefined): string {
+  const label = scheduleLabel(minutes);
+  if (minutes == null || minutes <= 0) return label;
+  return `every ${label}`;
 }
 
 export default async function PostsPage({
@@ -209,18 +204,15 @@ export default async function PostsPage({
                 </select>
               </label>
               <p className="md:col-span-2 text-xs text-[var(--muted)]">
-                Last sync:{" "}
-                {selectedSignal.last_ingest_completed_at ? (
-                  <LocalDateTime iso={selectedSignal.last_ingest_completed_at.toISOString()} />
-                ) : (
-                  "Never"
-                )}
-                {" · "}
-                Next scheduled:{" "}
-                {nextSyncLabel(
-                  selectedSignal.last_ingest_completed_at,
-                  selectedSignal.ingest_interval_minutes,
-                )}
+                <SyncScheduleStatus
+                  lastIngestIso={
+                    selectedSignal.last_ingest_completed_at
+                      ? selectedSignal.last_ingest_completed_at.toISOString()
+                      : null
+                  }
+                  intervalMinutes={selectedSignal.ingest_interval_minutes}
+                  scheduleText={scheduleStatusText(selectedSignal.ingest_interval_minutes)}
+                />
               </p>
               <div className="md:col-span-2">
                 <button

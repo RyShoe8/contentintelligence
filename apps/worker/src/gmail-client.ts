@@ -1,7 +1,7 @@
 import { google, type gmail_v1 } from "googleapis";
 import type { GmailSourceConfig } from "@content-resourcer/db";
 import { env } from "./env.js";
-import { isNonDealUrl } from "./extract-deal-link.js";
+import { extractAnchorHrefs, isNonDealUrl } from "./extract-deal-link.js";
 import { buildGmailQuery } from "./gmail-query.js";
 
 export type NormalizedMessage = {
@@ -149,14 +149,15 @@ function decodeBase64Url(data: string): string {
 
 function extractLinksFromPayload(part: gmail_v1.Schema$MessagePart | undefined): string[] {
   const { text, html } = extractBodies(part);
-  const combined = `${text}\n${html}`;
   const urls = new Set<string>();
+  for (const url of extractAnchorHrefs(html)) {
+    if (!isNonDealUrl(url)) urls.add(url);
+  }
   const re = /https?:\/\/[^\s<>"')\]]+/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(combined)) !== null) {
+  while ((m = re.exec(text)) !== null) {
     const url = m[0].replace(/[,.)]+$/, "");
-    if (isNonDealUrl(url)) continue;
-    urls.add(url);
+    if (!isNonDealUrl(url)) urls.add(url);
   }
   return [...urls];
 }
