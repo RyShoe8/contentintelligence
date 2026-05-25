@@ -53,6 +53,7 @@ function voiceCopyOpts(ctx: VoiceGenerationContext) {
   return {
     brandName: ctx.brandName,
     brandMentionLevel: ctx.brandMentionLevel,
+    sourcesInPostsLevel: ctx.sourcesInPostsLevel,
     preferredPhrases: ctx.preferredPhrases,
     persona: ctx.persona,
     constraints: ctx.constraints,
@@ -115,6 +116,7 @@ async function regenerateAllDraftPostsForContentSignal(
       title: post.title,
       summary: post.ai_summary,
       senderFrom: post.sender_from,
+      sourceName: post.source_name,
       deal: contentOnly ? undefined : post.deal_metrics,
       signalName,
       ...copyOptsWithDealUrl(ctx, dealUrl),
@@ -163,6 +165,7 @@ async function upsertDealPost(
       title: item.title,
       summary: item.ai_summary,
       senderFrom: item.sender_from,
+      sourceName: item.source_name,
       deal,
       signalName,
       ...copyOptsWithDealUrl(ctx, item.original_url),
@@ -215,6 +218,7 @@ async function upsertContentOnlyPost(
       title: item.title,
       summary: item.ai_summary,
       senderFrom: item.sender_from,
+      sourceName: item.source_name,
       signalName,
       ...copyOptsWithDealUrl(ctx, item.original_url),
     });

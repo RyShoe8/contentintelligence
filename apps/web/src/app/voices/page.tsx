@@ -13,6 +13,7 @@ import {
   saveVoiceAction,
 } from "./actions";
 import { BrandMentionSlider } from "./brand-mention-slider";
+import { SourcesInPostsSlider } from "./sources-in-posts-slider";
 import { DistributionPlatformsEditor } from "./distribution-platforms-editor";
 import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
@@ -212,6 +213,8 @@ export default async function VoicesPage({
           </label>
 
           <BrandMentionSlider defaultValue={activeVoice?.brand_mention_level ?? 50} />
+
+          <SourcesInPostsSlider defaultValue={activeVoice?.sources_in_posts_level ?? 0} />
 
           <label className="flex flex-col gap-1 text-sm">
             Website URL

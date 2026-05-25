@@ -8,6 +8,8 @@ export type VoicePreferredPhraseLike = {
 export type VoiceStylePromptOpts = {
   brandName?: string;
   brandMentionLevel?: number;
+  sourceName?: string;
+  sourcesInPostsLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
 };
 
@@ -53,6 +55,26 @@ export function buildBrandMentionPromptLine(brandName: string, level: number): s
     return `- Mention "${name}" prominently; include it at least once and again in the CTA or closing line when space allows`;
   }
   return `- Always lead with "${name}" and mention the brand at least twice when the post has room`;
+}
+
+export function buildSourceMentionPromptLine(sourceName: string, level: number): string | null {
+  const label = sourceName.trim();
+  if (!label) return null;
+
+  const l = Math.max(0, Math.min(100, Math.round(level)));
+  if (l === 0) {
+    return `- Do not mention the email source label "${label}" in the post`;
+  }
+  if (l <= 25) {
+    return `- Mention the email source "${label}" rarely, only when clearly relevant`;
+  }
+  if (l <= 50) {
+    return `- Mention the email source "${label}" at least once when it fits naturally`;
+  }
+  if (l <= 75) {
+    return `- Reference the email source "${label}" prominently; include it at least once and again in the CTA or closing line when space allows`;
+  }
+  return `- Lead with or reference the email source "${label}" at least twice when the post has room`;
 }
 
 export function buildPhraseFrequencyPromptLine(groupLabel: string, level: number): string | null {
@@ -121,6 +143,12 @@ export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[]
     opts.brandMentionLevel ?? 50,
   );
   if (brandLine) lines.push(brandLine);
+
+  const sourceLine = buildSourceMentionPromptLine(
+    opts.sourceName ?? "",
+    opts.sourcesInPostsLevel ?? 0,
+  );
+  if (sourceLine) lines.push(sourceLine);
 
   const pairs = activePreferredPhrases(opts.preferredPhrases ?? []);
   if (pairs.length) {

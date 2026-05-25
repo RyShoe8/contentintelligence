@@ -149,9 +149,16 @@ function parseBrandMentionLevel(formData: FormData): number {
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
+function parseSourcesInPostsLevel(formData: FormData): number {
+  const raw = Number(formData.get("sources_in_posts_level"));
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
 function parseVoiceFields(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const brand_mention_level = parseBrandMentionLevel(formData);
+  const sources_in_posts_level = parseSourcesInPostsLevel(formData);
   const website_url = String(formData.get("website_url") ?? "").trim();
   const rss_feed_url = String(formData.get("rss_feed_url") ?? "").trim();
   const keywords = splitLines(String(formData.get("keywords") ?? "")).slice(0, 5);
@@ -163,6 +170,7 @@ function parseVoiceFields(formData: FormData) {
   return {
     name,
     brand_mention_level,
+    sources_in_posts_level,
     website_url,
     rss_feed_url,
     keywords,
@@ -230,6 +238,7 @@ export async function saveVoiceAction(formData: FormData) {
     created_by: session.user.email ?? "unknown",
     name: fields.name,
     brand_mention_level: fields.brand_mention_level,
+    sources_in_posts_level: fields.sources_in_posts_level,
     website_url: fields.website_url,
     rss_feed_url: fields.rss_feed_url,
     social_links: fields.social_links,
@@ -270,6 +279,7 @@ export async function generateVoicePersonaAction(formData: FormData) {
     ...existing,
     name: fields.name,
     brand_mention_level: fields.brand_mention_level,
+    sources_in_posts_level: fields.sources_in_posts_level,
     website_url: fields.website_url,
     rss_feed_url: fields.rss_feed_url,
     social_links: fields.social_links,

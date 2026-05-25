@@ -63,6 +63,7 @@ export async function upsertVoice(
     organization_id: data.organization_id,
     name: data.name,
     brand_mention_level: data.brand_mention_level ?? 50,
+    sources_in_posts_level: data.sources_in_posts_level ?? 0,
     website_url: data.website_url ?? "",
     rss_feed_url: data.rss_feed_url ?? "",
     social_links: data.social_links ?? [],

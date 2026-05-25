@@ -9,6 +9,7 @@ export type VoiceGenerationContext = {
   voiceId?: string;
   brandName?: string;
   brandMentionLevel?: number;
+  sourcesInPostsLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
@@ -19,6 +20,7 @@ function voiceStyleFields(voice: Voice) {
   return {
     brandName: voice.name,
     brandMentionLevel: voice.brand_mention_level ?? 50,
+    sourcesInPostsLevel: voice.sources_in_posts_level ?? 0,
     preferredPhrases: voice.preferred_phrases ?? [],
   };
 }

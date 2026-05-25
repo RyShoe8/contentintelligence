@@ -363,6 +363,10 @@ export const voiceSchema = z.preprocess(
     (v) => (v == null || v === "" ? 50 : v),
     z.coerce.number().int().min(0).max(100).default(50),
   ),
+  sources_in_posts_level: z.preprocess(
+    (v) => (v == null || v === "" ? 0 : v),
+    z.coerce.number().int().min(0).max(100).default(0),
+  ),
   website_url: optionalHttpsUrl().default(""),
   rss_feed_url: optionalHttpsUrl().default(""),
   social_links: z.array(voiceSocialLinkSchema).max(10).default([]),

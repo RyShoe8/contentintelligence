@@ -9,6 +9,7 @@ import {
 
 export type PersonaVoiceOpts = {
   brandMentionLevel?: number;
+  sourcesInPostsLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
 };
 
@@ -113,6 +114,14 @@ function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): strin
     mentionLine,
   ].filter((x): x is string => Boolean(x));
 
+  const sourcesLevel = Math.max(0, Math.min(100, Math.round(opts.sourcesInPostsLevel ?? 0)));
+  const sourcesInPosts = [
+    "",
+    "## Use sources in posts",
+    `- Setting: ${sourcesLevel} (${brandMentionLevelLabel(sourcesLevel)})`,
+    `- Controls how often generated copy references each email's source label (e.g. Email · inbox name), not the brand name`,
+  ];
+
   const pairs = (opts.preferredPhrases ?? [])
     .map((p) => {
       const phrases =
@@ -140,7 +149,7 @@ function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): strin
     ...(pairs.length ? pairs : ["- None configured"]),
   ];
 
-  return [...brandMention, ...preferredPhrases];
+  return [...brandMention, ...sourcesInPosts, ...preferredPhrases];
 }
 
 function tabooLines(taboos: string[]): string[] {

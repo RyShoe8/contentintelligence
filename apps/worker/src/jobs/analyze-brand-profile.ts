@@ -37,6 +37,7 @@ export type AnalyzeBrandProfileResult = {
 function personaVoiceOpts(voice: Voice): PersonaVoiceOpts {
   return {
     brandMentionLevel: voice.brand_mention_level ?? 50,
+    sourcesInPostsLevel: voice.sources_in_posts_level ?? 0,
     preferredPhrases: voice.preferred_phrases ?? [],
   };
 }
