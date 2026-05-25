@@ -73,6 +73,17 @@ function hostFromUrl(url: string | null | undefined): string | null {
   }
 }
 
+/** Remove noisy words (e.g. "News") from promo sender display names. */
+export function sanitizeContentProviderName(name: string): string {
+  const cleaned = name
+    .replace(/\s+News\b/gi, "")
+    .replace(/\bNews\s+/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 120);
+  return cleaned.length >= 2 ? cleaned : "";
+}
+
 /**
  * Best-effort casino / brand name from From header, subject, or deal URL host.
  */
@@ -84,25 +95,33 @@ export function extractCasinoName(
   const parsed = parseEmailFrom(from);
 
   if (parsed.displayName && isUsableBrandDisplayName(parsed.displayName)) {
-    return parsed.displayName.slice(0, 120);
+    const name = sanitizeContentProviderName(parsed.displayName);
+    if (name) return name;
   }
 
   const fromDomain = casinoNameFromDomain(parsed.email);
-  if (fromDomain) return fromDomain;
+  if (fromDomain) {
+    const name = sanitizeContentProviderName(fromDomain);
+    if (name) return name;
+  }
 
   const dealHost = hostFromUrl(dealUrl);
   if (dealHost && parsed.email) {
     const emailHost = parsed.email.slice(parsed.email.indexOf("@") + 1).replace(/^www\./, "");
     if (dealHost === emailHost || dealHost.endsWith(`.${emailHost}`) || emailHost.endsWith(`.${dealHost}`)) {
       const fromDeal = casinoNameFromDomain(`x@${dealHost}`);
-      if (fromDeal) return fromDeal;
+      if (fromDeal) {
+        const name = sanitizeContentProviderName(fromDeal);
+        if (name) return name;
+      }
     }
   }
 
   if (subject?.trim()) {
     const m = subject.match(/\b([A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*)*)\s+Casino\b/);
     if (m?.[1]) {
-      return `${m[1]} Casino`.slice(0, 120);
+      const name = sanitizeContentProviderName(`${m[1]} Casino`);
+      if (name) return name;
     }
   }
 
@@ -118,6 +137,9 @@ export type ContentProviderNameInput = {
 
 /** Promo/casino name shown on Posts (e.g. Chipnwin), not the Gmail source label. */
 export function resolveContentProviderName(item: ContentProviderNameInput): string | null {
-  if (item.casino_name?.trim()) return item.casino_name.trim();
+  if (item.casino_name?.trim()) {
+    const name = sanitizeContentProviderName(item.casino_name.trim());
+    return name || null;
+  }
   return extractCasinoName(item.sender_from, item.title, item.original_url ?? null);
 }

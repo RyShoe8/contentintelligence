@@ -5,6 +5,7 @@ import {
   parseEmailFrom,
   casinoNameFromDomain,
   resolveContentProviderName,
+  sanitizeContentProviderName,
 } from "./email-from.js";
 
 describe("parseEmailFrom", () => {
@@ -53,6 +54,16 @@ describe("extractCasinoName", () => {
   });
 });
 
+describe("sanitizeContentProviderName", () => {
+  it("strips trailing News from display names", () => {
+    assert.equal(sanitizeContentProviderName("Spinfinite News"), "Spinfinite");
+  });
+
+  it("does not alter Newsletter", () => {
+    assert.equal(sanitizeContentProviderName("Weekly Newsletter"), "Weekly Newsletter");
+  });
+});
+
 describe("resolveContentProviderName", () => {
   it("prefers stored casino_name over extraction", () => {
     assert.equal(
@@ -65,6 +76,17 @@ describe("resolveContentProviderName", () => {
     );
   });
 
+  it("sanitizes stored casino_name with News suffix", () => {
+    assert.equal(
+      resolveContentProviderName({
+        casino_name: "Spinfinite News",
+        sender_from: "marketing <promo@spinfinite.com>",
+        title: "Prime+ offer",
+      }),
+      "Spinfinite",
+    );
+  });
+
   it("falls back to extractCasinoName when casino_name is missing", () => {
     assert.equal(
       resolveContentProviderName({
@@ -72,6 +94,15 @@ describe("resolveContentProviderName", () => {
         title: "Weekly bonus",
       }),
       "Zula Casino",
+    );
+  });
+});
+
+describe("extractCasinoName News stripping", () => {
+  it("strips News from From display name", () => {
+    assert.equal(
+      extractCasinoName("Spinfinite News <promo@spinfinite.com>"),
+      "Spinfinite",
     );
   });
 });
