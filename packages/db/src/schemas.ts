@@ -493,6 +493,14 @@ const signalItemShape = z.object({
   source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
   source_name: z.string(),
   sender_from: z.string(),
+  casino_name: z.preprocess(
+    (v) => {
+      if (typeof v !== "string") return undefined;
+      const s = v.trim().slice(0, 120);
+      return s || undefined;
+    },
+    z.string().max(120).optional(),
+  ),
   title: z.string(),
   raw_content: z.string(),
   extracted_text: z.string(),

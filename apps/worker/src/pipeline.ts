@@ -12,6 +12,7 @@ import type {
 } from "@content-resourcer/db";
 import { SOURCE_TYPE_EMAIL_GMAIL, sourceDisplayLabel } from "@content-resourcer/db";
 import { env } from "./env.js";
+import { extractCasinoName } from "@content-resourcer/db";
 import type { NormalizedMessage } from "./gmail-client.js";
 
 const EMAIL_HTML_PREVIEW_MAX = 120_000;
@@ -277,6 +278,9 @@ export function buildMinimalSignalItem(
   const email_sent_at =
     Number.isFinite(normalized.dateMs) && normalized.dateMs > 0 ? new Date(normalized.dateMs) : undefined;
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
+  const original_url = resolveOriginalUrl(normalized, emailHtmlPreview);
+  const casino_name =
+    extractCasinoName(normalized.from, normalized.subject, original_url) ?? undefined;
   const base: SignalItem = {
     id: randomUUID(),
     organization_id: contentSignal.organization_id,
@@ -285,12 +289,13 @@ export function buildMinimalSignalItem(
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
     source_name: sourceDisplayLabel(source.config),
     sender_from: normalized.from,
+    ...(casino_name ? { casino_name } : {}),
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),
     extracted_text: extracted,
     detected_keywords: detected,
     relevance_score: 1,
-    original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
+    original_url,
     key_points: [],
     external_id: normalized.external_id,
     ai_summary: null,
@@ -322,6 +327,9 @@ export function buildFullSignalItem(
   const email_sent_at =
     Number.isFinite(normalized.dateMs) && normalized.dateMs > 0 ? new Date(normalized.dateMs) : undefined;
   const preview = emailHtmlPreview != null ? trimEmailHtmlPreview(emailHtmlPreview) : undefined;
+  const original_url = resolveOriginalUrl(normalized, emailHtmlPreview);
+  const casino_name =
+    extractCasinoName(normalized.from, normalized.subject, original_url) ?? undefined;
   const base: SignalItem = {
     id: randomUUID(),
     organization_id: contentSignal.organization_id,
@@ -330,12 +338,13 @@ export function buildFullSignalItem(
     source_type: SOURCE_TYPE_EMAIL_GMAIL,
     source_name: sourceDisplayLabel(source.config),
     sender_from: normalized.from,
+    ...(casino_name ? { casino_name } : {}),
     title: normalized.subject,
     raw_content: normalized.raw_content.slice(0, 50_000),
     extracted_text: extractedText,
     detected_keywords: detected,
     relevance_score: relevance,
-    original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
+    original_url,
     key_points: key_points.length ? key_points : [],
     external_id: normalized.external_id,
     ai_summary: trimmed || null,

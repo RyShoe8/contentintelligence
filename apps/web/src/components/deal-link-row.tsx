@@ -1,7 +1,9 @@
 "use client";
 
 import { isNonDealUrl } from "@/lib/deal-url";
+import { formatDealUrlDisplay } from "@/lib/deal-url-display";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function CopyTextButton({ text, label = "Copy" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -17,18 +19,39 @@ export function CopyTextButton({ text, label = "Copy" }: { text: string; label?:
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void copy()}
-      className="rounded border border-[var(--border)] px-2 py-1 text-xs hover:border-[var(--accent)]"
-    >
+    <Button type="button" variant="ghost" size="sm" onClick={() => void copy()}>
       {copied ? "Copied!" : label}
-    </button>
+    </Button>
   );
 }
 
-export function DealLinkRow({ url }: { url: string }) {
+export function DealLinkRow({
+  url,
+  variant = "inline",
+}: {
+  url: string;
+  variant?: "inline" | "panel";
+}) {
   if (!url?.trim() || isNonDealUrl(url)) return null;
+
+  const label = formatDealUrlDisplay(url);
+
+  if (variant === "panel") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 flex-1 break-all font-medium text-[var(--primary)] hover:underline"
+          title={url}
+        >
+          {label}
+        </a>
+        <CopyTextButton text={url} label="Copy link" />
+      </div>
+    );
+  }
 
   return (
     <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
@@ -37,9 +60,10 @@ export function DealLinkRow({ url }: { url: string }) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="min-w-0 break-all text-[var(--accent)] hover:underline"
+        className="min-w-0 break-all text-[var(--primary)] hover:underline"
+        title={url}
       >
-        {url}
+        {label}
       </a>
       <CopyTextButton text={url} label="Copy link" />
     </p>

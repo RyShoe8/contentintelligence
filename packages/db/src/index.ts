@@ -3,6 +3,7 @@ export * from "./client.js";
 export * from "./collections.js";
 export * from "./deal-strength.js";
 export * from "./deal-url.js";
+export * from "./email-from.js";
 export * from "./template-repos.js";
 export * from "./retention.js";
 export * from "./org-repos.js";

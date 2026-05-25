@@ -1,17 +1,11 @@
 import Link from "next/link";
 import { ensureIndexes, listContentSignals, listPosts, listSignalItems } from "@content-resourcer/db";
-import { EmailImageGallery } from "@/components/email-image-gallery";
-import { AddToPostsButton } from "@/components/add-to-posts-button";
 import { ClearFeedButton } from "@/components/clear-feed-button";
+import { FeedItemCard } from "@/components/feed-item-card";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { connectMongo } from "@/lib/mongo";
-import { DealsList } from "@/components/deals-list";
-import { DealLinkRow } from "@/components/deal-link-row";
-import { KeyPointsList } from "@/components/key-points-list";
-import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldGroup, Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -234,76 +228,13 @@ export default async function FeedPage({
       <ul className="space-y-3">
         {items.map((it) => (
           <li key={it.id}>
-            <Card className="transition-colors hover:border-[var(--primary)]">
-              <CardContent>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <p className="text-xs font-medium text-[var(--muted)]">{it.source_name}</p>
-                    {hasDeal(it) ? (
-                      <span
-                        className="inline-flex shrink-0 items-center rounded-md border border-[var(--success-border)] bg-[var(--success-bg)] px-2 py-0.5 text-xs font-bold tracking-tight text-[var(--success)]"
-                        title="Deal detected in this email"
-                      >
-                        Deal Found!
-                      </span>
-                    ) : null}
-                  </div>
-                  {it.sender_from || it.email_sent_at ? (
-                    <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--muted)]">
-                      {it.sender_from ? (
-                        <span className="min-w-0 truncate font-medium">{it.sender_from}</span>
-                      ) : null}
-                      {it.email_sent_at ? (
-                        <span className="shrink-0">
-                          {it.email_sent_at.toLocaleString(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          })}
-                        </span>
-                      ) : null}
-                    </p>
-                  ) : null}
-                  <Link
-                    href={`/feed/${it.id}`}
-                    className="mt-1 block font-medium text-[var(--fg)] hover:text-[var(--accent)] hover:underline"
-                  >
-                    {it.title}
-                  </Link>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {selectedId ? (
-                    <AddToPostsButton
-                      signalItemId={it.id}
-                      contentSignalId={selectedId}
-                      disabled={!workerIngestConfigured}
-                      alreadyInPosts={itemIdsInPosts.has(it.id)}
-                    />
-                  ) : null}
-                  <span className="text-xs text-[var(--muted)]">{it.relevance_score}/10</span>
-                </div>
-              </div>
-              {it.ai_summary ? (
-                <p className="mt-1 line-clamp-2 text-sm text-[var(--fg)]">{it.ai_summary}</p>
-              ) : (
-                <div className="mt-1 max-h-48 overflow-y-auto text-sm break-words text-[var(--muted)]">
-                  {it.extracted_text}
-                </div>
-              )}
-              <DealsList deals={dealsForDisplay(it)} variant="feed" />
-              {it.key_points?.length ? (
-                <div className="mt-2">
-                  <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>
-                  <KeyPointsList points={it.key_points} variant="compact" />
-                </div>
-              ) : null}
-              {it.original_url ? <DealLinkRow url={it.original_url} /> : null}
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                {it.detected_keywords.slice(0, 6).join(", ")}
-              </p>
-              {it.email_images?.length ? <EmailImageGallery images={it.email_images} /> : null}
-              </CardContent>
-            </Card>
+            <FeedItemCard
+              item={it}
+              variant="feed"
+              contentSignalId={selectedId}
+              workerIngestConfigured={workerIngestConfigured}
+              alreadyInPosts={itemIdsInPosts.has(it.id)}
+            />
           </li>
         ))}
       </ul>

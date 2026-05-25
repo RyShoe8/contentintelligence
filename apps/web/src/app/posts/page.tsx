@@ -16,6 +16,7 @@ import { KeyPointsList } from "@/components/key-points-list";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
+import { displayCasinoName } from "@/lib/email-from-display";
 import { requireOrgMember } from "@/lib/org-auth";
 import {
   archivePostAction,
@@ -246,6 +247,7 @@ export default async function PostsPage({
             <ul className="space-y-4">
               {posts.map((post) => {
                 const signalItem = signalItemsById.get(post.signal_item_id);
+                const casino = signalItem ? displayCasinoName(signalItem) : null;
                 const images = signalItem?.email_images;
                 const dealUrl = signalItem?.original_url;
                 return (
@@ -269,6 +271,9 @@ export default async function PostsPage({
                           <DealStrengthBadge dealMetrics={post.deal_metrics} />
                         )}
                       </div>
+                      {casino ? (
+                        <p className="mt-1 text-sm font-semibold text-[var(--fg)]">{casino}</p>
+                      ) : null}
                       <Link
                         href={`/feed/${post.signal_item_id}`}
                         className="mt-1 block font-medium hover:text-[var(--accent)] hover:underline"
@@ -277,7 +282,7 @@ export default async function PostsPage({
                       </Link>
                       <p className="mt-0.5 text-xs text-[var(--muted)]">
                         {post.source_name}
-                        {post.sender_from ? ` · ${post.sender_from}` : ""}
+                        {post.sender_from && !casino ? ` · ${post.sender_from}` : ""}
                         {post.email_sent_at
                           ? ` · ${post.email_sent_at.toLocaleString(undefined, {
                               dateStyle: "medium",
@@ -314,7 +319,7 @@ export default async function PostsPage({
                       <KeyPointsList points={signalItem.key_points} variant="compact" />
                     </div>
                   ) : null}
-                  {dealUrl ? <DealLinkRow url={dealUrl} /> : null}
+                  {dealUrl ? <DealLinkRow url={dealUrl} variant="panel" /> : null}
                   {images?.length ? <EmailImageGallery images={images} /> : null}
                 </li>
               );
