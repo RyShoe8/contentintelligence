@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import clientPromise from "@/lib/mongo-auth-adapter";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
+import { PageHeader } from "@/components/ui/page-header";
 import { updateUserRoleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -35,14 +36,10 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Users</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Platform roles and organization membership.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Users"
+        description="Platform roles and organization membership."
+      />
 
       <ul className="space-y-3">
         {users.map((u) => {

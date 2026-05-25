@@ -13,7 +13,7 @@ export default function FeedLoading() {
         <SkeletonBar className="h-4 w-24" />
       </div>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <SkeletonBar className="mb-3 h-4 w-28" />
         <div className="flex flex-wrap items-end gap-4">
           <SkeletonBar className="h-10 min-w-[200px] flex-1" />
@@ -25,7 +25,7 @@ export default function FeedLoading() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
           <SkeletonBar className="h-10 md:col-span-2" />
           <SkeletonBar className="h-10" />
@@ -35,7 +35,7 @@ export default function FeedLoading() {
 
       <ul className="space-y-3">
         {[0, 1, 2].map((i) => (
-          <li key={i} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <li key={i} className="ui-card p-4">
             <SkeletonBar className="h-3 w-24" />
             <SkeletonBar className="mt-2 h-5 w-3/4 max-w-md" />
             <SkeletonBar className="mt-3 h-4 w-full" />

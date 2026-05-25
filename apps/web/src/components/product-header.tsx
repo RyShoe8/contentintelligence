@@ -12,8 +12,8 @@ type Props = {
 
 export function ProductHeader({ email, isAdmin, isOrgOwner }: Props) {
   return (
-    <header className="border-b border-[var(--header-border)] bg-[var(--card)]/90 shadow-sm backdrop-blur-sm">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-2">
+    <header className="sticky top-0 z-40 border-b border-[var(--header-border)] bg-[var(--card)]">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-4">
           <Link href="/feed" className="flex shrink-0 items-center">
             <Image
@@ -21,7 +21,7 @@ export function ProductHeader({ email, isAdmin, isOrgOwner }: Props) {
               alt="ContentIntelligence"
               width={168}
               height={61}
-              className="h-12 w-auto"
+              className="h-9 w-auto"
               priority
             />
           </Link>

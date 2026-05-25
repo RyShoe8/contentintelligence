@@ -21,6 +21,8 @@ import {
   archivePostAction,
   savePostSettingsAction,
 } from "./actions";
+import { Alert } from "@/components/ui/alert";
+import { PageHeader } from "@/components/ui/page-header";
 import { SCHEDULE_OPTIONS } from "./constants";
 
 export const dynamic = "force-dynamic";
@@ -88,34 +90,23 @@ export default async function PostsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Posts</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Social-ready drafts from feed deals that meet your threshold. Sync on a schedule to keep
-          posts updated automatically.
-        </p>
-      </div>
+      <PageHeader
+        title="Posts"
+        description="Social-ready drafts from feed deals that meet your threshold. Sync on a schedule to keep posts updated automatically."
+      />
 
       {sp.saved === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+        <Alert variant="success">
           Settings saved.
           {sp.sync_failed === "1"
             ? " Post refresh failed — try Refresh posts."
             : " Posts refreshed."}
-        </p>
+        </Alert>
       ) : null}
-      {sp.archived === "1" ? (
-        <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">
-          Post dismissed.
-        </p>
-      ) : null}
-      {errorMsg ? (
-        <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-          {errorMsg}
-        </p>
-      ) : null}
+      {sp.archived === "1" ? <Alert variant="info">Post dismissed.</Alert> : null}
+      {errorMsg ? <Alert variant="error">{errorMsg}</Alert> : null}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <form method="get" className="flex flex-wrap items-end gap-4">
           <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
             <span className="text-[var(--muted)]">Content signal</span>
@@ -147,7 +138,7 @@ export default async function PostsPage({
 
       {selectedId && selectedSignal ? (
         <>
-          <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <section className="ui-card p-4">
             <h2 className="text-lg font-medium">Settings for {selectedSignal.name}</h2>
             {linkedVoice ? (
               <p className="mt-2 text-sm text-[var(--muted)]">
@@ -260,7 +251,7 @@ export default async function PostsPage({
                 return (
                 <li
                   key={post.id}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"
+                  className="ui-card p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">

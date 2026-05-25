@@ -17,6 +17,7 @@ import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
 import { PersonaGeneratedAt } from "./persona-generated-at";
 import { VOICE_FIELD_TIPS } from "./field-help";
+import { PageHeader } from "@/components/ui/page-header";
 import { LabelWithTip } from "../signals/label-with-tip";
 
 export const dynamic = "force-dynamic";
@@ -106,13 +107,10 @@ export default async function VoicesPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Voices</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Define brand voices from your website, RSS, and social profiles. Link a voice to content
-          signals to shape post copy on the Posts page.
-        </p>
-      </div>
+      <PageHeader
+        title="Voices"
+        description="Define brand voices from your website, RSS, and social profiles. Link a voice to content signals to shape post copy on the Posts page."
+      />
 
       {sp.saved === "1" ? (
         <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-700">
@@ -140,7 +138,7 @@ export default async function VoicesPage({
         </p>
       ) : null}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-medium">Your voices</h2>
           <Link
@@ -188,7 +186,7 @@ export default async function VoicesPage({
         )}
       </section>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <h2 className="mb-4 text-lg font-medium">
           {activeVoice ? `Edit: ${activeVoice.name}` : "Create voice"}
         </h2>

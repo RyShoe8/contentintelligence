@@ -25,7 +25,7 @@ export default function FeedError({
         <button
           type="button"
           onClick={() => reset()}
-          className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          className="ui-btn-primary"
         >
           Try again
         </button>

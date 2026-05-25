@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         email={session.user.email ?? ""}
         isOrgOwner={session.user.orgRole === "owner"}
       />
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-12 lg:py-8">{children}</main>
     </>
   );
 }

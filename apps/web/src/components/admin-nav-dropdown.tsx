@@ -26,7 +26,7 @@ export function AdminNavDropdown() {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-3 py-1.5 text-sm font-medium text-[var(--fg)] hover:bg-[var(--card)]"
+        className="ui-btn-secondary flex h-9 items-center gap-2 px-3"
       >
         Admin
         <svg
@@ -41,7 +41,7 @@ export function AdminNavDropdown() {
       </button>
       {open ? (
         <div
-          className="absolute right-0 z-50 mt-1 min-w-[11rem] rounded-md border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
+          className="ui-card absolute right-0 z-50 mt-1 min-w-[11rem] py-1 shadow-md"
           role="menu"
         >
           <Link

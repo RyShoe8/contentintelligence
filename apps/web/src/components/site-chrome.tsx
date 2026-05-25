@@ -26,7 +26,7 @@ export function SiteChrome({ email, isAdmin, isOrgOwner, children }: Props) {
     <>
       <ProductHeader email={email} isAdmin={isAdmin} isOrgOwner={isOrgOwner} />
       <NavigationProgress />
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-12 lg:py-8">{children}</main>
     </>
   );
 }

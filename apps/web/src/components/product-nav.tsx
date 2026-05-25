@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/cn";
 
 const NAV_ITEMS = [
   { href: "/getting-started", label: "Getting started", match: (p: string) => p === "/getting-started" },
@@ -23,7 +24,7 @@ export function ProductNav() {
   const pathname = usePathname() ?? "";
 
   return (
-    <nav className="flex flex-wrap gap-4 text-sm font-medium text-[var(--muted)]">
+    <nav className="flex flex-wrap items-center gap-1 text-sm font-medium">
       {NAV_ITEMS.map(({ href, label, match }) => {
         const active = match(pathname);
         return (
@@ -31,11 +32,12 @@ export function ProductNav() {
             key={href}
             href={href}
             aria-current={active ? "page" : undefined}
-            className={
+            className={cn(
+              "rounded-md px-3 py-1.5 transition-colors",
               active
-                ? "text-[var(--accent)]"
-                : "transition-colors hover:text-[var(--accent)]"
-            }
+                ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
+                : "text-[var(--muted)] hover:bg-[var(--surface-light)] hover:text-[var(--fg)]",
+            )}
           >
             {label}
           </Link>

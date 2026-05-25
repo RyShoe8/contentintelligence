@@ -6,6 +6,7 @@ import {
   listSources,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
@@ -66,18 +67,16 @@ export default async function GettingStartedPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Getting started</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Content signals define what to look for; sources are Gmail inboxes that supply mail.
-        </p>
-      </div>
+      <PageHeader
+        title="Getting started"
+        description="Content signals define what to look for; sources are Gmail inboxes that supply mail."
+      />
 
       <ol className="space-y-4">
         {steps.map((step, i) => (
           <li
             key={step.title}
-            className="flex gap-4 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-sm"
+            className="ui-card flex gap-4 p-4 text-sm"
           >
             <span
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${

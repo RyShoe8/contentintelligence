@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { sanitizeIngestError } from "@/lib/ingest-response";
 
 const POLL_INTERVAL_MS = 3000;
@@ -196,16 +198,13 @@ export function GmailSyncButton({
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        disabled={disabled || busy}
-        onClick={run}
-        className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
+      <Button type="button" disabled={disabled || busy} onClick={run}>
         {busy ? busyLabel : label}
-      </button>
+      </Button>
       {message ? (
-        <p className={`mt-2 text-sm ${status === "err" ? "text-red-400" : "text-[var(--muted)]"}`}>{message}</p>
+        <Alert variant={status === "err" ? "error" : "info"} className="mt-2">
+          {message}
+        </Alert>
       ) : null}
     </div>
   );

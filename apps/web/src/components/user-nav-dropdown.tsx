@@ -32,7 +32,7 @@ export function UserNavDropdown({ email, isOrgOwner }: Props) {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
-        className="flex max-w-[min(100vw-2rem,18rem)] items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-3 py-1.5 text-left text-sm text-[var(--fg)] hover:bg-[var(--card)]"
+        className="ui-btn-secondary flex h-9 max-w-[min(100vw-2rem,18rem)] items-center gap-2 px-3 text-left"
       >
         <span className="min-w-0 flex-1 truncate" title={email}>
           {email}
@@ -49,7 +49,7 @@ export function UserNavDropdown({ email, isOrgOwner }: Props) {
       </button>
       {open ? (
         <div
-          className="absolute right-0 z-50 mt-1 min-w-[12rem] rounded-md border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
+          className="ui-card absolute right-0 z-50 mt-1 min-w-[12rem] py-1 shadow-md"
           role="menu"
         >
           {isOrgOwner ? (

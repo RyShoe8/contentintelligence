@@ -51,10 +51,10 @@ export default async function ContentSignalDetailPage({
   return (
     <div className="space-y-8">
       <div>
-        <Link href="/content-signals" className="text-sm text-[var(--accent)] hover:underline">
+        <Link href="/content-signals" className="text-sm font-medium text-[var(--primary)] hover:underline">
           ← Content Signals
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold">{contentSignal.name}</h1>
+        <h1 className="mt-2">{contentSignal.name}</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           {contentSignal.active ? "Active" : "Inactive"} · Lookback {contentSignal.lookback_window_hours}h ·{" "}
           Keywords: {contentSignal.keywords.join(", ") || "—"}
@@ -68,12 +68,12 @@ export default async function ContentSignalDetailPage({
           </p>
         ) : null}
         {sp.signal_created === "1" ? (
-          <p className="mt-2 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          <p className="ui-alert-success mt-2">
             Content signal created from template. Add a Gmail source below to start ingesting.
           </p>
         ) : null}
         {sp.template_saved === "1" ? (
-          <p className="mt-2 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
+          <p className="ui-alert-success mt-2">
             Template saved.
           </p>
         ) : null}
@@ -100,7 +100,7 @@ export default async function ContentSignalDetailPage({
         </form>
       </div>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <section className="ui-card p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium">Sources</h2>
           <form action={createSourceAction}>

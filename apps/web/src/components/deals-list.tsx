@@ -14,7 +14,7 @@ export function DealsList({
   const isFeed = variant === "feed";
 
   return (
-    <section className={isFeed ? "mt-3" : "rounded-lg border border-[var(--border)] bg-[var(--card)] p-4"}>
+    <section className={isFeed ? "mt-3" : "ui-card p-4"}>
       <h2 className={isFeed ? "text-xs font-medium text-[var(--muted)]" : "text-sm font-medium text-[var(--muted)]"}>
         Deals
       </h2>

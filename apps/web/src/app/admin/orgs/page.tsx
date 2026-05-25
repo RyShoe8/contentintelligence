@@ -7,6 +7,7 @@ import {
   listOrganizations,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { PageHeader } from "@/components/ui/page-header";
 import { requirePlatformAdmin } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
@@ -28,22 +29,17 @@ export default async function AdminOrgsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Organizations</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Platform-wide view of tenants, members, and content signals.
-          </p>
-        </div>
-        <Link
-          href="/admin/orgs/new"
-          className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          Create organization
-        </Link>
-      </div>
+      <PageHeader
+        title="Organizations"
+        description="Platform-wide view of tenants, members, and content signals."
+        actions={
+          <Link href="/admin/orgs/new" className="ui-btn-primary">
+            Create organization
+          </Link>
+        }
+      />
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+      <div className="ui-card overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-[var(--border)] bg-[var(--card)] text-[var(--muted)]">
             <tr>

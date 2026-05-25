@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function CopyPostButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -16,12 +17,8 @@ export function CopyPostButton({ text }: { text: string }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void copy()}
-      className="rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:border-[var(--accent)]"
-    >
+    <Button type="button" variant="secondary" size="sm" onClick={() => void copy()}>
       {copied ? "Copied!" : "Copy post"}
-    </button>
+    </Button>
   );
 }

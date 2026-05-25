@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 
 type Props = {
   signalItemId: string;
@@ -66,23 +68,18 @@ export function AddToPostsButton({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        disabled={disabled || status === "loading"}
-        onClick={() => void run()}
-        className="rounded border border-[var(--border)] px-2 py-1 text-xs hover:border-[var(--accent)] disabled:opacity-50"
-      >
+      <Button type="button" variant="secondary" size="sm" disabled={disabled || status === "loading"} onClick={() => void run()}>
         {status === "loading" ? "Adding…" : "Add to Posts"}
-      </button>
+      </Button>
       {status === "ok" ? (
-        <p className="text-xs text-green-400">
+        <Alert variant="success" className="text-xs">
           {message}{" "}
           <Link href={`/posts?content_signal_id=${contentSignalId}`} className="underline">
             View Posts
           </Link>
-        </p>
+        </Alert>
       ) : null}
-      {status === "err" ? <p className="text-xs text-red-400">{message}</p> : null}
+      {status === "err" ? <Alert variant="error" className="text-xs">{message}</Alert> : null}
     </div>
   );
 }

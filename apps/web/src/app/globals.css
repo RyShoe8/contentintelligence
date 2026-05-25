@@ -5,37 +5,142 @@
 :root {
   --primary: #0082a6;
   --secondary: #00d2d6;
-  --surface-light: #e1f9fa;
-  --background: #f4f8fa;
-  /* backward-compatible aliases */
+  --surface-light: #e8f4f6;
+  --background: #f8fafc;
   --accent: var(--primary);
   --accent-bright: var(--secondary);
-  --bg-top: var(--surface-light);
-  --bg-bottom: var(--background);
-  --fg: #1a2744;
-  --muted: #5c6b82;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --muted-foreground: #64748b;
   --card: #ffffff;
   --input-bg: #ffffff;
-  --border: #c9dae9;
-  --header-border: color-mix(in srgb, var(--primary) 15%, transparent);
+  --border: #e2e8f0;
+  --header-border: var(--border);
+  --ring: color-mix(in srgb, var(--primary) 40%, transparent);
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.07), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --success: #059669;
+  --success-bg: #ecfdf5;
+  --success-border: #a7f3d0;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --info-bg: #f0f9ff;
+  --info-border: #bae6fd;
 }
 
-body {
-  color: var(--fg);
-  background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
-  min-height: 100vh;
+@layer base {
+  body {
+    @apply min-h-screen font-sans antialiased;
+    color: var(--fg);
+    background: var(--background);
+  }
+
+  h1 {
+    @apply text-2xl font-semibold tracking-tight text-[var(--fg)];
+  }
+
+  h2 {
+    @apply text-lg font-semibold text-[var(--fg)];
+  }
+
+  h3 {
+    @apply text-base font-medium text-[var(--fg)];
+  }
 }
 
 @layer components {
+  .ui-card {
+    @apply rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-sm;
+  }
+
+  .ui-panel {
+    @apply rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm;
+  }
+
+  .ui-label {
+    @apply text-sm font-medium text-[var(--fg)];
+  }
+
+  .ui-caption {
+    @apply text-xs text-[var(--muted)];
+  }
+
+  .ui-input {
+    @apply h-9 w-full rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--fg)] shadow-sm transition-colors placeholder:text-[var(--muted)] focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)];
+  }
+
+  .ui-textarea {
+    @apply w-full rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm text-[var(--fg)] shadow-sm transition-colors placeholder:text-[var(--muted)] focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)];
+  }
+
+  .ui-select {
+    @apply h-9 w-full rounded-md border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--fg)] shadow-sm focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)];
+  }
+
+  .ui-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .ui-btn-primary {
+    @apply ui-btn h-9 bg-[var(--primary)] px-4 text-white hover:opacity-90;
+  }
+
+  .ui-btn-secondary {
+    @apply ui-btn h-9 border border-[var(--border)] bg-[var(--card)] px-4 text-[var(--fg)] shadow-sm hover:bg-[var(--surface-light)];
+  }
+
+  .ui-btn-ghost {
+    @apply ui-btn h-9 px-3 text-[var(--muted)] hover:bg-[var(--surface-light)] hover:text-[var(--fg)];
+  }
+
+  .ui-btn-danger {
+    @apply ui-btn h-9 border border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 text-[var(--danger)] hover:opacity-90;
+  }
+
+  .ui-btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+
+  .ui-alert {
+    @apply rounded-md border px-3 py-2 text-sm;
+  }
+
+  .ui-alert-success {
+    @apply ui-alert border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)];
+  }
+
+  .ui-alert-error {
+    @apply ui-alert border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)];
+  }
+
+  .ui-alert-info {
+    @apply ui-alert border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--fg)];
+  }
+
+  .ui-alert-warning {
+    @apply ui-alert border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)];
+  }
+
   .badge-auto {
-    @apply rounded px-2 py-0.5 text-xs font-medium;
-    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    @apply inline-flex rounded-md px-2 py-0.5 text-xs font-medium;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
     color: var(--primary);
   }
 
   .badge-manual {
-    @apply rounded px-2 py-0.5 text-xs font-medium;
-    background: color-mix(in srgb, var(--secondary) 22%, transparent);
+    @apply inline-flex rounded-md px-2 py-0.5 text-xs font-medium;
+    background: color-mix(in srgb, var(--secondary) 20%, transparent);
     color: color-mix(in srgb, var(--primary) 85%, black);
+  }
+
+  .badge-neutral {
+    @apply inline-flex rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-0.5 text-xs font-medium text-[var(--muted)];
   }
 }

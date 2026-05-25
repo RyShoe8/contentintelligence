@@ -66,22 +66,22 @@ export default async function SourceEditorPage({
       </div>
 
       {sp.saved === "1" ? (
-        <p className="rounded-md border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-200">
+        <p className="ui-alert-success">
           Source saved.
         </p>
       ) : null}
       {sp.gmail === "ok" && sp.email ? (
-        <p className="rounded-md border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-200">
+        <p className="ui-alert-success">
           Gmail connected for <strong>{sp.email}</strong>.
         </p>
       ) : null}
       {sp.gmail_error ? (
-        <p className="rounded-md border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-200">
+        <p className="ui-alert-error">
           Gmail error: {sp.gmail_error}
         </p>
       ) : null}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <section className="ui-card p-6">
         <h2 className="mb-3 text-lg font-medium">Gmail connection</h2>
         {!gmailOAuthConfigured ? (
           <p className="text-sm text-amber-200/90">
@@ -113,7 +113,7 @@ export default async function SourceEditorPage({
         )}
       </section>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <section className="ui-card p-6">
         <h2 className="mb-4 text-lg font-medium">Source settings</h2>
         <form action={saveSourceAction} className="grid gap-4 text-sm">
           <input type="hidden" name="id" value={sourceId} />

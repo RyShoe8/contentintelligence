@@ -5,6 +5,8 @@ import {
   listOrgMembers,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
+import { Alert } from "@/components/ui/alert";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireOrgOwner } from "@/lib/org-auth";
 import {
   inviteMemberAction,
@@ -71,20 +73,12 @@ export default async function OrgMembersPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Team</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Add members by email. If they have signed in before, they are added to your organization
-          immediately; otherwise they join on first Google sign-in with that address. When Brevo is
-          configured, they receive a notification email for either case.
-        </p>
-      </div>
+      <PageHeader
+        title="Team"
+        description="Add members by email. If they have signed in before, they are added immediately; otherwise they join on first Google sign-in. When Brevo is configured, they receive a notification email."
+      />
 
-      {sp.renamed === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-          Organization name updated.
-        </p>
-      ) : null}
+      {sp.renamed === "1" ? <Alert variant="success">Organization name updated.</Alert> : null}
       {sp.added === "1" ? (
         <div className="space-y-1 rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
           <p>Member added to your organization.</p>
@@ -119,7 +113,7 @@ export default async function OrgMembersPage({
         </p>
       ) : null}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <h2 className="text-lg font-medium">Organization name</h2>
         <form action={updateOrganizationNameAction} className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-sm">
@@ -136,14 +130,14 @@ export default async function OrgMembersPage({
           </label>
           <button
             type="submit"
-            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            className="ui-btn-primary"
           >
             Save name
           </button>
         </form>
       </section>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <section className="ui-card p-4">
         <h2 className="text-lg font-medium">Add member</h2>
         <form action={inviteMemberAction} className="mt-3 flex flex-wrap items-end gap-3">
           <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-sm">
@@ -158,7 +152,7 @@ export default async function OrgMembersPage({
           </label>
           <button
             type="submit"
-            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            className="ui-btn-primary"
           >
             Add member
           </button>
@@ -171,7 +165,7 @@ export default async function OrgMembersPage({
           {members.map((m) => (
             <li
               key={m.email}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
+              className="flex flex-wrap items-center justify-between gap-3 ui-card p-3"
             >
               <div>
                 <p className="font-medium">{m.email}</p>
@@ -204,7 +198,7 @@ export default async function OrgMembersPage({
             {invites.map((inv) => (
               <li
                 key={inv.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3"
+                className="flex flex-wrap items-center justify-between gap-3 ui-card p-3"
               >
                 <div>
                   <p className="font-medium">{inv.email}</p>

@@ -3,6 +3,8 @@
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { useState } from "react";
 import { clearFeedAction } from "@/app/feed/actions";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   contentSignalId: string;
@@ -45,15 +47,10 @@ export function ClearFeedButton({
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        disabled={disabled || pending}
-        onClick={run}
-        className="rounded border border-red-800/50 bg-red-950/30 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-900/40 disabled:opacity-50"
-      >
+      <Button type="button" variant="danger" disabled={disabled || pending} onClick={run}>
         {pending ? "Clearing…" : "Clear feed"}
-      </button>
-      {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
+      </Button>
+      {error ? <Alert variant="error" className="mt-2">{error}</Alert> : null}
     </div>
   );
 }

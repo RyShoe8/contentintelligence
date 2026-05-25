@@ -9,6 +9,15 @@ import { DealsList } from "@/components/deals-list";
 import { DealLinkRow } from "@/components/deal-link-row";
 import { KeyPointsList } from "@/components/key-points-list";
 import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FieldGroup, Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { PageSection } from "@/components/ui/page-section";
+import { Select } from "@/components/ui/select";
 import { requireOrgMember } from "@/lib/org-auth";
 
 export const dynamic = "force-dynamic";
@@ -100,35 +109,29 @@ export default async function FeedPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Signal feed</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Select a content signal, sync its sources, then filter results below.
-          </p>
-        </div>
-        {sort !== "created_at" ? (
-          <Link href={toggleOrderHref} className="text-sm text-[var(--accent)]">
-            Toggle sort direction ({order === "desc" ? "descending" : "ascending"})
-          </Link>
-        ) : (
-          <span className="text-sm text-[var(--muted)]">Newest first</span>
-        )}
-      </div>
+      <PageHeader
+        title="Signal feed"
+        description="Select a content signal, sync its sources, then filter results below."
+        actions={
+          sort !== "created_at" ? (
+            <Link href={toggleOrderHref} className="text-sm font-medium text-[var(--primary)] hover:underline">
+              Toggle sort ({order === "desc" ? "desc" : "asc"})
+            </Link>
+          ) : (
+            <span className="text-sm text-[var(--muted)]">Newest first</span>
+          )
+        }
+      />
 
       {clearedCount !== null && Number.isFinite(clearedCount) ? (
-        <p className="rounded-md border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-200">
+        <Alert variant="success">
           Cleared {clearedCount} feed {clearedCount === 1 ? "item" : "items"} for{" "}
           <strong>{selectedSignal?.name ?? "this signal"}</strong>. Run Sync now to re-ingest.
-        </p>
+        </Alert>
       ) : null}
-      {sp.error === "not_found" ? (
-        <p className="rounded-md border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-200">
-          Content signal not found.
-        </p>
-      ) : null}
+      {sp.error === "not_found" ? <Alert variant="error">Content signal not found.</Alert> : null}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+      <PageSection title="Content signal" description="Choose which signal to view and sync.">
         <form method="get" className="flex flex-wrap items-end gap-4">
           {sp.keyword ? <input type="hidden" name="keyword" value={sp.keyword} /> : null}
           {sp.min_score ? <input type="hidden" name="min_score" value={sp.min_score} /> : null}
@@ -139,14 +142,9 @@ export default async function FeedPage({
           {sp.has_deal === "1" ? <input type="hidden" name="has_deal" value="1" /> : null}
           <input type="hidden" name="sort" value={sort} />
           <input type="hidden" name="order" value={order} />
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
-            <span className="text-[var(--muted)]">Content signal</span>
-            <select
-              name="content_signal_id"
-              defaultValue={selectedId}
-              className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
-              required
-            >
+          <FieldGroup className="min-w-[200px] flex-1">
+            <Label htmlFor="feed-signal-select">Content signal</Label>
+            <Select id="feed-signal-select" name="content_signal_id" defaultValue={selectedId} required>
               {contentSignals.length === 0 ? (
                 <option value="">No content signals — create one first</option>
               ) : (
@@ -156,14 +154,11 @@ export default async function FeedPage({
                   </option>
                 ))
               )}
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="rounded border border-[var(--border)] px-4 py-2 text-sm hover:border-[var(--accent)]"
-          >
+            </Select>
+          </FieldGroup>
+          <Button type="submit" variant="secondary">
             Select
-          </button>
+          </Button>
         </form>
         {selectedId ? (
           <div className="mt-4 border-t border-[var(--border)] pt-4">
@@ -202,82 +197,52 @@ export default async function FeedPage({
             </p>
           </div>
         ) : null}
-      </section>
+      </PageSection>
 
-      <form
-        className="grid gap-3 rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 md:grid-cols-3 lg:grid-cols-4"
-        method="get"
-      >
+      <PageSection title="Filters" description="Narrow the feed by keyword, relevance, and deal strength.">
+      <form className="grid gap-4 md:grid-cols-3 lg:grid-cols-4" method="get">
         <input type="hidden" name="content_signal_id" value={selectedId} />
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Keyword</span>
-          <input
-            name="keyword"
-            defaultValue={sp.keyword ?? ""}
-            className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Min relevance (1–10)</span>
-          <input
-            name="min_score"
-            type="number"
-            min={1}
-            max={10}
-            step={0.1}
-            defaultValue={sp.min_score ?? ""}
-            className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm md:col-span-2">
-          <span className="text-[var(--muted)]">Min deal strength (%)</span>
-          <input
-            name="min_deal_pct"
-            type="number"
-            min={0}
-            max={100}
-            step={1}
-            placeholder="e.g. 50"
-            defaultValue={sp.min_deal_pct ?? ""}
-            title="Passes if % off list or % bonus on spend (same units only). Mixed USD/SC offers are excluded."
-            className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
-          />
-          <span className="text-xs text-[var(--muted)]">
-            % off list or % bonus on spend (includes USD → SC offers when a bonus % can be computed).
-          </span>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-[var(--muted)]">Sort by</span>
-          <select
-            name="sort"
-            defaultValue={sort}
-            className="rounded border border-[var(--border)] bg-[var(--input-bg)] text-[var(--fg)] px-3 py-2"
-          >
+        <FieldGroup>
+          <Label htmlFor="feed-keyword">Keyword</Label>
+          <Input id="feed-keyword" name="keyword" defaultValue={sp.keyword ?? ""} />
+        </FieldGroup>
+        <FieldGroup>
+          <Label htmlFor="feed-min-score">Min relevance (1–10)</Label>
+          <Input id="feed-min-score" name="min_score" type="number" min={1} max={10} step={0.1} defaultValue={sp.min_score ?? ""} />
+        </FieldGroup>
+        <FieldGroup className="md:col-span-2">
+          <Label htmlFor="feed-min-deal">Min deal strength (%)</Label>
+          <Input id="feed-min-deal" name="min_deal_pct" type="number" min={0} max={100} step={1} placeholder="e.g. 50" defaultValue={sp.min_deal_pct ?? ""} />
+          <span className="ui-caption">% off list or % bonus on spend.</span>
+        </FieldGroup>
+        <FieldGroup>
+          <Label htmlFor="feed-sort">Sort by</Label>
+          <Select id="feed-sort" name="sort" defaultValue={sort}>
             <option value="created_at">Most Recent</option>
             <option value="relevance_score">Relevance score</option>
             <option value="deal_savings">Deal strength</option>
-          </select>
-        </label>
+          </Select>
+        </FieldGroup>
         <input type="hidden" name="order" value={order} />
-        <button
-          type="submit"
-          className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white md:col-span-3 lg:col-span-4"
-        >
+        <Button type="submit" className="md:col-span-3 lg:col-span-4">
           Apply filters
-        </button>
+        </Button>
       </form>
+      </PageSection>
 
+      <PageSection title="Feed items" description={selectedId ? `${items.length} items` : "Select a content signal above."}>
       <ul className="space-y-3">
         {items.map((it) => (
           <li key={it.id}>
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 hover:border-[var(--accent)]">
+            <Card className="transition-colors hover:border-[var(--primary)]">
+              <CardContent>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <p className="text-xs font-medium text-[var(--muted)]">{it.source_name}</p>
                     {hasDeal(it) ? (
                       <span
-                        className="inline-flex shrink-0 items-center rounded-md border border-emerald-500/50 bg-emerald-500/20 px-2 py-0.5 text-xs font-bold tracking-tight text-emerald-800 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200"
+                        className="inline-flex shrink-0 items-center rounded-md border border-[var(--success-border)] bg-[var(--success-bg)] px-2 py-0.5 text-xs font-bold tracking-tight text-[var(--success)]"
                         title="Deal detected in this email"
                       >
                         Deal Found!
@@ -337,15 +302,15 @@ export default async function FeedPage({
                 {it.detected_keywords.slice(0, 6).join(", ")}
               </p>
               {it.email_images?.length ? <EmailImageGallery images={it.email_images} /> : null}
-            </div>
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
       {items.length === 0 ? (
-        <p className="text-sm text-[var(--muted)]">
-          {selectedId ? "No items yet. Sync sources or adjust filters." : "Select a content signal above."}
-        </p>
+        <EmptyState message={selectedId ? "No items yet. Sync sources or adjust filters." : "Select a content signal above."} />
       ) : null}
+      </PageSection>
     </div>
   );
 }

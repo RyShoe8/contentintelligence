@@ -18,6 +18,8 @@ import {
   saveTemplateAction,
   saveTemplateFromSignalAction,
 } from "./template-actions";
+import { Alert } from "@/components/ui/alert";
+import { PageHeader } from "@/components/ui/page-header";
 import { LabelWithTip } from "../signals/label-with-tip";
 import { CONTENT_SIGNAL_FIELD_TIPS } from "./field-help";
 import { TEMPLATE_SCHEDULE_OPTIONS, templateScheduleLabel } from "./template-constants";
@@ -29,48 +31,12 @@ function statusBanner(sp: {
   template_deleted?: string;
   error?: string;
 }) {
-  if (sp.template_saved === "1") {
-    return (
-      <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-400">
-        Template saved.
-      </p>
-    );
-  }
-  if (sp.template_deleted === "1") {
-    return (
-      <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">
-        Template deleted.
-      </p>
-    );
-  }
-  if (sp.error === "template_name") {
-    return (
-      <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-        Enter a template name.
-      </p>
-    );
-  }
-  if (sp.error === "signal_name") {
-    return (
-      <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-        Enter a name for the new content signal.
-      </p>
-    );
-  }
-  if (sp.error === "template_not_found") {
-    return (
-      <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-        Template not found.
-      </p>
-    );
-  }
-  if (sp.error === "not_found") {
-    return (
-      <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-        Content signal not found.
-      </p>
-    );
-  }
+  if (sp.template_saved === "1") return <Alert variant="success">Template saved.</Alert>;
+  if (sp.template_deleted === "1") return <Alert variant="info">Template deleted.</Alert>;
+  if (sp.error === "template_name") return <Alert variant="error">Enter a template name.</Alert>;
+  if (sp.error === "signal_name") return <Alert variant="error">Enter a name for the new content signal.</Alert>;
+  if (sp.error === "template_not_found") return <Alert variant="error">Template not found.</Alert>;
+  if (sp.error === "not_found") return <Alert variant="error">Content signal not found.</Alert>;
   return null;
 }
 
@@ -223,17 +189,14 @@ export default async function ContentSignalsPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Content Signals</h1>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Define keywords, lookback, and deal parsing. Save reusable templates or create signals from
-          scratch. Attach Gmail sources on each signal&apos;s detail page.
-        </p>
-      </div>
+      <PageHeader
+        title="Content Signals"
+        description="Define keywords, lookback, and deal parsing. Save reusable templates or create signals from scratch. Attach Gmail sources on each signal's detail page."
+      />
 
       {statusBanner(sp)}
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <section className="ui-card p-6">
         <h2 className="mb-1 text-lg font-medium">Templates</h2>
         <p className="mb-4 text-sm text-[var(--muted)]">{CONTENT_SIGNAL_FIELD_TIPS.templates}</p>
 
@@ -267,7 +230,7 @@ export default async function ContentSignalsPage({
                     </label>
                     <button
                       type="submit"
-                      className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white"
+                      className="ui-btn-primary px-3 py-2 text-sm font-medium text-white"
                     >
                       Create signal
                     </button>
@@ -310,7 +273,7 @@ export default async function ContentSignalsPage({
         </details>
       </section>
 
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-6">
+      <section className="ui-card p-6">
         <h2 className="mb-4 text-lg font-medium">Add content signal</h2>
         <form action={saveContentSignalAction} className="grid gap-4">
           <label className="flex flex-col gap-1 text-sm">
@@ -391,7 +354,7 @@ export default async function ContentSignalsPage({
         <h2 className="text-lg font-medium">Existing</h2>
         <ul className="space-y-4">
           {signals.map((cs) => (
-            <li key={cs.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+            <li key={cs.id} className="ui-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <Link
