@@ -6,6 +6,7 @@ import {
   normalizeSocialCopyByPlatform,
   primarySocialCopy,
   socialCopyByPlatformFromDoc,
+  SOCIAL_PLATFORM_IDS,
   socialPlatformIdSchema,
 } from "./social-platforms.js";
 
@@ -370,7 +371,7 @@ export const voiceSchema = z.preprocess(
   content_signal_ids: z.array(z.string().uuid()).default([]),
   distribution_platforms: z.preprocess(
     (v) => normalizeDistributionPlatforms(v),
-    z.array(socialPlatformIdSchema).max(9).default([]),
+    z.array(socialPlatformIdSchema).max(SOCIAL_PLATFORM_IDS.length).default([]),
   ),
   persona: z.string().default(""),
   persona_status: voicePersonaStatusSchema.default("pending"),

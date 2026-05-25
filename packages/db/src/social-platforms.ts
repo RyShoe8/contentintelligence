@@ -10,6 +10,7 @@ export const SOCIAL_PLATFORM_IDS = [
   "tiktok",
   "youtube",
   "pinterest",
+  "reddit",
 ] as const;
 
 export const socialPlatformIdSchema = z.enum(SOCIAL_PLATFORM_IDS);
@@ -78,6 +79,13 @@ export const SOCIAL_PLATFORMS: SocialPlatformDef[] = [
     maxChars: 500,
     promptRules: "Pin description with keywords. Inspirational tone. No markdown.",
   },
+  {
+    id: "reddit",
+    label: "Reddit",
+    maxChars: 40000,
+    promptRules:
+      "Community tone. Strong first line. Concise post body. Avoid spammy or ALL CAPS clickbait. Plain text only.",
+  },
 ];
 
 const PLATFORM_BY_ID = new Map(SOCIAL_PLATFORMS.map((p) => [p.id, p]));
@@ -100,7 +108,7 @@ export function normalizeDistributionPlatforms(raw: unknown): SocialPlatformId[]
     if (!isSocialPlatformId(id) || seen.has(id)) continue;
     seen.add(id);
     out.push(id);
-    if (out.length >= 9) break;
+    if (out.length >= SOCIAL_PLATFORM_IDS.length) break;
   }
   return out;
 }

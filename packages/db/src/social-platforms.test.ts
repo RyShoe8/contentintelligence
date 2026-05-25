@@ -23,6 +23,12 @@ describe("getSocialPlatform", () => {
     assert.equal(p.maxChars, 280);
     assert.match(p.label, /Twitter/i);
   });
+
+  it("returns reddit limits", () => {
+    const p = getSocialPlatform("reddit");
+    assert.equal(p.maxChars, 40000);
+    assert.equal(p.label, "Reddit");
+  });
 });
 
 describe("primarySocialCopy", () => {
@@ -98,6 +104,22 @@ describe("voiceSchema distribution_platforms", () => {
     assert.equal(parsed.success, true);
     if (parsed.success) {
       assert.deepEqual(parsed.data.distribution_platforms, ["linkedin", "twitter"]);
+    }
+  });
+
+  it("parses reddit on voice", () => {
+    const parsed = voiceSchema.safeParse({
+      id: "00000000-0000-4000-8000-000000000001",
+      organization_id: "00000000-0000-4000-8000-000000000002",
+      name: "Brand",
+      created_by: "a@b.com",
+      distribution_platforms: ["reddit"],
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.deepEqual(parsed.data.distribution_platforms, ["reddit"]);
     }
   });
 });
