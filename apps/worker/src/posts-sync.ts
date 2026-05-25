@@ -14,6 +14,7 @@ import {
   listPosts,
   listSignalItems,
   primarySocialCopy,
+  resolveContentProviderName,
   upsertPost,
   type DealMetrics,
   type Post,
@@ -112,11 +113,12 @@ async function regenerateAllDraftPostsForContentSignal(
   for (const post of drafts) {
     const contentOnly = isContentOnlyPost(post.deal_key, post.deal_metrics);
     const dealUrl = signalItemById.get(post.signal_item_id)?.original_url;
+    const item = signalItemById.get(post.signal_item_id);
     const bundle = await generatePostCopies(ctx, {
       title: post.title,
       summary: post.ai_summary,
       senderFrom: post.sender_from,
-      sourceName: post.source_name,
+      contentProviderName: item ? resolveContentProviderName(item) ?? undefined : undefined,
       deal: contentOnly ? undefined : post.deal_metrics,
       signalName,
       ...copyOptsWithDealUrl(ctx, dealUrl),
@@ -165,7 +167,7 @@ async function upsertDealPost(
       title: item.title,
       summary: item.ai_summary,
       senderFrom: item.sender_from,
-      sourceName: item.source_name,
+      contentProviderName: resolveContentProviderName(item) ?? undefined,
       deal,
       signalName,
       ...copyOptsWithDealUrl(ctx, item.original_url),
@@ -218,7 +220,7 @@ async function upsertContentOnlyPost(
       title: item.title,
       summary: item.ai_summary,
       senderFrom: item.sender_from,
-      sourceName: item.source_name,
+      contentProviderName: resolveContentProviderName(item) ?? undefined,
       signalName,
       ...copyOptsWithDealUrl(ctx, item.original_url),
     });

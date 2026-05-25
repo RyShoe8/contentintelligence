@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { extractCasinoName, parseEmailFrom, casinoNameFromDomain } from "./email-from.js";
+import {
+  extractCasinoName,
+  parseEmailFrom,
+  casinoNameFromDomain,
+  resolveContentProviderName,
+} from "./email-from.js";
 
 describe("parseEmailFrom", () => {
   it("parses display name and email from angle brackets", () => {
@@ -45,5 +50,28 @@ describe("extractCasinoName", () => {
     const name = extractCasinoName("noreply <noreply@goldenheartsgames.com>");
     assert.ok(name && name.length > 0);
     assert.notEqual(name.toLowerCase(), "noreply");
+  });
+});
+
+describe("resolveContentProviderName", () => {
+  it("prefers stored casino_name over extraction", () => {
+    assert.equal(
+      resolveContentProviderName({
+        casino_name: "Chipnwin",
+        sender_from: "marketing <promo@example.com>",
+        title: "Bonus offer",
+      }),
+      "Chipnwin",
+    );
+  });
+
+  it("falls back to extractCasinoName when casino_name is missing", () => {
+    assert.equal(
+      resolveContentProviderName({
+        sender_from: "Zula Casino <marketing@zulacasino.com>",
+        title: "Weekly bonus",
+      }),
+      "Zula Casino",
+    );
   });
 });

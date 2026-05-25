@@ -8,7 +8,7 @@ export type VoicePreferredPhraseLike = {
 export type VoiceStylePromptOpts = {
   brandName?: string;
   brandMentionLevel?: number;
-  sourceName?: string;
+  contentProviderName?: string;
   sourcesInPostsLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
 };
@@ -57,24 +57,27 @@ export function buildBrandMentionPromptLine(brandName: string, level: number): s
   return `- Always lead with "${name}" and mention the brand at least twice when the post has room`;
 }
 
-export function buildSourceMentionPromptLine(sourceName: string, level: number): string | null {
-  const label = sourceName.trim();
-  if (!label) return null;
+export function buildContentProviderMentionPromptLine(
+  contentProviderName: string,
+  level: number,
+): string | null {
+  const name = contentProviderName.trim();
+  if (!name) return null;
 
   const l = Math.max(0, Math.min(100, Math.round(level)));
   if (l === 0) {
-    return `- Do not mention the email source label "${label}" in the post`;
+    return `- Do not mention the content provider "${name}" in the post`;
   }
   if (l <= 25) {
-    return `- Mention the email source "${label}" rarely, only when clearly relevant`;
+    return `- Mention the content provider "${name}" rarely, only when clearly relevant`;
   }
   if (l <= 50) {
-    return `- Mention the email source "${label}" at least once when it fits naturally`;
+    return `- Mention the content provider "${name}" at least once when it fits naturally`;
   }
   if (l <= 75) {
-    return `- Reference the email source "${label}" prominently; include it at least once and again in the CTA or closing line when space allows`;
+    return `- Mention "${name}" prominently; include it at least once and again in the CTA or closing line when space allows`;
   }
-  return `- Lead with or reference the email source "${label}" at least twice when the post has room`;
+  return `- Lead with or reference the content provider "${name}" at least twice when the post has room`;
 }
 
 export function buildPhraseFrequencyPromptLine(groupLabel: string, level: number): string | null {
@@ -144,11 +147,11 @@ export function buildVoiceStylePromptLines(opts: VoiceStylePromptOpts): string[]
   );
   if (brandLine) lines.push(brandLine);
 
-  const sourceLine = buildSourceMentionPromptLine(
-    opts.sourceName ?? "",
+  const providerLine = buildContentProviderMentionPromptLine(
+    opts.contentProviderName ?? "",
     opts.sourcesInPostsLevel ?? 0,
   );
-  if (sourceLine) lines.push(sourceLine);
+  if (providerLine) lines.push(providerLine);
 
   const pairs = activePreferredPhrases(opts.preferredPhrases ?? []);
   if (pairs.length) {

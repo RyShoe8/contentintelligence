@@ -19,7 +19,7 @@ export type GenerateSocialPostOpts = {
   signalName?: string;
   brandName?: string;
   brandMentionLevel?: number;
-  sourceName?: string;
+  contentProviderName?: string;
   sourcesInPostsLevel?: number;
   preferredPhrases?: VoicePreferredPhraseLike[];
   dealUrl?: string | null;
@@ -163,7 +163,7 @@ export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Prom
   const style: VoiceStylePromptOpts = {
     brandName: opts.brandName,
     brandMentionLevel: opts.brandMentionLevel,
-    sourceName: opts.sourceName,
+    contentProviderName: opts.contentProviderName,
     sourcesInPostsLevel: opts.sourcesInPostsLevel,
     preferredPhrases: opts.preferredPhrases,
   };
@@ -184,8 +184,8 @@ export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Prom
   const userParts = [
     `Email subject: ${opts.title}`,
     opts.senderFrom ? `From: ${opts.senderFrom}` : null,
-    opts.sourceName?.trim() && (opts.sourcesInPostsLevel ?? 0) > 0
-      ? `Email source label: ${opts.sourceName.trim()}`
+    opts.contentProviderName?.trim() && (opts.sourcesInPostsLevel ?? 0) > 0
+      ? `Content provider: ${opts.contentProviderName.trim()}`
       : null,
     opts.signalName ? `Content signal: ${opts.signalName}` : null,
     dealLine ? `Deal tier: ${dealLine}` : null,

@@ -24,7 +24,7 @@ export function SourcesInPostsSlider({ defaultValue = 0 }: SourcesInPostsSliderP
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex items-center justify-between gap-2">
         <LabelWithTip htmlFor="voice-sources-in-posts-level" tip={VOICE_FIELD_TIPS.sources_in_posts_level}>
-          Use sources in posts
+          Name content providers in posts
         </LabelWithTip>
         <span className="text-xs font-medium text-[var(--muted)]">
           {labelForLevel(level)} ({level})
@@ -49,8 +49,8 @@ export function SourcesInPostsSlider({ defaultValue = 0 }: SourcesInPostsSliderP
         <span>Always</span>
       </div>
       <span className="text-xs text-[var(--muted)]">
-        How often generated post copy names the email source label (e.g. inbox or Gmail label). Refresh posts
-        after saving to apply to new drafts.
+        How often generated post copy names the promo/casino from the email (e.g. Chipnwin), not the Gmail inbox
+        label. Refresh posts after saving to apply to new drafts.
       </span>
     </div>
   );

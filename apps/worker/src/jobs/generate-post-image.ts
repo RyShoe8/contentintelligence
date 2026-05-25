@@ -7,6 +7,7 @@ import {
 } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../env.js";
+import { buildOpenAiImageGenerateParams } from "../services/image/openai-image-generate.js";
 import { buildImagePrompt } from "../services/prompt-builder/build-image-prompt.js";
 import { fallbackVisualPersonality } from "../services/visual-analysis/extract-visual-personality.js";
 
@@ -72,13 +73,9 @@ export async function runGeneratePostImage(
     const client = new OpenAI({ apiKey: env.openaiApiKey });
     const model = env.openaiImageModel;
 
-    const response = await client.images.generate({
-      model,
-      prompt: imagePrompt.slice(0, 3800),
-      n: 1,
-      size: "1024x1024",
-      ...(model.startsWith("dall-e") ? { response_format: "url" as const } : {}),
-    });
+    const response = await client.images.generate(
+      buildOpenAiImageGenerateParams(model, imagePrompt),
+    );
 
     const item = response.data?.[0];
     let buf: Buffer;

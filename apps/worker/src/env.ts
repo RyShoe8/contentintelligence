@@ -35,6 +35,7 @@ export const env = {
   maxTokensBrandAnalyze: num("MAX_TOKENS_BRAND_ANALYZE", 1200),
   maxTokensVisualAnalyze: num("MAX_TOKENS_VISUAL_ANALYZE", 900),
   maxTokensImagePrompt: num("MAX_TOKENS_IMAGE_PROMPT", 400),
+  /** dall-e-2/3 or gpt-image-1+; GPT models do not support `response_format`. */
   openaiImageModel: process.env.OPENAI_IMAGE_MODEL ?? "dall-e-3",
   postImageMaxB64: num("POST_IMAGE_MAX_B64", 400_000),
   brandCorpusMaxChars: num("BRAND_CORPUS_MAX_CHARS", 24000),

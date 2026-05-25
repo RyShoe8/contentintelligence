@@ -108,3 +108,16 @@ export function extractCasinoName(
 
   return null;
 }
+
+export type ContentProviderNameInput = {
+  casino_name?: string;
+  sender_from: string;
+  title: string;
+  original_url?: string | null;
+};
+
+/** Promo/casino name shown on Posts (e.g. Chipnwin), not the Gmail source label. */
+export function resolveContentProviderName(item: ContentProviderNameInput): string | null {
+  if (item.casino_name?.trim()) return item.casino_name.trim();
+  return extractCasinoName(item.sender_from, item.title, item.original_url ?? null);
+}

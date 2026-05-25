@@ -2,7 +2,7 @@ export const VOICE_FIELD_TIPS = {
   brand_mention_level:
     "How often generated post copy mentions this voice's name. Included in the generated persona template and enforced when building Posts.",
   sources_in_posts_level:
-    "How often generated post copy references the email source label shown on feed rows (e.g. Email · Promotions), not the voice brand name. Refresh posts after saving.",
+    "How often generated post copy names the content provider from each email (e.g. Chipnwin), shown above the post title. Not the voice brand or Gmail inbox label (Email · Promotions). Refresh posts after saving.",
   persona_generation:
     "Persona generation usually takes 1–3 minutes. A progress indicator appears while it runs.",
   keywords:

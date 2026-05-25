@@ -32,21 +32,23 @@ describe("buildVoiceStylePromptLines", () => {
     assert.ok(lines.some((l) => l.includes("Spin now")));
   });
 
-  it("includes source mention line when level is above zero", () => {
+  it("includes content provider mention line when level is above zero", () => {
     const lines = buildVoiceStylePromptLines({
-      sourceName: "Email · Promotions",
+      contentProviderName: "Chipnwin",
       sourcesInPostsLevel: 75,
     });
-    assert.ok(lines.some((l) => l.includes("Email · Promotions")));
+    assert.ok(lines.some((l) => l.includes("Chipnwin")));
     assert.ok(lines.some((l) => l.includes("prominently")));
+    assert.ok(!lines.some((l) => l.includes("email source")));
   });
 
-  it("instructs not to mention source at level zero", () => {
+  it("instructs not to mention content provider at level zero", () => {
     const lines = buildVoiceStylePromptLines({
-      sourceName: "Email · Promotions",
+      contentProviderName: "Chipnwin",
       sourcesInPostsLevel: 0,
     });
     assert.ok(lines.some((l) => l.includes("Do not mention")));
+    assert.ok(lines.some((l) => l.includes("Chipnwin")));
   });
 
   it("requires exact wording when AI variations disabled", () => {

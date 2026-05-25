@@ -117,9 +117,9 @@ function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): strin
   const sourcesLevel = Math.max(0, Math.min(100, Math.round(opts.sourcesInPostsLevel ?? 0)));
   const sourcesInPosts = [
     "",
-    "## Use sources in posts",
+    "## Content provider names in posts",
     `- Setting: ${sourcesLevel} (${brandMentionLevelLabel(sourcesLevel)})`,
-    `- Controls how often generated copy references each email's source label (e.g. Email · inbox name), not the brand name`,
+    `- Controls how often generated copy names the promo/casino from each email (e.g. Chipnwin), not the voice brand or Gmail label (Email · Promotions)`,
   ];
 
   const pairs = (opts.preferredPhrases ?? [])
