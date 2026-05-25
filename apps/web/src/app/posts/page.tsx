@@ -12,6 +12,7 @@ import { CopyPostButton } from "@/components/copy-post-button";
 import { DealLinkRow } from "@/components/deal-link-row";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
 import { EmailImageGallery } from "@/components/email-image-gallery";
+import { KeyPointsList } from "@/components/key-points-list";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
@@ -316,6 +317,12 @@ export default async function PostsPage({
                   <pre className="mt-3 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm text-[var(--fg)]">
                     {post.social_copy}
                   </pre>
+                  {signalItem?.key_points?.length ? (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>
+                      <KeyPointsList points={signalItem.key_points} variant="compact" />
+                    </div>
+                  ) : null}
                   {dealUrl ? <DealLinkRow url={dealUrl} /> : null}
                   {images?.length ? <EmailImageGallery images={images} /> : null}
                 </li>

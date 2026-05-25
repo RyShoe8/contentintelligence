@@ -293,12 +293,10 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
             console.error("[ingest] OpenAI failed", e);
           }
         }
-        if (aiSummaryOn) {
-          try {
-            key_points = await extractKeyPointsWithLlm(dealParseText, normalized.subject);
-          } catch (e) {
-            console.error("[ingest] key points extraction failed", e);
-          }
+        try {
+          key_points = await extractKeyPointsWithLlm(dealParseText, normalized.subject);
+        } catch (e) {
+          console.error("[ingest] key points extraction failed", e);
         }
 
         const unitTokens =

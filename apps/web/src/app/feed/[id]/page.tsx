@@ -112,14 +112,21 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         </section>
       )}
 
-      <DealsList deals={dealsForDisplay(item)} />
-
       {item.key_points?.length ? (
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
           <h2 className="text-sm font-medium text-[var(--muted)]">Key Points</h2>
           <KeyPointsList points={item.key_points} />
         </section>
+      ) : !item.skip_reason ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Key Points</h2>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            No key points extracted yet. Sync the feed to refresh this item.
+          </p>
+        </section>
       ) : null}
+
+      <DealsList deals={dealsForDisplay(item)} />
 
       {item.original_url ? (
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">

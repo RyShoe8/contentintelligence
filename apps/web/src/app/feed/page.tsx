@@ -327,7 +327,10 @@ export default async function FeedPage({
               )}
               <DealsList deals={dealsForDisplay(it)} variant="feed" />
               {it.key_points?.length ? (
-                <KeyPointsList points={it.key_points} variant="compact" />
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>
+                  <KeyPointsList points={it.key_points} variant="compact" />
+                </div>
               ) : null}
               {it.original_url ? <DealLinkRow url={it.original_url} /> : null}
               <p className="mt-2 text-xs text-[var(--muted)]">

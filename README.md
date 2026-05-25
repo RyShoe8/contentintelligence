@@ -172,6 +172,7 @@ npm run build
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
 - **Posts shows “Due now” but nothing syncs for hours:** The UI is correct; scheduled ingest did not run. Confirm `CRON_SECRET` and `WORKER_URL` on Vercel, redeploy the web app so [`vercel.json`](apps/web/vercel.json) crons are active, and check Render logs for `signal_schedule_start` or `ingest_request` after a cron tick. On Render Free, rely on Vercel Cron (or an external ping) to wake the worker — not in-process cron alone.
 - **Deal link shows `w3.org/1999/xhtml`:** Re-sync the feed after deploy so `original_url` is recomputed. New ingests filter namespace and asset URLs; the UI also hides known junk links on old rows until re-synced.
+- **Key Points missing on Feed or Posts:** Run **Sync feed** (or **Refresh posts**) after deploy so existing `signal_items` rows get `key_points` populated. The Feed detail page shows a hint until a full ingest refreshes the item.
 
 ## OAuth notes
 
