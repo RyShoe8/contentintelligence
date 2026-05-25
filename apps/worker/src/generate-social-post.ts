@@ -1,4 +1,5 @@
-import type { DealMetrics, GenerationConstraints } from "@content-resourcer/db";
+import type { DealMetrics, GenerationConstraints, SocialPlatformId } from "@content-resourcer/db";
+import { getSocialPlatform, primarySocialCopy, truncateForPlatform } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { formatConstraintsForPrompt } from "./services/constraints/assemble-generation-constraints.js";
 import { env } from "./env.js";
@@ -9,6 +10,21 @@ import {
   type VoicePreferredPhraseLike,
   type VoiceStylePromptOpts,
 } from "./voice-style-rules.js";
+
+export type GenerateSocialPostOpts = {
+  title: string;
+  summary?: string | null;
+  senderFrom?: string;
+  deal?: DealMetrics | null;
+  signalName?: string;
+  brandName?: string;
+  brandMentionLevel?: number;
+  preferredPhrases?: VoicePreferredPhraseLike[];
+  dealUrl?: string | null;
+  persona?: string;
+  constraints?: GenerationConstraints;
+  platform?: SocialPlatformId;
+};
 
 function formatDealLine(dm: DealMetrics): string {
   const pay =
@@ -36,10 +52,27 @@ function styleRulesBlock(style: VoiceStylePromptOpts): string {
   return lines.length ? `\n${lines.join("\n")}` : "";
 }
 
+function lengthRule(platform?: SocialPlatformId): string {
+  if (platform) {
+    const max = getSocialPlatform(platform).maxChars;
+    return `- Keep the entire post under ${max} characters (hard limit). You may add one short follow-up line after a blank line only if the total still fits.`;
+  }
+  return `- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.`;
+}
+
+function platformRulesBlock(platform: SocialPlatformId): string {
+  const p = getSocialPlatform(platform);
+  return `
+Target platform: ${p.label}
+- Hard maximum length: ${p.maxChars} characters.
+- Platform rules: ${p.promptRules}`;
+}
+
 function buildConstraintSystemPrompt(
   constraints: GenerationConstraints,
   contentOnly: boolean,
   style: VoiceStylePromptOpts,
+  platform?: SocialPlatformId,
 ): string {
   const leadRule = contentOnly
     ? "- Lead with the most newsworthy or interesting hook from the email."
@@ -51,27 +84,57 @@ Rules:
 - Respect all taboos and avoid sounding like the "doesNotSoundLike" list.
 - Use favorite phrases and recurring topics naturally when relevant (do not force all of them).
 ${leadRule}
-- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
+${lengthRule(platform)}
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}
+- Do NOT use markdown. Plain text only.${platform ? platformRulesBlock(platform) : ""}${styleRulesBlock(style)}
 
 Brand generation constraints (JSON):
 ${formatConstraintsForPrompt(constraints)}`;
 }
 
-export async function generateSocialPostCopy(opts: {
-  title: string;
-  summary?: string | null;
-  senderFrom?: string;
-  deal?: DealMetrics | null;
-  signalName?: string;
-  brandName?: string;
-  brandMentionLevel?: number;
-  preferredPhrases?: VoicePreferredPhraseLike[];
-  dealUrl?: string | null;
-  persona?: string;
-  constraints?: GenerationConstraints;
-}): Promise<string> {
+function buildDefaultSystemPrompt(
+  contentOnly: boolean,
+  style: VoiceStylePromptOpts,
+  platform?: SocialPlatformId,
+  persona?: string,
+): string {
+  const platformBlock = platform ? platformRulesBlock(platform) : "";
+  if (persona?.trim()) {
+    return `Write a short social media post promoting this ${contentOnly ? "email content" : "deal email"} using the brand voice persona below.
+Rules:
+- Follow the persona's tone, vocabulary, and formatting habits.
+${contentOnly ? "- Lead with the most newsworthy or interesting hook from the email." : "- Lead with the deal hook (price → value/bonus)."}
+${lengthRule(platform)}
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.${platformBlock}${styleRulesBlock(style)}
+
+Brand voice persona:
+${persona.trim()}`;
+  }
+  if (contentOnly) {
+    return `Write a short social media post promoting this promotional email content.
+Rules:
+- Lead with the most newsworthy or interesting hook from the email.
+${lengthRule(platform)}
+- Friendly, informative promotional tone. No hashtags unless natural (max 2).
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.${platformBlock}${styleRulesBlock(style)}`;
+  }
+  return `Write a short social media post promoting this casino/promotional deal email.
+Rules:
+- Lead with the deal hook (price → value/bonus).
+${lengthRule(platform)}
+- Friendly, urgent promotional tone. No hashtags unless natural (max 2).
+- Do NOT invent URLs, promo codes, or deadlines not in the input.
+- Do NOT use markdown. Plain text only.${platformBlock}${styleRulesBlock(style)}`;
+}
+
+function finishCopy(raw: string, platform?: SocialPlatformId): string {
+  const cleaned = sanitizeVoicePostCopy(raw);
+  return platform ? truncateForPlatform(cleaned, platform) : cleaned;
+}
+
+export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Promise<string> {
   const contentOnly = !opts.deal;
   const style: VoiceStylePromptOpts = {
     brandName: opts.brandName,
@@ -87,7 +150,7 @@ export async function generateSocialPostCopy(opts: {
       const dealLine = formatDealLine(opts.deal!);
       copy = `${opts.title}\n\n${dealLine}${opts.summary ? `\n\n${opts.summary}` : ""}`.trim();
     }
-    return sanitizeVoicePostCopy(copy);
+    return finishCopy(copy, opts.platform);
   }
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
@@ -104,36 +167,12 @@ export async function generateSocialPostCopy(opts: {
     opts.preferredPhrases?.length
       ? formatPreferredPhrasesForUserMessage(opts.preferredPhrases)
       : null,
+    opts.platform ? `Publish to: ${getSocialPlatform(opts.platform).label}` : null,
   ].filter(Boolean);
 
   const systemPrompt = opts.constraints
-    ? buildConstraintSystemPrompt(opts.constraints, contentOnly, style)
-    : opts.persona?.trim()
-      ? `Write a short social media post promoting this ${contentOnly ? "email content" : "deal email"} using the brand voice persona below.
-Rules:
-- Follow the persona's tone, vocabulary, and formatting habits.
-${contentOnly ? "- Lead with the most newsworthy or interesting hook from the email." : "- Lead with the deal hook (price → value/bonus)."}
-- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
-- Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}
-
-Brand voice persona:
-${opts.persona.trim()}`
-      : contentOnly
-        ? `Write a short social media post promoting this promotional email content.
-Rules:
-- Lead with the most newsworthy or interesting hook from the email.
-- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
-- Friendly, informative promotional tone. No hashtags unless natural (max 2).
-- Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}`
-        : `Write a short social media post promoting this casino/promotional deal email.
-Rules:
-- Lead with the deal hook (price → value/bonus).
-- Keep the main post under 280 characters when possible; you may add one short follow-up sentence after a blank line if needed.
-- Friendly, urgent promotional tone. No hashtags unless natural (max 2).
-- Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.${styleRulesBlock(style)}`;
+    ? buildConstraintSystemPrompt(opts.constraints, contentOnly, style, opts.platform)
+    : buildDefaultSystemPrompt(contentOnly, style, opts.platform, opts.persona);
 
   const res = await client.chat.completions.create({
     model: env.openaiModel,
@@ -150,7 +189,24 @@ Rules:
 
   const fallback = contentOnly ? opts.title : dealLine ?? opts.title;
   const raw = res.choices[0]?.message?.content?.trim() ?? fallback;
-  return sanitizeVoicePostCopy(raw);
+  return finishCopy(raw, opts.platform);
+}
+
+export async function generateSocialCopiesForPlatforms(
+  platforms: SocialPlatformId[],
+  baseOpts: Omit<GenerateSocialPostOpts, "platform">,
+): Promise<Partial<Record<SocialPlatformId, string>>> {
+  const out: Partial<Record<SocialPlatformId, string>> = {};
+  for (const platform of platforms) {
+    out[platform] = await generateSocialPostCopy({ ...baseOpts, platform });
+  }
+  return out;
+}
+
+export function resolveDistributionPlatforms(
+  platforms: SocialPlatformId[] | undefined,
+): SocialPlatformId[] {
+  return platforms?.length ? platforms : ["twitter"];
 }
 
 export { formatDealLine };

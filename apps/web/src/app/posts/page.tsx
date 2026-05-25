@@ -8,7 +8,7 @@ import {
   listPosts,
 } from "@content-resourcer/db";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
-import { CopyPostButton } from "@/components/copy-post-button";
+import { PostPlatformTabs } from "@/components/post-platform-tabs";
 import { DealLinkRow } from "@/components/deal-link-row";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
 import { EmailImageGallery } from "@/components/email-image-gallery";
@@ -163,6 +163,15 @@ export default async function PostsPage({
                 and link this content signal to shape post copy.
               </p>
             )}
+            {linkedVoice && !linkedVoice.distribution_platforms?.length ? (
+              <p className="mt-2 text-xs text-amber-800">
+                No distribution platforms selected on this voice — copy uses X (Twitter) defaults.{" "}
+                <Link href={`/voices?voice_id=${linkedVoice.id}`} className="text-[var(--primary)] hover:underline">
+                  Edit voice
+                </Link>{" "}
+                to enable per-network posts.
+              </p>
+            ) : null}
             <form action={savePostSettingsAction} className="mt-4 grid gap-4 md:grid-cols-2">
               <input type="hidden" name="content_signal_id" value={selectedId} />
               <label className="flex flex-col gap-1 text-sm">
@@ -297,7 +306,6 @@ export default async function PostsPage({
                       ) : null}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <CopyPostButton text={post.social_copy} />
                       <form action={archivePostAction}>
                         <input type="hidden" name="post_id" value={post.id} />
                         <input type="hidden" name="content_signal_id" value={selectedId} />
@@ -310,9 +318,11 @@ export default async function PostsPage({
                       </form>
                     </div>
                   </div>
-                  <pre className="mt-3 whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--input-bg)] p-3 text-sm text-[var(--fg)]">
-                    {post.social_copy}
-                  </pre>
+                  <PostPlatformTabs
+                    platforms={linkedVoice?.distribution_platforms ?? ["twitter"]}
+                    copies={post.social_copy_by_platform}
+                    fallbackCopy={post.social_copy}
+                  />
                   {signalItem?.key_points?.length ? (
                     <div className="mt-2">
                       <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>

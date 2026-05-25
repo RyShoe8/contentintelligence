@@ -40,16 +40,24 @@ export function EmailImageGallery({
         const href = `data:${img.mime};base64,${img.data_base64}`;
         return (
           <div key={i} className={isFeed ? "flex max-w-[5.5rem] flex-col gap-1" : "flex max-w-[10rem] flex-col gap-1"}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={href}
-              alt=""
-              className={
-                isFeed
-                  ? "h-16 w-full rounded border border-[var(--border)] bg-[var(--card)] object-contain"
-                  : "h-20 w-full rounded border border-[var(--border)] object-contain"
-              }
-            />
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open full size"
+              className="block"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={href}
+                alt=""
+                className={
+                  isFeed
+                    ? "h-16 w-full cursor-pointer rounded border border-[var(--border)] bg-[var(--card)] object-contain transition-opacity hover:opacity-90"
+                    : "h-20 w-full cursor-pointer rounded border border-[var(--border)] object-contain transition-opacity hover:opacity-90"
+                }
+              />
+            </a>
             <a
               download={name}
               href={href}

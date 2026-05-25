@@ -1,6 +1,8 @@
 import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
+import type { SocialPlatformId } from "./social-platforms.js";
+import { primarySocialCopy } from "./social-platforms.js";
 import type { ContentSignal, DealMetrics, Post, PostSource, PostStatus } from "./schemas.js";
 import { contentSignalSchema, postSchema } from "./schemas.js";
 
@@ -82,6 +84,7 @@ export type UpsertPostData = {
   source: PostSource;
   title: string;
   social_copy: string;
+  social_copy_by_platform?: Partial<Record<SocialPlatformId, string>>;
   deal_metrics: DealMetrics;
   source_name: string;
   sender_from?: string;
@@ -95,13 +98,24 @@ export async function upsertPost(
 ): Promise<{ post: Post; created: boolean }> {
   const now = new Date();
   const existing = await findPostByItemDeal(db, data.signal_item_id, data.deal_key);
+  const byPlatform =
+    data.social_copy_by_platform ??
+    (existing?.social_copy_by_platform as Partial<Record<SocialPlatformId, string>> | undefined) ??
+    {};
+  const social_copy =
+    data.social_copy ||
+    primarySocialCopy(byPlatform, existing?.social_copy) ||
+    existing?.social_copy ||
+    "";
+
   if (existing) {
     const updated: Post = postSchema.parse({
       ...existing,
       ...(data.source === "manual" ? { source: "manual" as const } : {}),
       status: "draft",
       title: data.title,
-      social_copy: data.social_copy || existing.social_copy,
+      social_copy,
+      social_copy_by_platform: data.social_copy_by_platform ?? existing.social_copy_by_platform,
       deal_metrics: data.deal_metrics,
       source_name: data.source_name,
       sender_from: data.sender_from ?? existing.sender_from,
@@ -122,7 +136,8 @@ export async function upsertPost(
     source: data.source,
     status: "draft",
     title: data.title,
-    social_copy: data.social_copy,
+    social_copy,
+    social_copy_by_platform: data.social_copy_by_platform ?? {},
     deal_metrics: data.deal_metrics,
     source_name: data.source_name,
     sender_from: data.sender_from ?? "",

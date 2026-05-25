@@ -2,6 +2,7 @@ import type { EmailImage } from "@content-resourcer/db";
 import { lookup } from "node:dns/promises";
 import type { gmail_v1 } from "googleapis";
 import { env } from "./env.js";
+import { shouldSkipEmailImage } from "./email-image-filter.js";
 import { extractHtmlFromPayload } from "./gmail-client.js";
 import { ingestLog, ingestVerbose } from "./ingest-log.js";
 
@@ -336,6 +337,7 @@ export async function fetchEmailImageAttachments(
   let fromAttachment = 0;
   let fromInline = 0;
   let fromRemote = 0;
+  let skippedGeneric = 0;
 
   for (const ref of attachmentRefs) {
     if (out.length >= capN) break;
@@ -356,6 +358,11 @@ export async function fetchEmailImageAttachments(
       continue;
     }
 
+    if (Buffer.from(rawB64, "base64").length === 0) continue;
+    if (shouldSkipEmailImage({ filename: ref.filename, dataBase64: rawB64 })) {
+      skippedGeneric++;
+      continue;
+    }
     if (pushIfFits(out, totalB64, { mime: canonical, data_base64: rawB64, filename: ref.filename })) {
       fromAttachment++;
     }
@@ -372,6 +379,10 @@ export async function fetchEmailImageAttachments(
       continue;
     }
     if (Buffer.from(rawB64, "base64").length === 0) continue;
+    if (shouldSkipEmailImage({ filename: ref.filename, dataBase64: rawB64 })) {
+      skippedGeneric++;
+      continue;
+    }
     if (pushIfFits(out, totalB64, { mime: canonical, data_base64: rawB64, filename: ref.filename })) {
       fromInline++;
     }
@@ -384,12 +395,23 @@ export async function fetchEmailImageAttachments(
     for (const url of remoteUrls) {
       if (out.length >= capN) break;
       if (totalB64.n >= maxTotalB64()) break;
+      if (shouldSkipEmailImage({ url })) {
+        skippedGeneric++;
+        continue;
+      }
       const trustMime = probeMime.includes(url);
       let img: EmailImage | null = null;
       try {
         img = await fetchRemoteImageAsEmailImage(url, trustMime);
       } catch {
         img = null;
+      }
+      if (
+        img &&
+        shouldSkipEmailImage({ url, dataBase64: img.data_base64, filename: img.filename })
+      ) {
+        skippedGeneric++;
+        continue;
       }
       if (img && pushIfFits(out, totalB64, img)) {
         fromRemote++;
@@ -404,6 +426,7 @@ export async function fetchEmailImageAttachments(
       fromAttachment,
       fromInline,
       fromRemote,
+      skippedGeneric,
     });
   }
 

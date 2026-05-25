@@ -6,6 +6,7 @@ import {
   getContentSignal,
   getVoice,
   linkVoiceToSignals,
+  normalizeDistributionPlatforms,
   upsertVoice,
   type Voice,
 } from "@content-resourcer/db";
@@ -44,6 +45,10 @@ function parseSocialLinks(raw: string): { label?: string; url: string }[] {
     }
   }
   return out;
+}
+
+function parseDistributionPlatforms(formData: FormData): ReturnType<typeof normalizeDistributionPlatforms> {
+  return normalizeDistributionPlatforms(formData.getAll("distribution_platforms").map((v) => String(v)));
 }
 
 function parseSignalIds(formData: FormData): string[] {
@@ -154,6 +159,7 @@ function parseVoiceFields(formData: FormData) {
   const social_links = parseSocialLinks(String(formData.get("social_links") ?? ""));
   const persona = String(formData.get("persona") ?? "");
   const content_signal_ids = parseSignalIds(formData);
+  const distribution_platforms = parseDistributionPlatforms(formData);
   return {
     name,
     brand_mention_level,
@@ -164,6 +170,7 @@ function parseVoiceFields(formData: FormData) {
     social_links,
     persona,
     content_signal_ids,
+    distribution_platforms,
   };
 }
 
@@ -229,6 +236,7 @@ export async function saveVoiceAction(formData: FormData) {
     preferred_phrases: fields.preferred_phrases,
     keywords: fields.keywords,
     content_signal_ids: signalIds,
+    distribution_platforms: fields.distribution_platforms,
     persona: fields.persona,
     persona_status: existing?.persona_status ?? "pending",
     persona_error: existing?.persona_error,

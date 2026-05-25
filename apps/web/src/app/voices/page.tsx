@@ -13,6 +13,7 @@ import {
   saveVoiceAction,
 } from "./actions";
 import { BrandMentionSlider } from "./brand-mention-slider";
+import { DistributionPlatformsEditor } from "./distribution-platforms-editor";
 import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
 import { PersonaGeneratedAt } from "./persona-generated-at";
@@ -264,6 +265,10 @@ export default async function VoicesPage({
               placeholder={"playful\nurgent\ntrusted"}
             />
           </label>
+
+          <DistributionPlatformsEditor
+            defaultPlatforms={activeVoice?.distribution_platforms ?? []}
+          />
 
           <div className="flex flex-col gap-1 text-sm">
             <LabelWithTip htmlFor="voice-preferred-phrases" tip={VOICE_FIELD_TIPS.preferred_phrases}>

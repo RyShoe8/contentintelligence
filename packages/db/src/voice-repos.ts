@@ -69,6 +69,7 @@ export async function upsertVoice(
     keywords: data.keywords ?? [],
     preferred_phrases: data.preferred_phrases ?? [],
     content_signal_ids: data.content_signal_ids ?? [],
+    distribution_platforms: data.distribution_platforms ?? [],
     persona: data.persona ?? "",
     persona_status: data.persona_status ?? existing?.persona_status ?? "pending",
     persona_error: data.persona_error ?? undefined,

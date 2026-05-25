@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { brandProfileSchema } from "./brand-profile.js";
 import { keyPointsFieldSchema } from "./key-points.js";
+import {
+  normalizeDistributionPlatforms,
+  normalizeSocialCopyByPlatform,
+  primarySocialCopy,
+  socialCopyByPlatformFromDoc,
+  socialPlatformIdSchema,
+} from "./social-platforms.js";
 
 export const SOURCE_TYPE_EMAIL_GMAIL = "email_gmail" as const;
 
@@ -361,6 +368,10 @@ export const voiceSchema = z.preprocess(
   keywords: z.preprocess(normalizeVoiceKeywords, z.array(z.string()).max(5).default([])),
   preferred_phrases: z.array(voicePreferredPhraseSchema).max(15).default([]),
   content_signal_ids: z.array(z.string().uuid()).default([]),
+  distribution_platforms: z.preprocess(
+    (v) => normalizeDistributionPlatforms(v),
+    z.array(socialPlatformIdSchema).max(9).default([]),
+  ),
   persona: z.string().default(""),
   persona_status: voicePersonaStatusSchema.default("pending"),
   persona_error: z.preprocess(
@@ -534,7 +545,18 @@ export type PostSource = z.infer<typeof postSourceSchema>;
 export const postStatusSchema = z.enum(["draft", "archived"]);
 export type PostStatus = z.infer<typeof postStatusSchema>;
 
-export const postSchema = z.object({
+function preprocessPostDocument(val: unknown): unknown {
+  if (!val || typeof val !== "object") return val;
+  const doc = { ...(val as Record<string, unknown>) };
+  const legacy = typeof doc.social_copy === "string" ? doc.social_copy : "";
+  let byPlatform = normalizeSocialCopyByPlatform(doc.social_copy_by_platform);
+  byPlatform = socialCopyByPlatformFromDoc(byPlatform, legacy);
+  doc.social_copy_by_platform = byPlatform;
+  doc.social_copy = primarySocialCopy(byPlatform, legacy);
+  return doc;
+}
+
+const postShape = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
   content_signal_id: z.string().uuid(),
@@ -544,6 +566,9 @@ export const postSchema = z.object({
   status: postStatusSchema.default("draft"),
   title: z.string(),
   social_copy: z.string(),
+  social_copy_by_platform: z
+    .record(socialPlatformIdSchema, z.string())
+    .default({} as Record<z.infer<typeof socialPlatformIdSchema>, string>),
   deal_metrics: dealMetricsSchema,
   source_name: z.string(),
   sender_from: z.string().default(""),
@@ -553,7 +578,9 @@ export const postSchema = z.object({
   updated_at: z.coerce.date(),
 });
 
-export type Post = z.infer<typeof postSchema>;
+export const postSchema = z.preprocess(preprocessPostDocument, postShape);
+
+export type Post = z.infer<typeof postShape>;
 
 export const gmailOAuthSchema = z.object({
   _id: z.string().optional(),

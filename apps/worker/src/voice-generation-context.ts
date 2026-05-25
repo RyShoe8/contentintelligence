@@ -1,4 +1,4 @@
-import type { GenerationConstraints, Voice } from "@content-resourcer/db";
+import type { GenerationConstraints, SocialPlatformId, Voice } from "@content-resourcer/db";
 import { assembleGenerationConstraints } from "./services/constraints/assemble-generation-constraints.js";
 import {
   mergeTaboosWithGlobal,
@@ -12,6 +12,7 @@ export type VoiceGenerationContext = {
   preferredPhrases?: VoicePreferredPhraseLike[];
   persona?: string;
   constraints?: GenerationConstraints;
+  distributionPlatforms?: SocialPlatformId[];
 };
 
 function voiceStyleFields(voice: Voice) {
@@ -29,11 +30,14 @@ export function resolveVoiceGenerationContext(voice: Voice | null): VoiceGenerat
 
   const style = voiceStyleFields(voice);
 
+  const distributionPlatforms = voice.distribution_platforms ?? [];
+
   if (voice.brand_profile) {
     const constraints = assembleGenerationConstraints(voice.brand_profile);
     return {
       voiceId: voice.id,
       ...style,
+      distributionPlatforms,
       constraints: {
         ...constraints,
         taboos: mergeTaboosWithGlobal(constraints.taboos),
@@ -46,9 +50,10 @@ export function resolveVoiceGenerationContext(voice: Voice | null): VoiceGenerat
     return {
       voiceId: voice.id,
       ...style,
+      distributionPlatforms,
       persona: voice.persona.trim(),
     };
   }
 
-  return {};
+  return { distributionPlatforms };
 }
