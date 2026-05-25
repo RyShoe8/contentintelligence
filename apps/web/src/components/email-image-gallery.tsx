@@ -15,8 +15,6 @@ function extForMime(m: EmailImage["mime"]): string {
   }
 }
 
-const FEED_MAX_VISIBLE = 4;
-
 export function EmailImageGallery({
   images,
   variant = "detail",
@@ -26,38 +24,42 @@ export function EmailImageGallery({
 }) {
   if (!images?.length) return null;
 
-  const visible = variant === "feed" ? images.slice(0, FEED_MAX_VISIBLE) : images;
-  const extra = variant === "feed" && images.length > FEED_MAX_VISIBLE ? images.length - FEED_MAX_VISIBLE : 0;
+  const isFeed = variant === "feed";
 
   return (
-    <div className={variant === "detail" ? "mt-2 flex flex-wrap gap-3 border-t border-[var(--border)] pt-3" : "flex flex-wrap gap-2"}>
-      {visible.map((img, i) => {
+    <div
+      className={
+        isFeed
+          ? "flex flex-wrap gap-2"
+          : "mt-2 flex flex-wrap gap-3 border-t border-[var(--border)] pt-3"
+      }
+    >
+      {images.map((img, i) => {
         const ext = extForMime(img.mime);
         const name = img.filename?.replace(/[^\w.\-]+/g, "_") || `attachment-${i + 1}.${ext}`;
         const href = `data:${img.mime};base64,${img.data_base64}`;
         return (
-          <div key={i} className="flex max-w-[5.5rem] flex-col gap-1">
+          <div key={i} className={isFeed ? "flex max-w-[5.5rem] flex-col gap-1" : "flex max-w-[10rem] flex-col gap-1"}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={href}
               alt=""
-              className="h-16 w-full rounded border border-[var(--border)] bg-[var(--card)] object-contain"
+              className={
+                isFeed
+                  ? "h-16 w-full rounded border border-[var(--border)] bg-[var(--card)] object-contain"
+                  : "h-20 w-full rounded border border-[var(--border)] object-contain"
+              }
             />
-            {variant === "detail" ? (
-              <a
-                download={name}
-                href={href}
-                className="truncate text-center text-xs text-[var(--primary)] hover:underline"
-              >
-                Download
-              </a>
-            ) : null}
+            <a
+              download={name}
+              href={href}
+              className="truncate text-center text-xs text-[var(--primary)] hover:underline"
+            >
+              Download
+            </a>
           </div>
         );
       })}
-      {extra > 0 ? (
-        <p className="self-center text-xs text-[var(--muted)]">+{extra} more</p>
-      ) : null}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import "./env.js";
-import type { EmailImage } from "@content-resourcer/db";
+import type { EmailImage, KeyPoint } from "@content-resourcer/db";
 import {
   findSignalByExternalId,
   getDb,
@@ -284,7 +284,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         const dealParseText = extractFullBodyText(normalized.raw_content).slice(0, env.maxAiInputChars);
 
         let summary = "";
-        let key_points: string[] = [];
+        let key_points: KeyPoint[] = [];
         const aiSummaryOn = source.config.ai_summary_enabled !== false;
         if (env.openaiApiKey && aiSummaryOn) {
           try {

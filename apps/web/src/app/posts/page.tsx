@@ -316,7 +316,7 @@ export default async function PostsPage({
                   {signalItem?.key_points?.length ? (
                     <div className="mt-2">
                       <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>
-                      <KeyPointsList points={signalItem.key_points} variant="compact" />
+                      <KeyPointsList points={signalItem.key_points} variant="structured" />
                     </div>
                   ) : null}
                   {dealUrl ? <DealLinkRow url={dealUrl} variant="panel" /> : null}

@@ -1,4 +1,5 @@
-import type { DealMetricsMode } from "@content-resourcer/db";
+import type { DealMetricsMode, KeyPoint, KeyPointCategory } from "@content-resourcer/db";
+import { expandKeyPoints, normalizeKeyPointCategory } from "@content-resourcer/db";
 import OpenAI from "openai";
 import type { DealMetricsLlmPartial } from "./deal-metrics.js";
 import { env } from "./env.js";
@@ -108,41 +109,74 @@ ${unitLine}
   };
 }
 
-const KEY_POINT_PATTERNS: RegExp[] = [
-  /\b(?:must\s+)?claim\s+(?:by|before)\s+[^.\n]{4,120}/gi,
-  /\b(?:valid|available)\s+(?:until|through|from)\s+[^.\n]{4,120}/gi,
-  /\b(?:no\s+purchase\s+necessary)\b/gi,
-  /\bvoid\s+where\s+prohibited\b/gi,
-  /\b(?:not\s+)?available\s+in\s+(?:all\s+)?states?\b/gi,
-  /\b(?:May|June|July|August|September|October|November|December|January|February|March|April)\s+\d{1,2}(?:\s*[-–]\s*(?:May|June|July|August|September|October|November|December|January|February|March|April)?\s*\d{1,2})?(?:\s*\([^)]+\))?/gi,
-  /\b\d{1,2}:\d{2}\s*(?:am|pm)\s*(?:ET|PT|PST|EST|CT)\b/gi,
-  /\b(?:tournament|promo|offer|deal)\s+(?:runs?|from)\s+[^.\n]{4,100}/gi,
+const KEY_POINT_PATTERN_GROUPS: { category: KeyPointCategory; re: RegExp }[] = [
+  { category: "deadline", re: /\b(?:must\s+)?claim\s+(?:by|before)\s+[^.\n]{4,120}/gi },
+  { category: "deadline", re: /\b(?:valid|available)\s+(?:until|through|from)\s+[^.\n]{4,120}/gi },
+  { category: "terms", re: /\b(?:no\s+purchase\s+necessary)\b/gi },
+  { category: "terms", re: /\bvoid\s+where\s+prohibited\b/gi },
+  { category: "eligibility", re: /\b(?:not\s+)?available\s+in\s+(?:all\s+)?states?\b/gi },
+  {
+    category: "deadline",
+    re: /\b(?:May|June|July|August|September|October|November|December|January|February|March|April)\s+\d{1,2}(?:\s*[-–]\s*(?:May|June|July|August|September|October|November|December|January|February|March|April)?\s*\d{1,2})?(?:\s*\([^)]+\))?/gi,
+  },
+  { category: "deadline", re: /\b\d{1,2}:\d{2}\s*(?:am|pm)\s*(?:ET|PT|PST|EST|CT)\b/gi },
+  { category: "deadline", re: /\b(?:tournament|promo|offer|deal)\s+(?:runs?|from)\s+[^.\n]{4,100}/gi },
 ];
 
-export function extractKeyPointsRegexFallback(cleanText: string, subject = ""): string[] {
-  const combined = `${subject}\n${cleanText}`.slice(0, env.maxAiInputChars);
+function parseKeyPointsFromLlmArray(items: unknown[]): KeyPoint[] {
+  const out: KeyPoint[] = [];
   const seen = new Set<string>();
-  const out: string[] = [];
-
-  for (const re of KEY_POINT_PATTERNS) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(combined)) !== null && out.length < 8) {
-      const s = m[0].replace(/\s+/g, " ").trim();
-      if (s.length < 8 || s.length > 500) continue;
-      const key = s.toLowerCase();
+  for (const x of items) {
+    if (typeof x === "string") {
+      const text = x.trim().slice(0, 500);
+      if (!text) continue;
+      const key = `other:${text.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push(s.charAt(0).toUpperCase() + s.slice(1));
+      out.push({ category: "other", text });
+      continue;
+    }
+    if (!x || typeof x !== "object") continue;
+    const o = x as { category?: unknown; text?: unknown };
+    const text = typeof o.text === "string" ? o.text.trim().slice(0, 500) : "";
+    if (!text) continue;
+    const category = normalizeKeyPointCategory(o.category);
+    const key = `${category}:${text.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ category, text });
+    if (out.length >= 16) break;
+  }
+  return out;
+}
+
+export function extractKeyPointsRegexFallback(cleanText: string, subject = ""): KeyPoint[] {
+  const combined = `${subject}\n${cleanText}`.slice(0, env.maxAiInputChars);
+  const seen = new Set<string>();
+  const out: KeyPoint[] = [];
+
+  for (const { category, re } of KEY_POINT_PATTERN_GROUPS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(combined)) !== null && out.length < 16) {
+      const s = m[0].replace(/\s+/g, " ").trim();
+      if (s.length < 8 || s.length > 500) continue;
+      const key = `${category}:${s.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        category,
+        text: s.charAt(0).toUpperCase() + s.slice(1),
+      });
     }
   }
-  return out.slice(0, 8);
+  return expandKeyPoints(out);
 }
 
 export async function extractKeyPointsWithLlm(
   cleanText: string,
   subject = "",
-): Promise<string[]> {
+): Promise<KeyPoint[]> {
   if (!env.openaiApiKey) {
     return extractKeyPointsRegexFallback(cleanText, subject);
   }
@@ -150,19 +184,26 @@ export async function extractKeyPointsWithLlm(
   const input = `${subject ? `Subject: ${subject}\n\n` : ""}${cleanText}`.slice(0, env.maxAiInputChars);
   const res = await client.chat.completions.create({
     model: env.openaiModel,
-    max_tokens: 350,
+    max_tokens: 500,
     temperature: 0.2,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
-        content: `Extract key factual points from this promotional email as JSON only:
-{"key_points": string[]}
+        content: `Extract atomic factual data points from this promotional email as JSON only:
+{"key_points": [{"category": string, "text": string}]}
 Rules:
-- Return 3–8 short bullet strings (under 120 chars each) when present; empty array if none.
-- Focus on: offer timeframe/deadlines, claim-by dates, eligibility (states, age), special conditions, tournament windows, purchase requirements.
-- No marketing fluff or generic CTAs.
-- Use the email's own dates and wording when possible.`,
+- Return 4–16 objects when present; empty array if none.
+- ONE fact per object. Never combine multiple facts with semicolons.
+- category must be one of: deadline, eligibility, offer, requirement, terms, other
+  - deadline: dates, claim-by, valid until, tournament/promo windows
+  - eligibility: states, age, who can participate
+  - offer: bonus %, price tiers, credited amounts, package names
+  - requirement: purchase steps, claim steps, minimum spend
+  - terms: legal (void where prohibited, no purchase necessary)
+  - other: remaining concrete facts
+- text: under 120 chars, use the email's own dates and wording
+- No marketing fluff or generic CTAs`,
       },
       { role: "user", content: input },
     ],
@@ -176,19 +217,9 @@ Rules:
     if (!Array.isArray(parsed.key_points)) {
       return extractKeyPointsRegexFallback(cleanText, subject);
     }
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const x of parsed.key_points) {
-      if (typeof x !== "string") continue;
-      const s = x.trim().slice(0, 500);
-      if (!s) continue;
-      const key = s.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(s);
-      if (out.length >= 12) break;
-    }
-    return out.length ? out : extractKeyPointsRegexFallback(cleanText, subject);
+    const out = parseKeyPointsFromLlmArray(parsed.key_points);
+    const expanded = expandKeyPoints(out);
+    return expanded.length ? expanded : extractKeyPointsRegexFallback(cleanText, subject);
   } catch {
     return extractKeyPointsRegexFallback(cleanText, subject);
   }

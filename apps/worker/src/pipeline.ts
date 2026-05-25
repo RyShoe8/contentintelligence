@@ -7,6 +7,7 @@ import type {
   DealMetrics,
   EmailImage,
   GmailSourceConfig,
+  KeyPoint,
   SignalItem,
   Source,
 } from "@content-resourcer/db";
@@ -318,7 +319,7 @@ export function buildFullSignalItem(
   deals_found?: DealMetrics[],
   email_images?: EmailImage[],
   emailHtmlPreview?: string | null,
-  key_points: string[] = [],
+  key_points: KeyPoint[] = [],
 ): SignalItem {
   const kws = contentSignalKeywords(contentSignal);
   const detected = detectKeywords(extractedText, kws);

@@ -4,6 +4,7 @@ export * from "./collections.js";
 export * from "./deal-strength.js";
 export * from "./deal-url.js";
 export * from "./email-from.js";
+export * from "./key-points.js";
 export * from "./template-repos.js";
 export * from "./retention.js";
 export * from "./org-repos.js";

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { brandProfileSchema } from "./brand-profile.js";
+import { keyPointsFieldSchema } from "./key-points.js";
 
 export const SOURCE_TYPE_EMAIL_GMAIL = "email_gmail" as const;
 
@@ -507,17 +508,7 @@ const signalItemShape = z.object({
   detected_keywords: z.array(z.string()).default([]),
   relevance_score: z.number(),
   original_url: z.string().nullable().optional(),
-  key_points: z.preprocess(
-    (val) => {
-      if (!Array.isArray(val)) return [];
-      return val
-        .filter((x): x is string => typeof x === "string")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 12);
-    },
-    z.array(z.string().max(500)).max(12).default([]),
-  ),
+  key_points: keyPointsFieldSchema,
   external_id: z.string(),
   ai_summary: z.string().nullable().optional(),
   ai_processed: z.boolean().default(false),

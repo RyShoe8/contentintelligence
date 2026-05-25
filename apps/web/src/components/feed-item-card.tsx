@@ -8,7 +8,7 @@ import { FeedItemSection } from "@/components/feed-item-section";
 import { KeyPointsList } from "@/components/key-points-list";
 import { Card, CardContent } from "@/components/ui/card";
 import { displayCasinoName, displaySenderEmail } from "@/lib/email-from-display";
-import { cleanEmailPreview } from "@/lib/email-preview";
+import { cleanEmailPreview, cleanEmailPreviewPreserveLayout } from "@/lib/email-preview";
 import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { isNonDealUrl } from "@/lib/deal-url";
 
@@ -18,7 +18,6 @@ type Props = {
   contentSignalId?: string;
   workerIngestConfigured?: boolean;
   alreadyInPosts?: boolean;
-  showKeywords?: boolean;
 };
 
 export function FeedItemCard({
@@ -27,14 +26,12 @@ export function FeedItemCard({
   contentSignalId,
   workerIngestConfigured = false,
   alreadyInPosts = false,
-  showKeywords = variant === "feed",
 }: Props) {
   const casino = displayCasinoName(item);
   const senderEmail = displaySenderEmail(item.sender_from);
   const deals = dealsForDisplay(item);
-  const previewText = item.ai_summary
-    ? cleanEmailPreview(item.ai_summary)
-    : cleanEmailPreview(item.extracted_text);
+  const bodyPreview = cleanEmailPreviewPreserveLayout(item.extracted_text);
+  const summaryText = item.ai_summary ? cleanEmailPreview(item.ai_summary) : null;
   const showDealLink = item.original_url && !isNonDealUrl(item.original_url);
   const isFeed = variant === "feed";
 
@@ -97,13 +94,15 @@ export function FeedItemCard({
           <h3 className="mt-2 text-base font-medium text-[var(--fg)]">{item.title}</h3>
         )}
 
-        <FeedItemSection title="Preview" showDivider={false}>
-          <div
-            className={`rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm text-[var(--fg)] ${
-              isFeed ? "line-clamp-3" : "max-h-48 overflow-y-auto"
-            }`}
-          >
-            {previewText || "—"}
+        {summaryText ? (
+          <FeedItemSection title="Summary" showDivider={false}>
+            <p className="text-sm text-[var(--fg)]">{summaryText}</p>
+          </FeedItemSection>
+        ) : null}
+
+        <FeedItemSection title="Preview" showDivider={!summaryText}>
+          <div className="rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-sm text-[var(--fg)] whitespace-pre-wrap break-words">
+            {bodyPreview || "—"}
           </div>
         </FeedItemSection>
 
@@ -115,7 +114,7 @@ export function FeedItemCard({
 
         {item.key_points?.length ? (
           <FeedItemSection title="Key Points">
-            <KeyPointsList points={item.key_points} variant="compact" />
+            <KeyPointsList points={item.key_points} variant="structured" />
           </FeedItemSection>
         ) : null}
 
@@ -128,12 +127,6 @@ export function FeedItemCard({
         {item.email_images?.length ? (
           <FeedItemSection title={`Attachments (${item.email_images.length})`}>
             <EmailImageGallery images={item.email_images} variant={isFeed ? "feed" : "detail"} />
-          </FeedItemSection>
-        ) : null}
-
-        {showKeywords && item.detected_keywords.length > 0 ? (
-          <FeedItemSection title="Keywords">
-            <p className="text-xs text-[var(--muted)]">{item.detected_keywords.slice(0, 6).join(", ")}</p>
           </FeedItemSection>
         ) : null}
       </CardContent>

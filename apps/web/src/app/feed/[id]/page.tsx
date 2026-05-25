@@ -74,7 +74,6 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
         contentSignalId={item.content_signal_id}
         workerIngestConfigured={workerIngestConfigured}
         alreadyInPosts={alreadyInPosts}
-        showKeywords
       />
 
       {item.email_html_preview ? (
