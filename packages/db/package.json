@@ -15,6 +15,11 @@
       "types": "./dist/deal-url.d.ts",
       "import": "./dist/deal-url.js",
       "default": "./dist/deal-url.js"
+    },
+    "./social-platforms": {
+      "types": "./dist/social-platforms.d.ts",
+      "import": "./dist/social-platforms.js",
+      "default": "./dist/social-platforms.js"
     }
   },
   "scripts": {

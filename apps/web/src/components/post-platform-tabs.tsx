@@ -5,7 +5,7 @@ import {
   getSocialPlatform,
   SOCIAL_PLATFORM_IDS,
   type SocialPlatformId,
-} from "@content-resourcer/db";
+} from "@content-resourcer/db/social-platforms";
 import { CopyPostButton } from "@/components/copy-post-button";
 
 type Props = {
