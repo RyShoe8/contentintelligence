@@ -28,7 +28,7 @@ export type BrandContentCorpus = {
 };
 
 export const DEFAULT_SOURCE_WEIGHTS: Record<CorpusSourceType, number> = {
-  socialPosts: 1.0,
+  socialPosts: 1.2,
   replies: 1.3,
   newsletters: 1.1,
   blogs: 0.8,

@@ -68,6 +68,21 @@ Target platform: ${p.label}
 - Platform rules: ${p.promptRules}`;
 }
 
+function sharedIdentityBlock(constraints: GenerationConstraints): string {
+  const s = constraints.sharedIdentity;
+  if (!s) return "";
+  const lines = [
+    "",
+    "Shared identity (copy + visuals must align):",
+    s.audienceType ? `- Audience: ${s.audienceType}` : null,
+    s.internetCultureAlignment ? `- Culture: ${s.internetCultureAlignment}` : null,
+    s.energyProfile ? `- Energy: ${s.energyProfile}` : null,
+    s.trustStyle ? `- Trust: ${s.trustStyle}` : null,
+    s.sophisticationLevel ? `- Sophistication: ${s.sophisticationLevel}` : null,
+  ].filter((x): x is string => Boolean(x));
+  return lines.length ? lines.join("\n") : "";
+}
+
 function buildConstraintSystemPrompt(
   constraints: GenerationConstraints,
   contentOnly: boolean,
@@ -77,16 +92,23 @@ function buildConstraintSystemPrompt(
   const leadRule = contentOnly
     ? "- Lead with the most newsworthy or interesting hook from the email."
     : "- Lead with the deal hook (price → value/bonus).";
+  const archetypeLine = constraints.archetype
+    ? `- Embody archetype: ${constraints.archetype}`
+    : null;
   return `Write a short social media post promoting this ${contentOnly ? "email content" : "deal email"} using the structured brand constraints below.
 Rules:
 - Follow positioning, audience relationship, and emotional baseline exactly.
 - Apply rhetorical patterns consistently.
 - Respect all taboos and avoid sounding like the "doesNotSoundLike" list.
 - Use favorite phrases and recurring topics naturally when relevant (do not force all of them).
+- Frame from the audience's perspective; include interpretation or opinion, not generic hype.
+${archetypeLine ?? ""}
+NEVER use: "don't miss out", "maximize your fun", generic affiliate hype, fake urgency, excessive emojis.
+ALWAYS sound like a recognizable personality with skepticism when the emotional baseline calls for it.
 ${leadRule}
 ${lengthRule(platform)}
 - Do NOT invent URLs, promo codes, or deadlines not in the input.
-- Do NOT use markdown. Plain text only.${platform ? platformRulesBlock(platform) : ""}${styleRulesBlock(style)}
+- Do NOT use markdown. Plain text only.${platform ? platformRulesBlock(platform) : ""}${styleRulesBlock(style)}${sharedIdentityBlock(constraints)}
 
 Brand generation constraints (JSON):
 ${formatConstraintsForPrompt(constraints)}`;
@@ -177,7 +199,7 @@ export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Prom
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensSocialPost,
-    temperature: opts.constraints ? 0.35 : 0.5,
+    temperature: opts.constraints?.sharedIdentity ? 0.3 : opts.constraints ? 0.35 : 0.5,
     messages: [
       {
         role: "system",

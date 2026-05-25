@@ -3,7 +3,15 @@ import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
 import type { SocialPlatformId } from "./social-platforms.js";
 import { primarySocialCopy } from "./social-platforms.js";
-import type { ContentSignal, DealMetrics, Post, PostSource, PostStatus } from "./schemas.js";
+import type {
+  ContentSignal,
+  DealMetrics,
+  GeneratedPostImage,
+  Post,
+  PostImageStatus,
+  PostSource,
+  PostStatus,
+} from "./schemas.js";
 import { contentSignalSchema, postSchema } from "./schemas.js";
 
 function posts(db: Db): Collection<Post> {
@@ -51,7 +59,7 @@ export async function listPosts(db: Db, q: PostListQuery): Promise<Post[]> {
   };
   const docs = await posts(db)
     .find(filter)
-    .sort({ created_at: -1 })
+    .sort({ email_sent_at: -1, created_at: -1 })
     .limit(q.limit ?? 200)
     .toArray();
   return docs.map((d) => postSchema.parse(d));
@@ -143,6 +151,7 @@ export async function upsertPost(
     sender_from: data.sender_from ?? "",
     ...(data.email_sent_at ? { email_sent_at: data.email_sent_at } : {}),
     ...(data.ai_summary != null ? { ai_summary: data.ai_summary } : {}),
+    image_status: "idle" as const,
     created_at: now,
     updated_at: now,
   };
@@ -174,6 +183,42 @@ export async function archiveAutoPostsForSignal(
     }
   }
   return count;
+}
+
+export type UpdatePostImageData = {
+  image_status: PostImageStatus;
+  image_error?: string;
+  generated_image?: GeneratedPostImage;
+  image_prompt?: string;
+  image_generated_at?: Date;
+};
+
+export async function updatePostImage(
+  db: Db,
+  postId: string,
+  organizationId: string,
+  data: UpdatePostImageData,
+): Promise<Post | null> {
+  const existing = await getPost(db, postId);
+  if (!existing || existing.organization_id !== organizationId) return null;
+
+  const now = new Date();
+  const set: Record<string, unknown> = {
+    image_status: data.image_status,
+    updated_at: now,
+  };
+  if (data.image_error !== undefined) set.image_error = data.image_error;
+  else if (data.image_status !== "failed") set.image_error = undefined;
+  if (data.generated_image !== undefined) set.generated_image = data.generated_image;
+  if (data.image_prompt !== undefined) set.image_prompt = data.image_prompt;
+  if (data.image_generated_at !== undefined) set.image_generated_at = data.image_generated_at;
+
+  const doc = await posts(db).findOneAndUpdate(
+    { id: postId, organization_id: organizationId },
+    { $set: set },
+    { returnDocument: "after" },
+  );
+  return doc ? postSchema.parse(doc) : null;
 }
 
 export async function archivePost(db: Db, id: string, organizationId: string): Promise<boolean> {

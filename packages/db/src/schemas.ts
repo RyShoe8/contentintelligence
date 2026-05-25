@@ -546,6 +546,16 @@ export type PostSource = z.infer<typeof postSourceSchema>;
 export const postStatusSchema = z.enum(["draft", "archived"]);
 export type PostStatus = z.infer<typeof postStatusSchema>;
 
+export const postImageStatusSchema = z.enum(["idle", "pending", "ready", "failed"]);
+export type PostImageStatus = z.infer<typeof postImageStatusSchema>;
+
+export const generatedPostImageSchema = z.object({
+  mime: z.enum(["image/png", "image/jpeg", "image/webp"]),
+  data_base64: z.string(),
+});
+
+export type GeneratedPostImage = z.infer<typeof generatedPostImageSchema>;
+
 function preprocessPostDocument(val: unknown): unknown {
   if (!val || typeof val !== "object") return val;
   const doc = { ...(val as Record<string, unknown>) };
@@ -575,6 +585,20 @@ const postShape = z.object({
   sender_from: z.string().default(""),
   email_sent_at: z.coerce.date().optional(),
   ai_summary: z.string().nullable().optional(),
+  generated_image: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    generatedPostImageSchema.optional(),
+  ),
+  image_prompt: z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    z.string().max(4000).optional(),
+  ),
+  image_status: postImageStatusSchema.default("idle"),
+  image_error: z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    z.string().max(500).optional(),
+  ),
+  image_generated_at: z.coerce.date().optional(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
 });

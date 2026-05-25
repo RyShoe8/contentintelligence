@@ -28,6 +28,7 @@ export const brandAudienceRelationshipSchema = z.object({
 
 export const brandEmotionalBaselineSchema = z.object({
   primary: z.string().default(""),
+  secondary: z.string().optional(),
 });
 
 export const brandContradictionsSchema = z.object({
@@ -39,6 +40,45 @@ export const brandContrastiveSchema = z.object({
   soundsLike: stringList(10),
   doesNotSoundLike: stringList(10),
 });
+
+export const brandColorProfileSchema = z.object({
+  dominantColors: stringList(8),
+  contrastLevel: z.string().default(""),
+  saturationLevel: z.string().default(""),
+  lightingMood: z.string().default(""),
+});
+
+export type BrandColorProfile = z.infer<typeof brandColorProfileSchema>;
+
+export const visualPersonalitySchema = z.object({
+  visualTone: z.string().default(""),
+  compositionStyle: stringList(10),
+  colorProfile: brandColorProfileSchema.default({
+    dominantColors: [],
+    contrastLevel: "",
+    saturationLevel: "",
+    lightingMood: "",
+  }),
+  textureStyle: stringList(10),
+  typographyStyle: z.string().default(""),
+  layoutBehavior: stringList(10),
+  memeCompatibility: z.string().default(""),
+  visualTaboos: stringList(15),
+  visualArchetypes: stringList(10),
+  recurringMotifs: stringList(15),
+});
+
+export type VisualPersonality = z.infer<typeof visualPersonalitySchema>;
+
+export const sharedIdentitySchema = z.object({
+  audienceType: z.string().default(""),
+  internetCultureAlignment: z.string().default(""),
+  sophisticationLevel: z.string().default(""),
+  energyProfile: z.string().default(""),
+  trustStyle: z.string().default(""),
+});
+
+export type SharedIdentity = z.infer<typeof sharedIdentitySchema>;
 
 export const brandProfileSchema = z.object({
   positioning: brandPositioningSchema.default({ primary: "" }),
@@ -62,7 +102,33 @@ export const brandProfileSchema = z.object({
     recurringCTAs: [],
     recurringEnemies: [],
   }),
+  archetype: z.string().default(""),
+  visualPersonality: visualPersonalitySchema.default({
+    visualTone: "",
+    compositionStyle: [],
+    colorProfile: {
+      dominantColors: [],
+      contrastLevel: "",
+      saturationLevel: "",
+      lightingMood: "",
+    },
+    textureStyle: [],
+    typographyStyle: "",
+    layoutBehavior: [],
+    memeCompatibility: "",
+    visualTaboos: [],
+    visualArchetypes: [],
+    recurringMotifs: [],
+  }),
+  sharedIdentity: sharedIdentitySchema.default({
+    audienceType: "",
+    internetCultureAlignment: "",
+    sophisticationLevel: "",
+    energyProfile: "",
+    trustStyle: "",
+  }),
   confidence: z.number().min(0).max(1).default(0.5),
+  visualConfidence: z.number().min(0).max(1).default(0.5),
   analyzedAt: z.coerce.date().optional(),
   corpusHash: z.string().optional(),
 });
@@ -84,9 +150,19 @@ export const generationConstraintsSchema = z.object({
   recurringTopics: z.array(z.string()),
   recurringCTAs: z.array(z.string()),
   recurringEnemies: z.array(z.string()),
+  archetype: z.string().optional(),
+  sharedIdentity: sharedIdentitySchema.optional(),
 });
 
 export type GenerationConstraints = z.infer<typeof generationConstraintsSchema>;
+
+export function emptyVisualPersonality(): VisualPersonality {
+  return visualPersonalitySchema.parse({});
+}
+
+export function emptySharedIdentity(): SharedIdentity {
+  return sharedIdentitySchema.parse({});
+}
 
 export function emptyBrandMemory(): BrandMemory {
   return {
@@ -109,6 +185,10 @@ export function emptyBrandProfile(): BrandProfile {
     contradictions: { primaryTrait: "", secondaryTrait: "" },
     contrastive: { soundsLike: [], doesNotSoundLike: [] },
     memory: emptyBrandMemory(),
+    archetype: "",
+    visualPersonality: emptyVisualPersonality(),
+    sharedIdentity: emptySharedIdentity(),
     confidence: 0,
+    visualConfidence: 0,
   });
 }

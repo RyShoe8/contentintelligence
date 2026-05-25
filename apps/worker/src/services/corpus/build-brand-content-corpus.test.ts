@@ -10,6 +10,7 @@ import {
 describe("buildBrandContentCorpus helpers", () => {
   it("assigns default weights by source type", () => {
     assert.equal(DEFAULT_SOURCE_WEIGHTS.replies, 1.3);
+    assert.equal(DEFAULT_SOURCE_WEIGHTS.socialPosts, 1.2);
     assert.equal(DEFAULT_SOURCE_WEIGHTS.landingPages, 0.4);
   });
 

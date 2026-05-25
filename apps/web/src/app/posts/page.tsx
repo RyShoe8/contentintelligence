@@ -8,6 +8,8 @@ import {
   listPosts,
 } from "@content-resourcer/db";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
+import { GeneratePostImageButton } from "@/components/generate-post-image-button";
+import { GeneratedPostImageDisplay } from "@/components/generated-post-image";
 import { PostPlatformTabs } from "@/components/post-platform-tabs";
 import { DealLinkRow } from "@/components/deal-link-row";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
@@ -305,7 +307,15 @@ export default async function PostsPage({
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-start gap-2">
+                      <GeneratePostImageButton
+                        postId={post.id}
+                        initialStatus={post.image_status ?? "idle"}
+                        initialError={post.image_error}
+                        hasImage={post.image_status === "ready" && Boolean(post.generated_image)}
+                        workerConfigured={workerIngestConfigured}
+                        personaReady={linkedVoice?.persona_status === "ready"}
+                      />
                       <form action={archivePostAction}>
                         <input type="hidden" name="post_id" value={post.id} />
                         <input type="hidden" name="content_signal_id" value={selectedId} />
@@ -323,6 +333,9 @@ export default async function PostsPage({
                     copies={post.social_copy_by_platform}
                     fallbackCopy={post.social_copy}
                   />
+                  {post.generated_image && post.image_status === "ready" ? (
+                    <GeneratedPostImageDisplay image={post.generated_image} />
+                  ) : null}
                   {signalItem?.key_points?.length ? (
                     <div className="mt-2">
                       <p className="text-xs font-medium text-[var(--muted)]">Key Points</p>

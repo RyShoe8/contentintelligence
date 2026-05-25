@@ -17,7 +17,7 @@ export type CoreBrandAnalysis = Pick<
 type BatchedAnalysisJson = {
   positioning?: { primary?: string; secondary?: string };
   audienceRelationship?: { style?: string };
-  emotionalBaseline?: { primary?: string };
+  emotionalBaseline?: { primary?: string; secondary?: string };
   taboos?: string[];
   contentObjectives?: string[];
   contradictions?: { primaryTrait?: string; secondaryTrait?: string };
@@ -51,7 +51,7 @@ export async function extractCoreBrandAnalysis(opts: {
 Return JSON only with these keys:
 - positioning: { primary, secondary? }
 - audienceRelationship: { style }
-- emotionalBaseline: { primary }
+- emotionalBaseline: { primary, secondary? }
 - taboos: string[] (phrases/styles to avoid)
 - contentObjectives: string[] (e.g. engagement, authority, conversion)
 - contradictions: { primaryTrait, secondaryTrait } (productive tension between traits)
@@ -75,6 +75,7 @@ Infer from the corpus. Be specific to this brand, not generic marketing advice.`
     },
     emotionalBaseline: {
       primary: parsed.emotionalBaseline?.primary?.trim() ?? "",
+      secondary: parsed.emotionalBaseline?.secondary?.trim() || undefined,
     },
     taboos: (parsed.taboos ?? []).map((t) => String(t).trim()).filter(Boolean).slice(0, 15),
     contentObjectives: (parsed.contentObjectives ?? [])

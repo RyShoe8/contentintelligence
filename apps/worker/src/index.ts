@@ -16,6 +16,7 @@ import { ingestLog } from "./ingest-log.js";
 import { runIngest, type IngestStats } from "./ingest.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
+import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
@@ -334,6 +335,27 @@ async function main(): Promise<void> {
       const db = await getDb();
       await ensureIndexes(db);
       const result = await addPostsForSignalItem(db, signalItemId, dealIndex);
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  app.post("/posts/generate-image", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const q = req.query as { post_id?: string; organization_id?: string };
+    const postId = q.post_id?.trim();
+    const organizationId = q.organization_id?.trim();
+    if (!postId || !organizationId) {
+      return reply.code(400).send({ error: "post_id and organization_id are required" });
+    }
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await runGeneratePostImage(db, postId, organizationId);
       return result;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

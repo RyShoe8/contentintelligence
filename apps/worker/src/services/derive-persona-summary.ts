@@ -27,7 +27,10 @@ export function derivePersonaSummary(
     "",
     "## Tone & personality",
     `- Audience relationship: ${profile.audienceRelationship.style || "trusted advisor"}`,
-    `- Emotional baseline: ${profile.emotionalBaseline.primary || "confident urgency"}`,
+    `- Emotional baseline: ${profile.emotionalBaseline.primary || "confident urgency"}${
+      profile.emotionalBaseline.secondary ? ` / ${profile.emotionalBaseline.secondary}` : ""
+    }`,
+    profile.archetype ? `- Archetype: ${profile.archetype}` : null,
     `- Primary trait: ${profile.contradictions.primaryTrait || "analytical"}`,
     `- Secondary trait: ${profile.contradictions.secondaryTrait || "accessible"}`,
     "",
@@ -51,6 +54,37 @@ export function derivePersonaSummary(
     profile.contentObjectives.length
       ? profile.contentObjectives.map((o) => `- ${o}`).join("\n")
       : "- engagement\n- conversion",
+    "",
+    "## Shared identity",
+    profile.sharedIdentity.audienceType
+      ? `- Audience: ${profile.sharedIdentity.audienceType}`
+      : null,
+    profile.sharedIdentity.internetCultureAlignment
+      ? `- Culture: ${profile.sharedIdentity.internetCultureAlignment}`
+      : null,
+    profile.sharedIdentity.energyProfile
+      ? `- Energy: ${profile.sharedIdentity.energyProfile}`
+      : null,
+    profile.sharedIdentity.trustStyle
+      ? `- Trust style: ${profile.sharedIdentity.trustStyle}`
+      : null,
+    "",
+    "## Visual identity",
+    profile.visualPersonality.visualTone
+      ? `- Visual tone: ${profile.visualPersonality.visualTone}`
+      : null,
+    profile.visualPersonality.compositionStyle.length
+      ? `- Composition: ${profile.visualPersonality.compositionStyle.join("; ")}`
+      : null,
+    profile.visualPersonality.colorProfile.dominantColors.length
+      ? `- Colors: ${profile.visualPersonality.colorProfile.dominantColors.join(", ")}`
+      : null,
+    profile.visualPersonality.visualTaboos.length
+      ? `- Visual taboos: ${profile.visualPersonality.visualTaboos.join("; ")}`
+      : null,
+    profile.visualPersonality.memeCompatibility
+      ? `- Meme compatibility: ${profile.visualPersonality.memeCompatibility}`
+      : null,
     "",
     "## Brand memory markers",
     profile.memory.favoritePhrases.length
