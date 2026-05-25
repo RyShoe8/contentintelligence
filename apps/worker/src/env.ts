@@ -38,6 +38,9 @@ export const env = {
   /** Default gpt-image-1; set dall-e-2/3 explicitly if your API key still supports DALL·E. */
   openaiImageModel: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1",
   postImageMaxB64: num("POST_IMAGE_MAX_B64", 400_000),
+  postImageMaxDownloadBytes: num("POST_IMAGE_MAX_DOWNLOAD_BYTES", 6_000_000),
+  postImageJpegQuality: num("POST_IMAGE_JPEG_QUALITY", 75),
+  postImageMaxDimension: num("POST_IMAGE_MAX_DIMENSION", 1024),
   brandCorpusMaxChars: num("BRAND_CORPUS_MAX_CHARS", 24000),
   brandMemoryMaxItems: num("BRAND_MEMORY_MAX_ITEMS", 20),
   brandProfileForceRebuild: bool("BRAND_PROFILE_FORCE_REBUILD", false),

@@ -14,9 +14,10 @@ describe("openai image generate params", () => {
     assert.equal(isGptImageModel("dall-e-3"), false);
   });
 
-  it("omits response_format for gpt-image models", () => {
+  it("requests jpeg with compression for gpt-image models", () => {
     const params = buildOpenAiImageGenerateParams("gpt-image-1", "A red fox");
-    assert.equal(params.output_format, "png");
+    assert.equal(params.output_format, "jpeg");
+    assert.equal(params.output_compression, 75);
     assert.equal("response_format" in params, false);
   });
 

@@ -7,29 +7,17 @@ import {
 } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../env.js";
+import { compressImageForPost } from "../services/image/compress-post-image.js";
 import { buildOpenAiImageGenerateParams } from "../services/image/openai-image-generate.js";
 import { buildImagePrompt } from "../services/prompt-builder/build-image-prompt.js";
 import { fallbackVisualPersonality } from "../services/visual-analysis/extract-visual-personality.js";
-
-const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-function mimeFromBytes(buf: Buffer): GeneratedPostImage["mime"] | null {
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
-    return "image/png";
-  }
-  if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg";
-  if (buf.length >= 12 && buf.slice(0, 4).toString("ascii") === "RIFF" && buf.slice(8, 12).toString("ascii") === "WEBP") {
-    return "image/webp";
-  }
-  return null;
-}
 
 async function downloadImage(url: string): Promise<Buffer> {
   const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) throw new Error(`image_download_failed:${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > env.postImageMaxB64) {
-    throw new Error("image_too_large");
+  if (buf.length > env.postImageMaxDownloadBytes) {
+    throw new Error("image_download_too_large");
   }
   return buf;
 }
@@ -87,17 +75,15 @@ export async function runGeneratePostImage(
       throw new Error("image_generation_empty");
     }
 
-    const mime = mimeFromBytes(buf);
-    if (!mime || !ALLOWED_MIME.has(mime)) {
-      throw new Error("unsupported_image_format");
-    }
+    const compressed = await compressImageForPost(buf, {
+      maxB64Chars: env.postImageMaxB64,
+      maxDimension: env.postImageMaxDimension,
+    });
 
-    const b64 = buf.toString("base64");
-    if (b64.length > env.postImageMaxB64) {
-      throw new Error("image_too_large");
-    }
-
-    const generated_image: GeneratedPostImage = { mime, data_base64: b64 };
+    const generated_image: GeneratedPostImage = {
+      mime: compressed.mime,
+      data_base64: compressed.data_base64,
+    };
 
     await updatePostImage(db, postId, organizationId, {
       image_status: "ready",

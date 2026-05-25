@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import { env } from "../../env.js";
 
 export function isDalleImageModel(model: string): boolean {
   const m = model.trim().toLowerCase();
@@ -26,7 +27,11 @@ export function buildOpenAiImageGenerateParams(
   };
 
   if (isGptImageModel(normalized)) {
-    params.output_format = "png";
+    params.output_format = "jpeg";
+    params.output_compression = Math.max(
+      0,
+      Math.min(100, Math.round(env.postImageJpegQuality)),
+    );
   }
 
   return params;
