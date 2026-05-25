@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "cd ../.. && npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/web"
+  "buildCommand": "cd ../.. && npm run build -w @content-resourcer/db && npm run build -w @content-resourcer/web",
+  "crons": [
+    {
+      "path": "/api/cron/ingest-due",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }

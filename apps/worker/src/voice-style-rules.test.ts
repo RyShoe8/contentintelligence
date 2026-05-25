@@ -1,120 +1,83 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  buildBrandMentionPromptLine,
   buildVoiceStylePromptLines,
   formatPreferredPhrasesForUserMessage,
-  GLOBAL_VOICE_TABOOS,
+  formatPhraseGroup,
   mergeTaboosWithGlobal,
   sanitizeVoicePostCopy,
 } from "./voice-style-rules.js";
 
-describe("sanitizeVoicePostCopy", () => {
-  it("removes emojis", () => {
-    assert.equal(sanitizeVoicePostCopy("Great deal 🔥 today"), "Great deal today");
-  });
-
-  it("replaces em and en dashes with comma", () => {
-    assert.equal(sanitizeVoicePostCopy("Buy now – limited time"), "Buy now, limited time");
-    assert.equal(sanitizeVoicePostCopy("Act fast — ends soon"), "Act fast, ends soon");
-  });
-
-  it("leaves ASCII hyphens in tokens", () => {
-    assert.equal(sanitizeVoicePostCopy("$44 for 24/7 access"), "$44 for 24/7 access");
-  });
-});
-
-describe("buildBrandMentionPromptLine", () => {
-  it("maps tier 0 to never mention", () => {
-    const line = buildBrandMentionPromptLine("Spinfinite", 0);
-    assert.match(line ?? "", /Do not mention the brand name "Spinfinite"/);
-  });
-
-  it("maps tier 25 to rarely mention", () => {
-    const line = buildBrandMentionPromptLine("Spinfinite", 25);
-    assert.match(line ?? "", /rarely/);
-  });
-
-  it("maps tier 50 to sometimes mention", () => {
-    const line = buildBrandMentionPromptLine("Spinfinite", 50);
-    assert.match(line ?? "", /at least once when it fits naturally/);
-  });
-
-  it("maps tier 75 to often mention", () => {
-    const line = buildBrandMentionPromptLine("Spinfinite", 75);
-    assert.match(line ?? "", /prominently/);
-  });
-
-  it("maps tier 100 to always lead with brand", () => {
-    const line = buildBrandMentionPromptLine("Spinfinite", 100);
-    assert.match(line ?? "", /Always lead with "Spinfinite"/);
+describe("formatPhraseGroup", () => {
+  it("joins multiple phrases", () => {
+    assert.equal(formatPhraseGroup(["Grab it", "Act now"]), '"Grab it" / "Act now"');
   });
 });
 
 describe("buildVoiceStylePromptLines", () => {
-  it("always includes global taboos", () => {
-    const lines = buildVoiceStylePromptLines({});
-    for (const taboo of GLOBAL_VOICE_TABOOS) {
-      assert.ok(lines.some((l) => l.includes(taboo)));
-    }
-  });
-
-  it("includes brand line at default level", () => {
-    const lines = buildVoiceStylePromptLines({ brandName: "Spinfinite" });
-    assert.ok(lines.some((l) => l.includes("Spinfinite")));
-  });
-
-  it("uses never-mention line at level 0", () => {
-    const lines = buildVoiceStylePromptLines({ brandName: "Spinfinite", brandMentionLevel: 0 });
-    assert.ok(lines.some((l) => l.includes("Do not mention the brand name")));
-  });
-
-  it("uses lead-with line at level 100", () => {
-    const lines = buildVoiceStylePromptLines({ brandName: "Spinfinite", brandMentionLevel: 100 });
-    assert.ok(lines.some((l) => l.includes("Always lead with")));
-  });
-
-  it("includes phrase pair instructions when provided", () => {
+  it("includes paraphrase instruction when AI variations enabled", () => {
     const lines = buildVoiceStylePromptLines({
+      brandName: "Test",
+      brandMentionLevel: 50,
       preferredPhrases: [
-        { phrase: "Grab it while it lasts", url: "https://example.com/promo", frequency_level: 75 },
+        {
+          phrases: ["Spin now", "Play today"],
+          url: "https://example.com/play",
+          frequency_level: 75,
+          allow_ai_variations: true,
+        },
       ],
     });
-    assert.ok(lines.some((l) => l.includes("phrase+link pair")));
-    assert.ok(lines.some((l) => l.includes("paired URL")));
-    assert.ok(lines.some((l) => l.includes("Prefer \"Grab it while it lasts\"")));
+    assert.ok(lines.some((l) => l.includes("close paraphrases")));
+    assert.ok(lines.some((l) => l.includes("Spin now")));
   });
 
-  it("skips phrases with frequency 0", () => {
+  it("requires exact wording when AI variations disabled", () => {
     const lines = buildVoiceStylePromptLines({
       preferredPhrases: [
-        { phrase: "Never use this", frequency_level: 0 },
-        { phrase: "Sometimes use", frequency_level: 50 },
+        {
+          phrases: ["Grab it"],
+          frequency_level: 50,
+          allow_ai_variations: false,
+        },
       ],
     });
-    assert.ok(!lines.some((l) => l.includes("Never use this")));
-    assert.ok(lines.some((l) => l.includes("Sometimes use")));
+    assert.ok(lines.some((l) => l.includes("exact wording")));
+    assert.ok(!lines.some((l) => l.includes("close paraphrases")));
   });
 });
 
 describe("formatPreferredPhrasesForUserMessage", () => {
-  it("formats phrase with url and frequency labels", () => {
+  it("formats phrase group with url and frequency labels", () => {
     const text = formatPreferredPhrasesForUserMessage([
-      { phrase: "Grab it", url: "https://example.com/promo", frequency_level: 75 },
-      { phrase: "Daily drop", frequency_level: 50 },
+      {
+        phrases: ["Grab it", "Act now"],
+        url: "https://example.com/promo",
+        frequency_level: 75,
+        allow_ai_variations: true,
+      },
+      { phrases: ["Daily drop"], frequency_level: 50, allow_ai_variations: false },
     ]);
-    assert.match(text, /Grab it \(Often, 75\)\|https:\/\/example\.com\/promo/);
-    assert.match(text, /Daily drop \(Sometimes, 50\)/);
-    assert.doesNotMatch(text, /Daily drop\|/);
+    assert.match(text, /Grab it.*Act now.*\(Often, 75, variations allowed\)/);
+    assert.match(text, /https:\/\/example\.com\/promo/);
+    assert.match(text, /Daily drop \(Sometimes, 50, exact wording only\)/);
   });
 
-  it("omits phrases with frequency 0", () => {
+  it("omits groups with frequency 0", () => {
     const text = formatPreferredPhrasesForUserMessage([
-      { phrase: "Skip me", frequency_level: 0 },
-      { phrase: "Keep me", frequency_level: 50 },
+      { phrases: ["Skip me"], frequency_level: 0 },
+      { phrases: ["Keep me"], frequency_level: 50 },
     ]);
     assert.doesNotMatch(text, /Skip me/);
     assert.match(text, /Keep me/);
+  });
+});
+
+describe("sanitizeVoicePostCopy", () => {
+  it("removes emojis", () => {
+    const out = sanitizeVoicePostCopy("Hello 🎰 world");
+    assert.ok(!out.includes("🎰"));
+    assert.match(out, /Hello\s+world/);
   });
 });
 

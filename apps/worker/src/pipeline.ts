@@ -1,5 +1,6 @@
 import { convert } from "html-to-text";
 import { randomUUID } from "node:crypto";
+import { sanitizeDealUrl } from "@content-resourcer/db";
 import { pickDealLink } from "./extract-deal-link.js";
 import type {
   ContentSignal,
@@ -254,11 +255,13 @@ function resolveOriginalUrl(
   normalized: NormalizedMessage,
   emailHtmlPreview?: string | null,
 ): string | null {
-  return pickDealLink(normalized.links, {
-    html: emailHtmlPreview ?? undefined,
-    subject: normalized.subject,
-    from: normalized.from,
-  });
+  return sanitizeDealUrl(
+    pickDealLink(normalized.links, {
+      html: emailHtmlPreview ?? undefined,
+      subject: normalized.subject,
+      from: normalized.from,
+    }),
+  );
 }
 
 export function buildMinimalSignalItem(
@@ -288,6 +291,7 @@ export function buildMinimalSignalItem(
     detected_keywords: detected,
     relevance_score: 1,
     original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
+    key_points: [],
     external_id: normalized.external_id,
     ai_summary: null,
     ai_processed: false,
@@ -309,6 +313,7 @@ export function buildFullSignalItem(
   deals_found?: DealMetrics[],
   email_images?: EmailImage[],
   emailHtmlPreview?: string | null,
+  key_points: string[] = [],
 ): SignalItem {
   const kws = contentSignalKeywords(contentSignal);
   const detected = detectKeywords(extractedText, kws);
@@ -331,6 +336,7 @@ export function buildFullSignalItem(
     detected_keywords: detected,
     relevance_score: relevance,
     original_url: resolveOriginalUrl(normalized, emailHtmlPreview),
+    key_points: key_points.length ? key_points : [],
     external_id: normalized.external_id,
     ai_summary: trimmed || null,
     ai_processed: Boolean(trimmed),

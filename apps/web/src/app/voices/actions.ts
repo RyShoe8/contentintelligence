@@ -76,31 +76,61 @@ async function validateSignalIds(
   return valid;
 }
 
-function parsePreferredPhrasesFromForm(formData: FormData): {
-  phrase: string;
-  url?: string;
-  frequency_level: number;
-}[] {
-  const phrases = formData.getAll("preferred_phrase_phrase").map((v) => String(v).trim());
-  const urls = formData.getAll("preferred_phrase_url").map((v) => String(v).trim());
-  const frequencies = formData.getAll("preferred_phrase_frequency").map((v) => String(v).trim());
+function splitCommaPhrases(raw: string): string[] {
   const seen = new Set<string>();
-  const out: { phrase: string; url?: string; frequency_level: number }[] = [];
-
-  for (let i = 0; i < phrases.length && out.length < 15; i++) {
-    const phrase = phrases[i]?.trim() ?? "";
-    if (!phrase) continue;
-    const key = phrase.toLowerCase();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const s = part.trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+    out.push(s);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+function parsePreferredPhrasesFromForm(formData: FormData): {
+  phrases: string[];
+  url?: string;
+  frequency_level: number;
+  allow_ai_variations: boolean;
+}[] {
+  const phraseInputs = formData.getAll("preferred_phrase_phrase").map((v) => String(v).trim());
+  const urls = formData.getAll("preferred_phrase_url").map((v) => String(v).trim());
+  const frequencies = formData.getAll("preferred_phrase_frequency").map((v) => String(v).trim());
+  const variations = formData
+    .getAll("preferred_phrase_allow_variations")
+    .map((v) => String(v).trim());
+  const seenRows = new Set<string>();
+  const out: {
+    phrases: string[];
+    url?: string;
+    frequency_level: number;
+    allow_ai_variations: boolean;
+  }[] = [];
+
+  for (let i = 0; i < phraseInputs.length && out.length < 15; i++) {
+    const phrases = splitCommaPhrases(phraseInputs[i] ?? "");
+    if (!phrases.length) continue;
+    const rowKey = phrases[0]!.toLowerCase();
+    if (seenRows.has(rowKey)) continue;
+    seenRows.add(rowKey);
     const rawFreq = Number(frequencies[i]);
     const frequency_level = Number.isFinite(rawFreq)
       ? Math.max(0, Math.min(100, Math.round(rawFreq)))
       : 50;
     const urlRaw = urls[i]?.trim() ?? "";
-    const entry: { phrase: string; url?: string; frequency_level: number } = {
-      phrase,
+    const entry: {
+      phrases: string[];
+      url?: string;
+      frequency_level: number;
+      allow_ai_variations: boolean;
+    } = {
+      phrases,
       frequency_level,
+      allow_ai_variations: variations[i] === "1",
     };
     if (urlRaw && isHttpsUrl(urlRaw)) entry.url = urlRaw;
     out.push(entry);

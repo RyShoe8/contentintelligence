@@ -129,21 +129,92 @@ export const voiceSocialLinkSchema = z.object({
 
 export type VoiceSocialLink = z.infer<typeof voiceSocialLinkSchema>;
 
-export const voicePreferredPhraseSchema = z.object({
-  phrase: z.string().min(1),
-  url: z.preprocess(
-    (v) => (v == null || v === "" ? undefined : String(v).trim()),
-    z
-      .string()
-      .url()
-      .refine((s) => s.startsWith("https://"), { message: "URL must use https" })
-      .optional(),
-  ),
-  frequency_level: z.preprocess(
-    (v) => (v == null || v === "" ? 50 : v),
-    z.coerce.number().int().min(0).max(100).default(50),
-  ),
-});
+const MAX_PHRASES_PER_ROW = 8;
+
+function splitPhraseInput(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const s = part.trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= MAX_PHRASES_PER_ROW) break;
+  }
+  return out;
+}
+
+function normalizeVoicePreferredPhraseEntry(val: unknown): unknown {
+  if (!val || typeof val !== "object") return val;
+  const o = val as Record<string, unknown>;
+  const phraseList: string[] = [];
+  const seen = new Set<string>();
+
+  const addPhrases = (items: string[]) => {
+    for (const s of items) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      phraseList.push(s);
+      if (phraseList.length >= MAX_PHRASES_PER_ROW) return;
+    }
+  };
+
+  if (Array.isArray(o.phrases)) {
+    for (const x of o.phrases) {
+      if (typeof x === "string") addPhrases(splitPhraseInput(x));
+    }
+  }
+  if (typeof o.phrase === "string") {
+    addPhrases(splitPhraseInput(o.phrase));
+  }
+
+  const urlVal = o.url;
+  const url =
+    typeof urlVal === "string" && urlVal.trim().startsWith("https://") ? urlVal.trim() : undefined;
+  const freqRaw = o.frequency_level;
+  const frequency_level =
+    freqRaw == null || freqRaw === ""
+      ? 50
+      : Math.max(0, Math.min(100, Math.round(Number(freqRaw) || 50)));
+  const allow_ai_variations =
+    o.allow_ai_variations === true ||
+    o.allow_ai_variations === 1 ||
+    o.allow_ai_variations === "1" ||
+    o.allow_ai_variations === "true";
+
+  return {
+    phrases: phraseList.length ? phraseList : [""],
+    url,
+    frequency_level,
+    allow_ai_variations,
+  };
+}
+
+export const voicePreferredPhraseSchema = z.preprocess(
+  normalizeVoicePreferredPhraseEntry,
+  z.object({
+    phrases: z.array(z.string().min(1)).min(1).max(MAX_PHRASES_PER_ROW),
+    url: z.preprocess(
+      (v) => (v == null || v === "" ? undefined : String(v).trim()),
+      z
+        .string()
+        .url()
+        .refine((s) => s.startsWith("https://"), { message: "URL must use https" })
+        .optional(),
+    ),
+    frequency_level: z.preprocess(
+      (v) => (v == null || v === "" ? 50 : v),
+      z.coerce.number().int().min(0).max(100).default(50),
+    ),
+    allow_ai_variations: z.preprocess(
+      (v) => v === true || v === 1 || v === "1" || v === "true",
+      z.boolean().default(false),
+    ),
+  }),
+);
 
 export type VoicePreferredPhrase = z.infer<typeof voicePreferredPhraseSchema>;
 
@@ -179,45 +250,73 @@ function normalizePreferredPhrasesFromLegacy(
     return url;
   });
 
-  const seen = new Set<string>();
+  const seenRows = new Set<string>();
   const out: VoicePreferredPhrase[] = [];
 
-  const pushPair = (phrase: string, url?: string, frequencyLevel = 50) => {
-    const p = phrase.trim();
-    if (!p) return;
-    const key = p.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
+  const pushRow = (
+    phraseInput: string,
+    url?: string,
+    frequencyLevel = 50,
+    allowAiVariations = false,
+  ) => {
+    const phrases = splitPhraseInput(phraseInput);
+    if (!phrases.length) return;
+    const rowKey = phrases[0]!.toLowerCase();
+    if (seenRows.has(rowKey)) return;
+    seenRows.add(rowKey);
     const level = Math.max(0, Math.min(100, Math.round(frequencyLevel)));
-    const entry: VoicePreferredPhrase = { phrase: p, frequency_level: level };
+    const entry: VoicePreferredPhrase = {
+      phrases,
+      frequency_level: level,
+      allow_ai_variations: allowAiVariations,
+    };
     if (url?.startsWith("https://")) entry.url = url;
     out.push(entry);
-    if (out.length >= 15) return;
   };
 
   if (Array.isArray(phrasesRaw)) {
     for (let i = 0; i < phrasesRaw.length && out.length < 15; i++) {
       const x = phrasesRaw[i];
       if (typeof x === "string") {
-        pushPair(x, linkUrls[i]);
+        pushRow(x, linkUrls[i]);
         continue;
       }
-      if (x && typeof x === "object" && "phrase" in x) {
-        const phrase = String((x as { phrase?: unknown }).phrase ?? "").trim();
-        const urlVal = (x as { url?: unknown }).url;
+      if (x && typeof x === "object") {
+        const o = x as {
+          phrase?: unknown;
+          phrases?: unknown;
+          url?: unknown;
+          frequency_level?: unknown;
+          allow_ai_variations?: unknown;
+        };
+        let phraseInput = "";
+        if (Array.isArray(o.phrases)) {
+          phraseInput = o.phrases
+            .filter((p): p is string => typeof p === "string")
+            .join(", ");
+        } else if (typeof o.phrase === "string") {
+          phraseInput = o.phrase;
+        }
+        const urlVal = o.url;
         const url =
           typeof urlVal === "string" && urlVal.startsWith("https://") ? urlVal : linkUrls[i];
-        const freqRaw = (x as { frequency_level?: unknown }).frequency_level;
+        const freqRaw = o.frequency_level;
         const frequencyLevel =
           freqRaw == null || freqRaw === ""
             ? 50
             : Math.max(0, Math.min(100, Math.round(Number(freqRaw) || 50)));
-        pushPair(phrase, url, frequencyLevel);
+        const allowAi =
+          o.allow_ai_variations === true ||
+          o.allow_ai_variations === 1 ||
+          o.allow_ai_variations === "1";
+        pushRow(phraseInput, url, frequencyLevel, allowAi);
       }
     }
   }
 
-  return out;
+  return out
+    .map((row) => voicePreferredPhraseSchema.parse(row))
+    .filter((row) => row.phrases.length > 0 && row.phrases[0] !== "");
 }
 
 function preprocessVoiceDocument(val: unknown): unknown {
@@ -400,6 +499,17 @@ const signalItemShape = z.object({
   detected_keywords: z.array(z.string()).default([]),
   relevance_score: z.number(),
   original_url: z.string().nullable().optional(),
+  key_points: z.preprocess(
+    (val) => {
+      if (!Array.isArray(val)) return [];
+      return val
+        .filter((x): x is string => typeof x === "string")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 12);
+    },
+    z.array(z.string().max(500)).max(12).default([]),
+  ),
   external_id: z.string(),
   ai_summary: z.string().nullable().optional(),
   ai_processed: z.boolean().default(false),

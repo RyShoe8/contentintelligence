@@ -1,18 +1,15 @@
+import { isNonDealUrl, sanitizeDealUrl } from "@content-resourcer/db";
+
 export type PickDealLinkContext = {
   html?: string;
   subject?: string;
   from?: string;
 };
 
+export { isNonDealUrl, sanitizeDealUrl };
+
 const DENY_URL_RE =
   /unsubscribe|preferences|privacy|terms|mailto:|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|linkedin\.com|google\.com\/maps|apps\.apple\.com|play\.google\.com/i;
-
-const NON_DEAL_URL_RE =
-  /w3\.org\/1999\/xhtml|w3\.org\/TR\/|w3\.org\/2000\/|schemas\.microsoft\.com|xmlns|\.dtd(?:\?|$)|fonts\.googleapis\.com|fonts\.gstatic\.com|\/css(?:\?|\/|$)|\.css(?:\?|$)/i;
-
-const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg)(?:\?|$)/i;
-
-const EMAIL_ASSET_RE = /responsysimages|\/assets\/responsys|_Email_|_600W\.png/i;
 
 const ESP_TRACKING_RE =
   /exponea\.com|responsys\.com|click\.(?:sendgrid|mailchimp)|\/click(?:\/|\?|$)/i;
@@ -29,21 +26,6 @@ function normalizeUrl(url: string): string {
 
 function isHttpUrl(url: string): boolean {
   return url.startsWith("https://") || url.startsWith("http://");
-}
-
-function pathnameOf(url: string): string {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return url;
-  }
-}
-
-export function isNonDealUrl(url: string): boolean {
-  if (NON_DEAL_URL_RE.test(url)) return true;
-  if (EMAIL_ASSET_RE.test(url)) return true;
-  const path = pathnameOf(url);
-  return IMAGE_EXT_RE.test(path) || IMAGE_EXT_RE.test(url);
 }
 
 function isDenied(url: string): boolean {
@@ -89,14 +71,20 @@ function scoreUrl(
   return score;
 }
 
+/** Remove xmlns attributes so namespace URLs are not picked up as links. */
+export function stripXmlnsFromHtml(html: string): string {
+  return html.replace(/\s+xmlns=(?:"[^"]*"|'[^']*')/gi, "");
+}
+
 function extractAnchorsFromHtml(html: string): { url: string; text: string }[] {
+  const cleaned = stripXmlnsFromHtml(html);
   const out: { url: string; text: string }[] = [];
   const re = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
+  while ((m = re.exec(cleaned)) !== null) {
     const url = normalizeUrl(m[1].trim());
     const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    if (isHttpUrl(url)) out.push({ url, text });
+    if (isHttpUrl(url) && !isNonDealUrl(url)) out.push({ url, text });
   }
   return out;
 }
@@ -110,12 +98,16 @@ function fallbackLink(links: string[], context?: PickDealLinkContext): string | 
     const normalized = normalizeUrl(link);
     const score = scoreUrl(normalized, undefined, context?.subject, context?.from);
     if (score <= 0) continue;
-    if (normalized.startsWith("https://")) return normalized;
+    const safe = sanitizeDealUrl(normalized);
+    if (safe && normalized.startsWith("https://")) return safe;
   }
   for (const link of links) {
     const normalized = normalizeUrl(link);
     const score = scoreUrl(normalized, undefined, context?.subject, context?.from);
-    if (score > 0 && normalized.startsWith("http://")) return normalized;
+    if (score > 0 && normalized.startsWith("http://")) {
+      const safe = sanitizeDealUrl(normalized);
+      if (safe) return safe;
+    }
   }
   return null;
 }
@@ -127,7 +119,7 @@ export function pickDealLink(links: string[], context?: PickDealLinkContext): st
 
   const addCandidate = (url: string, anchorText?: string) => {
     const normalized = normalizeUrl(url);
-    if (!isHttpUrl(normalized)) return;
+    if (!isHttpUrl(normalized) || isNonDealUrl(normalized)) return;
     const score = scoreUrl(normalized, anchorText, subject, from);
     if (score <= -50) return;
     const prev = candidates.get(normalized) ?? -100;
@@ -140,7 +132,9 @@ export function pickDealLink(links: string[], context?: PickDealLinkContext): st
     }
   }
 
-  for (const link of links) addCandidate(link);
+  for (const link of links) {
+    if (!isNonDealUrl(link)) addCandidate(link);
+  }
 
   let bestUrl: string | null = null;
   let bestScore = -1;
@@ -151,7 +145,7 @@ export function pickDealLink(links: string[], context?: PickDealLinkContext): st
     }
   }
 
-  if (bestUrl && bestScore > 0) return bestUrl;
+  if (bestUrl && bestScore > 0) return sanitizeDealUrl(bestUrl);
 
   return fallbackLink(links, context);
 }

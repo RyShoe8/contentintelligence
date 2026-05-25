@@ -36,7 +36,11 @@ import {
   mergeDealExtractions,
   type DealMetricsLlmPartial,
 } from "./deal-metrics.js";
-import { extractDealMetricsWithLlm, summarizeEmailBody } from "./summarize.js";
+import {
+  extractDealMetricsWithLlm,
+  extractKeyPointsWithLlm,
+  summarizeEmailBody,
+} from "./summarize.js";
 
 export type IngestSourceError = {
   sourceId: string;
@@ -280,12 +284,20 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         const dealParseText = extractFullBodyText(normalized.raw_content).slice(0, env.maxAiInputChars);
 
         let summary = "";
+        let key_points: string[] = [];
         const aiSummaryOn = source.config.ai_summary_enabled !== false;
         if (env.openaiApiKey && aiSummaryOn) {
           try {
             summary = await summarizeEmailBody(extracted);
           } catch (e) {
             console.error("[ingest] OpenAI failed", e);
+          }
+        }
+        if (aiSummaryOn) {
+          try {
+            key_points = await extractKeyPointsWithLlm(dealParseText, normalized.subject);
+          } catch (e) {
+            console.error("[ingest] key points extraction failed", e);
           }
         }
 
@@ -326,6 +338,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
           deals_found.length > 0 ? deals_found : undefined,
           email_images.length ? email_images : undefined,
           emailHtmlForRow,
+          key_points,
         );
         if (existingRow) {
           full.id = existingRow.id;

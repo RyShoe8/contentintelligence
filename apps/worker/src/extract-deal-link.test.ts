@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isNonDealUrl, pickDealLink } from "./extract-deal-link.js";
+import { isNonDealUrl, sanitizeDealUrl } from "@content-resourcer/db";
+import { isNonDealUrl as isNonDealUrlWorker, pickDealLink, stripXmlnsFromHtml } from "./extract-deal-link.js";
+
+describe("sanitizeDealUrl", () => {
+  it("returns null for xhtml namespace URLs", () => {
+    assert.equal(sanitizeDealUrl("http://www.w3.org/1999/xhtml"), null);
+    assert.equal(sanitizeDealUrl("https://casino.example.com/play"), "https://casino.example.com/play");
+  });
+});
 
 describe("isNonDealUrl", () => {
   it("rejects XHTML namespace URLs", () => {
     assert.equal(isNonDealUrl("http://www.w3.org/1999/xhtml"), true);
     assert.equal(isNonDealUrl("https://www.w3.org/1999/xhtml"), true);
+    assert.equal(isNonDealUrlWorker("http://www.w3.org/1999/xhtml"), true);
   });
 
   it("rejects font and css asset URLs", () => {
@@ -148,6 +157,25 @@ describe("pickDealLink", () => {
       "https://fun.goldenheartsgames.com/assets/responsysimages/content/goldenhea/GHG.png",
     ];
     assert.equal(pickDealLink(links), null);
+  });
+
+  it("returns null for xmlns-only HTML with no real anchors", () => {
+    const html = `<html xmlns="http://www.w3.org/1999/xhtml"><body>Promo text only</body></html>`;
+    assert.equal(pickDealLink([], { html }), null);
+    assert.equal(
+      pickDealLink(["http://www.w3.org/1999/xhtml"], { html }),
+      null,
+    );
+  });
+
+  it("stripXmlnsFromHtml removes xmlns attributes", () => {
+    const html = '<html xmlns="http://www.w3.org/1999/xhtml"><a href="https://casino.example.com/play">Play</a></html>';
+    const stripped = stripXmlnsFromHtml(html);
+    assert.doesNotMatch(stripped, /xmlns/i);
+    assert.equal(
+      pickDealLink([], { html: stripped }),
+      "https://casino.example.com/play",
+    );
   });
 
   it("uses Exponea tracker when it is the only promo CTA", () => {

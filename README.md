@@ -83,8 +83,9 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 | `GMAIL_CLIENT_ID` | Gmail OAuth client ID (in-app **Connect Gmail**; not `AUTH_GOOGLE_*`) |
 | `GMAIL_CLIENT_SECRET` | Gmail OAuth client secret |
 | `GMAIL_REDIRECT_URI` | Must exactly match Google console: `https://<vercel-host>/api/gmail/oauth/callback` |
-| `WORKER_URL` | Render worker base URL, no trailing slash (e.g. `https://contentintelligence.onrender.com`) — enables **Sync now** in the UI |
-| `INGEST_SECRET` | Optional; if set on the worker, set the **same** value on Vercel so **Sync now** can call `POST /ingest` |
+| `WORKER_URL` | Render worker base URL, no trailing slash (e.g. `https://contentintelligence.onrender.com`) — enables **Sync now** in the UI and Vercel Cron scheduled ingest |
+| `INGEST_SECRET` | Optional; if set on the worker, set the **same** value on Vercel so **Sync now** and cron can call worker ingest routes |
+| `CRON_SECRET` | Required in production for **Feed sync schedule** automation; Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/cron/ingest-due` every 15 minutes |
 | `BREVO_API_KEY` | Optional; Brevo transactional API key for Team invite / member-added emails |
 | `INVITE_EMAIL_FROM` | Verified sender, e.g. `Content Intelligence <noreply@yourdomain.com>` (required when `BREVO_API_KEY` is set) |
 
@@ -123,6 +124,16 @@ The **Posts** page auto-creates social-ready copy from feed deals that meet a pe
 - After each signal ingest (Sync now or schedule), the worker runs `POST /posts/sync` logic automatically.
 - Manual **Add to Posts** on the feed calls worker `POST /posts/add`.
 
+### Feed sync schedule (Posts page)
+
+Per-signal schedules are stored in Mongo (`ingest_interval_minutes`). The worker also runs an in-process poll (`SIGNAL_SCHEDULE_CRON`, default every minute), but **that only runs while the Render worker process is awake**.
+
+On **Render Free**, the web service spins down after idle; internal cron stops until something HTTP-wakes the worker. **Manual Sync/Refresh works** because it calls the worker; **automatic hourly sync does not** unless you add an external scheduler.
+
+**Recommended:** Vercel Cron (configured in [`apps/web/vercel.json`](apps/web/vercel.json)) calls `GET /api/cron/ingest-due` every 15 minutes, which POSTs to the worker `POST /schedule/tick` and starts ingest for the oldest due feed. Set `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel.
+
+**Alternative:** Render **Cron Job** that curls `POST $WORKER_URL/schedule/tick` with `x-ingest-secret`, or use a paid always-on Render web instance.
+
 ## Local development (optional)
 
 ```bash
@@ -159,6 +170,8 @@ npm run build
 
 - **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
+- **Posts shows “Due now” but nothing syncs for hours:** The UI is correct; scheduled ingest did not run. Confirm `CRON_SECRET` and `WORKER_URL` on Vercel, redeploy the web app so [`vercel.json`](apps/web/vercel.json) crons are active, and check Render logs for `signal_schedule_start` or `ingest_request` after a cron tick. On Render Free, rely on Vercel Cron (or an external ping) to wake the worker — not in-process cron alone.
+- **Deal link shows `w3.org/1999/xhtml`:** Re-sync the feed after deploy so `original_url` is recomputed. New ingests filter namespace and asset URLs; the UI also hides known junk links on old rows until re-synced.
 
 ## OAuth notes
 

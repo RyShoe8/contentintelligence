@@ -1,5 +1,6 @@
 "use client";
 
+import { isNonDealUrl } from "@/lib/deal-url";
 import { useState } from "react";
 
 export function CopyTextButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -27,7 +28,7 @@ export function CopyTextButton({ text, label = "Copy" }: { text: string; label?:
 }
 
 export function DealLinkRow({ url }: { url: string }) {
-  if (!url?.trim()) return null;
+  if (!url?.trim() || isNonDealUrl(url)) return null;
 
   return (
     <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">

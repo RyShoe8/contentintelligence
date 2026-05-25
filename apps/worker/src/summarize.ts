@@ -107,3 +107,89 @@ ${unitLine}
     confidence,
   };
 }
+
+const KEY_POINT_PATTERNS: RegExp[] = [
+  /\b(?:must\s+)?claim\s+(?:by|before)\s+[^.\n]{4,120}/gi,
+  /\b(?:valid|available)\s+(?:until|through|from)\s+[^.\n]{4,120}/gi,
+  /\b(?:no\s+purchase\s+necessary)\b/gi,
+  /\bvoid\s+where\s+prohibited\b/gi,
+  /\b(?:not\s+)?available\s+in\s+(?:all\s+)?states?\b/gi,
+  /\b(?:May|June|July|August|September|October|November|December|January|February|March|April)\s+\d{1,2}(?:\s*[-–]\s*(?:May|June|July|August|September|October|November|December|January|February|March|April)?\s*\d{1,2})?(?:\s*\([^)]+\))?/gi,
+  /\b\d{1,2}:\d{2}\s*(?:am|pm)\s*(?:ET|PT|PST|EST|CT)\b/gi,
+  /\b(?:tournament|promo|offer|deal)\s+(?:runs?|from)\s+[^.\n]{4,100}/gi,
+];
+
+export function extractKeyPointsRegexFallback(cleanText: string, subject = ""): string[] {
+  const combined = `${subject}\n${cleanText}`.slice(0, env.maxAiInputChars);
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const re of KEY_POINT_PATTERNS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(combined)) !== null && out.length < 8) {
+      const s = m[0].replace(/\s+/g, " ").trim();
+      if (s.length < 8 || s.length > 500) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s.charAt(0).toUpperCase() + s.slice(1));
+    }
+  }
+  return out.slice(0, 8);
+}
+
+export async function extractKeyPointsWithLlm(
+  cleanText: string,
+  subject = "",
+): Promise<string[]> {
+  if (!env.openaiApiKey) {
+    return extractKeyPointsRegexFallback(cleanText, subject);
+  }
+  const client = new OpenAI({ apiKey: env.openaiApiKey });
+  const input = `${subject ? `Subject: ${subject}\n\n` : ""}${cleanText}`.slice(0, env.maxAiInputChars);
+  const res = await client.chat.completions.create({
+    model: env.openaiModel,
+    max_tokens: 350,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `Extract key factual points from this promotional email as JSON only:
+{"key_points": string[]}
+Rules:
+- Return 3–8 short bullet strings (under 120 chars each) when present; empty array if none.
+- Focus on: offer timeframe/deadlines, claim-by dates, eligibility (states, age), special conditions, tournament windows, purchase requirements.
+- No marketing fluff or generic CTAs.
+- Use the email's own dates and wording when possible.`,
+      },
+      { role: "user", content: input },
+    ],
+  });
+  let raw = res.choices[0]?.message?.content?.trim() ?? "";
+  if (!raw) return extractKeyPointsRegexFallback(cleanText, subject);
+  const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)```$/m);
+  if (fenced) raw = fenced[1]!.trim();
+  try {
+    const parsed = JSON.parse(raw) as { key_points?: unknown };
+    if (!Array.isArray(parsed.key_points)) {
+      return extractKeyPointsRegexFallback(cleanText, subject);
+    }
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const x of parsed.key_points) {
+      if (typeof x !== "string") continue;
+      const s = x.trim().slice(0, 500);
+      if (!s) continue;
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (out.length >= 12) break;
+    }
+    return out.length ? out : extractKeyPointsRegexFallback(cleanText, subject);
+  } catch {
+    return extractKeyPointsRegexFallback(cleanText, subject);
+  }
+}

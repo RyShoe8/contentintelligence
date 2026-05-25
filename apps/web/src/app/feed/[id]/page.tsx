@@ -7,6 +7,7 @@ import { EmailImageGallery } from "@/components/email-image-gallery";
 import { connectMongo } from "@/lib/mongo";
 import { DealsList } from "@/components/deals-list";
 import { DealLinkRow } from "@/components/deal-link-row";
+import { KeyPointsList } from "@/components/key-points-list";
 import { dealsForDisplay } from "@/lib/deal-display";
 import { canAccessOrganization, requireOrgMember, isPlatformAdmin } from "@/lib/org-auth";
 
@@ -112,6 +113,13 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
       )}
 
       <DealsList deals={dealsForDisplay(item)} />
+
+      {item.key_points?.length ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
+          <h2 className="text-sm font-medium text-[var(--muted)]">Key Points</h2>
+          <KeyPointsList points={item.key_points} />
+        </section>
+      ) : null}
 
       {item.original_url ? (
         <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">

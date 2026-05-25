@@ -2,6 +2,7 @@ import type { BrandProfile } from "@content-resourcer/db";
 import {
   brandMentionLevelLabel,
   buildBrandMentionPromptLine,
+  formatPhraseGroup,
   GLOBAL_VOICE_TABOOS,
   type VoicePreferredPhraseLike,
 } from "../voice-style-rules.js";
@@ -80,15 +81,21 @@ function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): strin
 
   const pairs = (opts.preferredPhrases ?? [])
     .map((p) => {
-      const phrase = p.phrase?.trim() ?? "";
-      if (!phrase) return null;
+      const phrases =
+        p.phrases?.map((x) => x.trim()).filter(Boolean) ??
+        (typeof (p as { phrase?: string }).phrase === "string"
+          ? [(p as { phrase?: string }).phrase!.trim()]
+          : []);
+      if (!phrases.length) return null;
+      const group = formatPhraseGroup(phrases);
       const freq = Math.max(0, Math.min(100, Math.round(p.frequency_level ?? 50)));
       const label = brandMentionLevelLabel(freq);
       const url = p.url?.trim();
-      const suffix = ` (${label}, ${freq})`;
+      const varNote = p.allow_ai_variations ? ", AI variations allowed" : ", exact wording only";
+      const suffix = ` (${label}, ${freq}${varNote})`;
       return url?.startsWith("https://")
-        ? `- ${phrase}|${url}${suffix}`
-        : `- ${phrase}${suffix}`;
+        ? `- ${group}|${url}${suffix}`
+        : `- ${group}${suffix}`;
     })
     .filter((x): x is string => Boolean(x));
 

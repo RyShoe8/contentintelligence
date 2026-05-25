@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { VoicePreferredPhrase } from "@content-resourcer/db";
 
-const MAX_PHRASES = 15;
+const MAX_ROWS = 15;
 
 function labelForLevel(level: number): string {
   const l = Math.max(0, Math.min(100, Math.round(level)));
@@ -15,16 +15,18 @@ function labelForLevel(level: number): string {
 }
 
 type PhraseRow = {
-  phrase: string;
+  phrasesText: string;
   url: string;
   frequency_level: number;
+  allow_ai_variations: boolean;
 };
 
 function toRows(phrases: VoicePreferredPhrase[]): PhraseRow[] {
   return phrases.map((p) => ({
-    phrase: p.phrase,
+    phrasesText: (p.phrases ?? []).join(", "),
     url: p.url ?? "",
     frequency_level: p.frequency_level ?? 50,
+    allow_ai_variations: Boolean(p.allow_ai_variations),
   }));
 }
 
@@ -45,8 +47,11 @@ export function PreferredPhrasesEditor({ defaultPhrases = [] }: Props) {
 
   function addRow() {
     setRows((prev) => {
-      if (prev.length >= MAX_PHRASES) return prev;
-      return [...prev, { phrase: "", url: "", frequency_level: 50 }];
+      if (prev.length >= MAX_ROWS) return prev;
+      return [
+        ...prev,
+        { phrasesText: "", url: "", frequency_level: 50, allow_ai_variations: false },
+      ];
     });
   }
 
@@ -61,13 +66,13 @@ export function PreferredPhrasesEditor({ defaultPhrases = [] }: Props) {
             className="rounded border border-[var(--border)] bg-[var(--input-bg)]/40 p-3 space-y-2"
           >
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-[var(--muted)]">Phrase</label>
+              <label className="text-xs text-[var(--muted)]">Phrases (comma-separated)</label>
               <input
                 name="preferred_phrase_phrase"
-                value={row.phrase}
-                onChange={(e) => updateRow(index, { phrase: e.target.value })}
+                value={row.phrasesText}
+                onChange={(e) => updateRow(index, { phrasesText: e.target.value })}
                 className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
-                placeholder="Grab it while it lasts"
+                placeholder="Grab it, Act now, Don't miss out"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -100,20 +105,38 @@ export function PreferredPhrasesEditor({ defaultPhrases = [] }: Props) {
                 }
                 className="w-full accent-[var(--accent)]"
               />
-              <div className="flex justify-between text-[10px] text-[var(--muted)]">
-                <span>Never</span>
-                <span>Rare</span>
-                <span>Sometimes</span>
-                <span>Often</span>
-                <span>Always</span>
-              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="hidden"
+                name="preferred_phrase_allow_variations"
+                value={row.allow_ai_variations ? "1" : "0"}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  updateRow(index, { allow_ai_variations: !row.allow_ai_variations })
+                }
+                className={`rounded border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  row.allow_ai_variations
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--accent)]"
+                }`}
+              >
+                {row.allow_ai_variations
+                  ? "AI variations: on"
+                  : "AI variations: off"}
+              </button>
+              <span className="text-[10px] text-[var(--muted)]">
+                When on, posts may paraphrase listed phrases with similar wording.
+              </span>
             </div>
             <button
               type="button"
               onClick={() => removeRow(index)}
               className="text-xs text-red-600 hover:underline"
             >
-              Remove phrase
+              Remove phrase group
             </button>
           </div>
         ))
@@ -121,10 +144,10 @@ export function PreferredPhrasesEditor({ defaultPhrases = [] }: Props) {
       <button
         type="button"
         onClick={addRow}
-        disabled={rows.length >= MAX_PHRASES}
+        disabled={rows.length >= MAX_ROWS}
         className="self-start rounded border border-[var(--border)] px-3 py-1.5 text-sm hover:border-[var(--primary)] disabled:opacity-50"
       >
-        Add phrase
+        Add phrase group
       </button>
     </div>
   );

@@ -172,6 +172,82 @@ async function main(): Promise<void> {
     return ingestInFlight;
   };
 
+  type ScheduleTickResult = {
+    due_count: number;
+    started: boolean;
+    content_signal_id: string | null;
+    skipped?: string;
+  };
+
+  const runScheduleTick = async (): Promise<ScheduleTickResult> => {
+    if (ingestInFlight) {
+      ingestLog("signal_schedule_skip", { reason: "ingest_already_running" });
+      return {
+        due_count: 0,
+        started: false,
+        content_signal_id: null,
+        skipped: "ingest_already_running",
+      };
+    }
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const signals = await listScheduledContentSignals(db);
+      const due = signals.filter((s) => isContentSignalIngestDue(s));
+      if (!due.length) {
+        return { due_count: 0, started: false, content_signal_id: null };
+      }
+      const next = due.sort((a, b) => {
+        const aT = a.last_ingest_completed_at?.getTime() ?? 0;
+        const bT = b.last_ingest_completed_at?.getTime() ?? 0;
+        return aT - bT;
+      })[0];
+      if (!next) {
+        return { due_count: due.length, started: false, content_signal_id: null };
+      }
+      ingestLog("signal_schedule_start", {
+        contentSignalId: next.id,
+        intervalMinutes: next.ingest_interval_minutes,
+      });
+      void startIngest(next.id, "schedule");
+      return {
+        due_count: due.length,
+        started: true,
+        content_signal_id: next.id,
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      ingestLog("signal_schedule_error", { message });
+      app.log.error(e);
+      throw e;
+    }
+  };
+
+  app.post("/schedule/tick", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const result = await runScheduleTick();
+    if (result.skipped === "ingest_already_running") {
+      return reply.code(409).send({
+        error: "ingest_already_running",
+        ...result,
+      });
+    }
+    if (result.started) {
+      return reply.code(202).send({
+        accepted: true,
+        message: "Scheduled ingest started.",
+        ...result,
+      });
+    }
+    return reply.code(200).send({
+      accepted: false,
+      message: "No feeds due for scheduled ingest.",
+      ...result,
+    });
+  });
+
   app.get("/ingest/status", async (req, reply) => {
     const secretHeader = req.headers["x-ingest-secret"];
     if (!ingestSecretOk(secretHeader)) {
@@ -323,35 +399,7 @@ async function main(): Promise<void> {
   });
 
   cron.schedule(env.signalScheduleCron, () => {
-    void (async () => {
-      if (ingestInFlight) {
-        ingestLog("signal_schedule_skip", { reason: "ingest_already_running" });
-        return;
-      }
-      try {
-        const db = await getDb();
-        await ensureIndexes(db);
-        const signals = await listScheduledContentSignals(db);
-        const due = signals.filter((s) => isContentSignalIngestDue(s));
-        if (!due.length) return;
-        const next = due.sort((a, b) => {
-          const aT = a.last_ingest_completed_at?.getTime() ?? 0;
-          const bT = b.last_ingest_completed_at?.getTime() ?? 0;
-          return aT - bT;
-        })[0];
-        if (next) {
-          ingestLog("signal_schedule_start", {
-            contentSignalId: next.id,
-            intervalMinutes: next.ingest_interval_minutes,
-          });
-          void startIngest(next.id, "schedule");
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        ingestLog("signal_schedule_error", { message });
-        app.log.error(e);
-      }
-    })();
+    void runScheduleTick();
   });
 
   const shutdown = async () => {

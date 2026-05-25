@@ -29,13 +29,20 @@ describe("derivePersonaSummary", () => {
     const summary = derivePersonaSummary(profile, "Spinfinite", {
       brandMentionLevel: 100,
       preferredPhrases: [
-        { phrase: "Grab it while it lasts", url: "https://example.com/promo" },
-        { phrase: "Your daily bonus drop" },
+        {
+          phrases: ["Grab it while it lasts"],
+          url: "https://example.com/promo",
+          frequency_level: 50,
+        },
+        { phrases: ["Your daily bonus drop"], frequency_level: 50 },
       ],
     });
     assert.match(summary, /## Preferred phrases for posts/);
-    assert.match(summary, /- Grab it while it lasts\|https:\/\/example.com\/promo \(Sometimes, 50\)/);
-    assert.match(summary, /- Your daily bonus drop \(Sometimes, 50\)/);
+    assert.match(
+      summary,
+      /- Grab it while it lasts\|https:\/\/example.com\/promo \(Sometimes, 50, exact wording only\)/,
+    );
+    assert.match(summary, /- Your daily bonus drop \(Sometimes, 50, exact wording only\)/);
     assert.match(summary, /Use at most one phrase\+link pair when natural/);
   });
 

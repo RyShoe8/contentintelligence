@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./deal-url": {
+      "types": "./dist/deal-url.d.ts",
+      "import": "./dist/deal-url.js",
+      "default": "./dist/deal-url.js"
     }
   },
   "scripts": {
