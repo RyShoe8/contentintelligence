@@ -1,6 +1,7 @@
 import { sharedIdentitySchema, type SharedIdentity, type VisualPersonality } from "@content-resourcer/db";
 import type { CoreBrandAnalysis } from "./extract-brand-dna.js";
 import { env } from "../../env.js";
+import { coerceLlmString } from "../llm/coerce-llm-field.js";
 import { completeJson } from "../llm/json-completion.js";
 
 type SharedJson = {
@@ -71,15 +72,15 @@ Return JSON: audienceType, internetCultureAlignment, sophisticationLevel, energy
   }
 
   const shared = sharedIdentitySchema.parse({
-    audienceType: parsed.audienceType?.trim() ?? "",
-    internetCultureAlignment: parsed.internetCultureAlignment?.trim() ?? "",
-    sophisticationLevel: parsed.sophisticationLevel?.trim() ?? "",
-    energyProfile: parsed.energyProfile?.trim() ?? "",
-    trustStyle: parsed.trustStyle?.trim() ?? "",
+    audienceType: coerceLlmString(parsed.audienceType),
+    internetCultureAlignment: coerceLlmString(parsed.internetCultureAlignment),
+    sophisticationLevel: coerceLlmString(parsed.sophisticationLevel),
+    energyProfile: coerceLlmString(parsed.energyProfile),
+    trustStyle: coerceLlmString(parsed.trustStyle),
   });
 
   return {
     shared,
-    archetype: parsed.archetype?.trim() ?? "",
+    archetype: coerceLlmString(parsed.archetype, 120),
   };
 }

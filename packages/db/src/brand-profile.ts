@@ -1,5 +1,28 @@
 import { z } from "zod";
 
+function scalarToString(val: unknown, maxLen = 500): string {
+  if (val == null) return "";
+  if (typeof val === "string") return val.trim().slice(0, maxLen);
+  if (typeof val === "number" || typeof val === "boolean") {
+    return String(val).trim().slice(0, maxLen);
+  }
+  if (Array.isArray(val)) {
+    return val
+      .map((x) => (typeof x === "string" ? x.trim() : String(x).trim()))
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, maxLen);
+  }
+  return "";
+}
+
+function coercedString(max = 500) {
+  return z.preprocess(
+    (val) => scalarToString(val, max),
+    z.string().max(max).default(""),
+  );
+}
+
 const stringList = (max: number) =>
   z.preprocess(
     (val) => (Array.isArray(val) ? val.filter((x) => typeof x === "string") : []),
@@ -43,15 +66,15 @@ export const brandContrastiveSchema = z.object({
 
 export const brandColorProfileSchema = z.object({
   dominantColors: stringList(8),
-  contrastLevel: z.string().default(""),
-  saturationLevel: z.string().default(""),
-  lightingMood: z.string().default(""),
+  contrastLevel: coercedString(),
+  saturationLevel: coercedString(),
+  lightingMood: coercedString(),
 });
 
 export type BrandColorProfile = z.infer<typeof brandColorProfileSchema>;
 
 export const visualPersonalitySchema = z.object({
-  visualTone: z.string().default(""),
+  visualTone: coercedString(),
   compositionStyle: stringList(10),
   colorProfile: brandColorProfileSchema.default({
     dominantColors: [],
@@ -60,9 +83,9 @@ export const visualPersonalitySchema = z.object({
     lightingMood: "",
   }),
   textureStyle: stringList(10),
-  typographyStyle: z.string().default(""),
+  typographyStyle: coercedString(),
   layoutBehavior: stringList(10),
-  memeCompatibility: z.string().default(""),
+  memeCompatibility: coercedString(),
   visualTaboos: stringList(15),
   visualArchetypes: stringList(10),
   recurringMotifs: stringList(15),

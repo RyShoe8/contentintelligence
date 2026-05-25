@@ -4,21 +4,22 @@ import {
   type VisualPersonality,
 } from "@content-resourcer/db";
 import { env } from "../../env.js";
+import { coerceLlmString } from "../llm/coerce-llm-field.js";
 import { completeJson } from "../llm/json-completion.js";
 
 type VisualJson = {
-  visualTone?: string;
+  visualTone?: string | string[];
   compositionStyle?: string[];
   colorProfile?: {
     dominantColors?: string[];
-    contrastLevel?: string;
-    saturationLevel?: string;
-    lightingMood?: string;
+    contrastLevel?: string | string[];
+    saturationLevel?: string | string[];
+    lightingMood?: string | string[];
   };
   textureStyle?: string[];
-  typographyStyle?: string;
+  typographyStyle?: string | string[];
   layoutBehavior?: string[];
-  memeCompatibility?: string;
+  memeCompatibility?: string | string[];
   visualTaboos?: string[];
   visualArchetypes?: string[];
   recurringMotifs?: string[];
@@ -85,21 +86,21 @@ Be specific to this brand's niche and culture.`,
   }
 
   const visual = visualPersonalitySchema.parse({
-    visualTone: parsed.visualTone?.trim() ?? "",
+    visualTone: coerceLlmString(parsed.visualTone),
     compositionStyle: (parsed.compositionStyle ?? []).map((s) => String(s).trim()).filter(Boolean),
     colorProfile: {
       dominantColors: (parsed.colorProfile?.dominantColors ?? [])
         .map((s) => String(s).trim())
         .filter(Boolean)
         .slice(0, 8),
-      contrastLevel: parsed.colorProfile?.contrastLevel?.trim() ?? "",
-      saturationLevel: parsed.colorProfile?.saturationLevel?.trim() ?? "",
-      lightingMood: parsed.colorProfile?.lightingMood?.trim() ?? "",
+      contrastLevel: coerceLlmString(parsed.colorProfile?.contrastLevel),
+      saturationLevel: coerceLlmString(parsed.colorProfile?.saturationLevel),
+      lightingMood: coerceLlmString(parsed.colorProfile?.lightingMood),
     },
     textureStyle: (parsed.textureStyle ?? []).map((s) => String(s).trim()).filter(Boolean),
-    typographyStyle: parsed.typographyStyle?.trim() ?? "",
+    typographyStyle: coerceLlmString(parsed.typographyStyle),
     layoutBehavior: (parsed.layoutBehavior ?? []).map((s) => String(s).trim()).filter(Boolean),
-    memeCompatibility: parsed.memeCompatibility?.trim() ?? "",
+    memeCompatibility: coerceLlmString(parsed.memeCompatibility),
     visualTaboos: (parsed.visualTaboos ?? []).map((s) => String(s).trim()).filter(Boolean).slice(0, 15),
     visualArchetypes: (parsed.visualArchetypes ?? []).map((s) => String(s).trim()).filter(Boolean),
     recurringMotifs: (parsed.recurringMotifs ?? []).map((s) => String(s).trim()).filter(Boolean),
