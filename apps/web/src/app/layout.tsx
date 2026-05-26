@@ -20,6 +20,10 @@ export const metadata: Metadata = {
     template: "%s · ContentIntelligence",
   },
   description: "Gmail signal ingestion for content creation",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
