@@ -187,6 +187,12 @@ npm install
 npm run build
 ```
 
+### Favicon (browser tab)
+
+Tab icons are served from Next.js metadata files in [`apps/web/src/app/`](apps/web/src/app/) (`icon.png`, `apple-icon.png`, `favicon.ico`). The header/login wordmark remains [`apps/web/public/logo.png`](apps/web/public/logo.png).
+
+After deploy, if the tab still shows an old icon, open the site in an incognito window or clear site data for your domain (favicons are cached aggressively). Confirm production serves the new asset at `/favicon.ico` or check the latest Vercel deployment includes `src/app/icon.png`.
+
 ## Troubleshooting ingest
 
 - **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
