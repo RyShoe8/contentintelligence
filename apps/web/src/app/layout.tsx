@@ -21,8 +21,8 @@ export const metadata: Metadata = {
   },
   description: "Gmail signal ingestion for content creation",
   icons: {
-    icon: "/favicon.png",
-    apple: "/favicon.png",
+    icon: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
