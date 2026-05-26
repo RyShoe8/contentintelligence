@@ -85,7 +85,7 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 | `GMAIL_REDIRECT_URI` | Must exactly match Google console: `https://<vercel-host>/api/gmail/oauth/callback` |
 | `WORKER_URL` | Render worker base URL, no trailing slash (e.g. `https://contentintelligence.onrender.com`) — enables **Sync now** in the UI and Vercel Cron scheduled ingest |
 | `INGEST_SECRET` | Optional; if set on the worker, set the **same** value on Vercel so **Sync now** and cron can call worker ingest routes |
-| `CRON_SECRET` | Required in production for **Feed sync schedule** automation; Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` to `/api/cron/ingest-due` every 15 minutes |
+| `CRON_SECRET` | Required in production for **Feed sync schedule** automation; external cron (or Vercel Pro built-in cron) sends `Authorization: Bearer <CRON_SECRET>` to `GET /api/cron/ingest-due` |
 | `BREVO_API_KEY` | Optional; Brevo transactional API key for Team invite / member-added emails |
 | `INVITE_EMAIL_FROM` | Verified sender, e.g. `Content Intelligence <noreply@yourdomain.com>` (required when `BREVO_API_KEY` is set) |
 
@@ -128,11 +128,32 @@ The **Posts** page auto-creates social-ready copy from feed deals that meet a pe
 
 Per-signal schedules are stored in Mongo (`ingest_interval_minutes`). The worker also runs an in-process poll (`SIGNAL_SCHEDULE_CRON`, default every minute), but **that only runs while the Render worker process is awake**.
 
-On **Render Free**, the web service spins down after idle; internal cron stops until something HTTP-wakes the worker. **Manual Sync/Refresh works** because it calls the worker; **automatic hourly sync does not** unless you add an external scheduler.
+On **Render Free**, the worker spins down after ~15 minutes idle; internal cron stops until HTTP wakes the service. **Manual Sync/Refresh works** because it calls the worker; **automatic sync does not** unless something hits the worker on a schedule.
 
-**Recommended:** Vercel Cron (configured in [`apps/web/vercel.json`](apps/web/vercel.json)) calls `GET /api/cron/ingest-due` every 15 minutes, which POSTs to the worker `POST /schedule/tick` and starts ingest for the oldest due feed. Set `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel.
+#### Vercel Hobby + Render Free (recommended setup)
 
-**Alternative:** Render **Cron Job** that curls `POST $WORKER_URL/schedule/tick` with `x-ingest-secret`, or use a paid always-on Render web instance.
+**Vercel Hobby cannot run built-in cron more than once per day.** The `*/15` schedule in [`vercel.json`](apps/web/vercel.json) is a once-daily backup only (`0 14 * * *` UTC). For hourly (or more frequent) feed sync, use a **free external scheduler** to call your app API:
+
+1. On **Vercel (Production)**, set `CRON_SECRET`, `WORKER_URL`, and `INGEST_SECRET` (same value as on the Render worker if ingest routes require it).
+2. At [cron-job.org](https://cron-job.org) (or similar), create a job:
+   - **URL:** `https://<your-vercel-domain>/api/cron/ingest-due`
+   - **Method:** GET
+   - **Schedule:** every 15 minutes (`*/15 * * * *`)
+   - **Header:** `Authorization: Bearer <CRON_SECRET>` (must match Vercel exactly)
+   - Use the longest timeout your provider allows (30s on cron-job.org free tier).
+3. **Optional but recommended:** a second job every **10–14 minutes** that GETs `https://<worker>.onrender.com/health` so Render stays awake and schedule ticks are less likely to time out during cold start.
+4. After ~20 minutes, check **cron-job.org** execution history (HTTP 200) and **Render logs** for `signal_schedule_start` or `ingest_request` with `source: "schedule"`.
+
+The cron route wakes the worker (`GET /health` with retries), then `POST /schedule/tick` for the oldest due content signal (feed ingest + post sync for that signal).
+
+#### Vercel Pro
+
+You may use Vercel built-in cron at `*/15 * * * *` in `vercel.json` instead of (or in addition to) external cron. Same env vars apply.
+
+#### Alternatives
+
+- **Direct worker cron:** `POST https://<worker>/schedule/tick` with header `x-ingest-secret: <INGEST_SECRET>` (skips Vercel; same cold-start caveats on Render Free).
+- **Render Cron Job** (~$1/mo) or a paid always-on Render web instance.
 
 ## Local development (optional)
 
@@ -170,7 +191,7 @@ npm run build
 
 - **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
-- **Posts shows “Due now” but nothing syncs for hours:** The UI is correct; scheduled ingest did not run. Confirm `CRON_SECRET` and `WORKER_URL` on Vercel, redeploy the web app so [`vercel.json`](apps/web/vercel.json) crons are active, and check Render logs for `signal_schedule_start` or `ingest_request` after a cron tick. On Render Free, rely on Vercel Cron (or an external ping) to wake the worker — not in-process cron alone.
+- **Posts shows “Due now” but nothing syncs for hours:** Scheduled ingest did not run. On **Vercel Hobby**, built-in cron cannot fire every 15 minutes — set up **cron-job.org** (see Feed sync schedule above). Confirm `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel. Check cron-job.org history for **401** (wrong secret), **502** (bad `WORKER_URL` or worker cold start timeout), and Render logs for `signal_schedule_start`. Add a `/health` keep-alive ping on the worker if ticks time out.
 - **Deal link shows `w3.org/1999/xhtml`:** Re-sync the feed after deploy so `original_url` is recomputed. New ingests filter namespace and asset URLs; the UI also hides known junk links on old rows until re-synced.
 - **Key Points missing on Feed or Posts:** Run **Sync feed** (or **Refresh posts**) after deploy so existing `signal_items` rows get `key_points` populated. The Feed detail page shows a hint until a full ingest refreshes the item.
 
