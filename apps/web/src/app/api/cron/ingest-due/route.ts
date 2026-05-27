@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json(
       {
+        cron: true,
         worker_wake_ms: wake.worker_wake_ms,
         worker_wake_attempts: wake.attempts,
         worker_wake_ok: wake.ok,

@@ -15,6 +15,9 @@ export default auth((req) => {
   if (pathname === "/login") {
     return NextResponse.next();
   }
+  if (pathname.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
   if (!req.auth) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
