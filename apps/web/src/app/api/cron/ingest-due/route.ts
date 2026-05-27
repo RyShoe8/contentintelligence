@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
     const r = await fetch(`${base}/schedule/tick`, {
       method: "POST",
       headers,
+      body: "{}",
       signal: AbortSignal.timeout(TICK_FETCH_TIMEOUT_MS),
     });
     const schedule_tick_ms = Date.now() - tickStarted;
