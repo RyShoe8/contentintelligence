@@ -15,6 +15,7 @@ import { DealLinkRow } from "@/components/deal-link-row";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { KeyPointsList } from "@/components/key-points-list";
+import { LocalDateTime } from "@/components/local-date-time";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { connectMongo } from "@/lib/mongo";
 import { formatDealRow } from "@/lib/deal-display";
@@ -294,12 +295,12 @@ export default async function PostsPage({
                       <p className="mt-0.5 text-xs text-[var(--muted)]">
                         {post.source_name}
                         {post.sender_from && !casino ? ` · ${post.sender_from}` : ""}
-                        {post.email_sent_at
-                          ? ` · ${post.email_sent_at.toLocaleString(undefined, {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            })}`
-                          : ""}
+                        {post.email_sent_at ? (
+                          <>
+                            {" · "}
+                            <LocalDateTime iso={post.email_sent_at.toISOString()} />
+                          </>
+                        ) : null}
                       </p>
                       {!isContentOnlyPost(post.deal_key, post.deal_metrics) ? (
                         <p className="mt-2 text-sm text-[var(--muted)]">

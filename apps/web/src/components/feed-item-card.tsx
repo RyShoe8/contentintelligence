@@ -6,6 +6,7 @@ import { DealLinkRow } from "@/components/deal-link-row";
 import { EmailImageGallery } from "@/components/email-image-gallery";
 import { FeedItemSection } from "@/components/feed-item-section";
 import { KeyPointsList } from "@/components/key-points-list";
+import { LocalDateTime } from "@/components/local-date-time";
 import { Card, CardContent } from "@/components/ui/card";
 import { displayCasinoName, displaySenderEmail } from "@/lib/email-from-display";
 import { cleanEmailPreview, cleanEmailPreviewPreserveLayout } from "@/lib/email-preview";
@@ -58,12 +59,7 @@ export function FeedItemCard({
                 {senderEmail ? <span>{senderEmail}</span> : null}
                 {senderEmail && item.email_sent_at ? <span aria-hidden>·</span> : null}
                 {item.email_sent_at ? (
-                  <span>
-                    {item.email_sent_at.toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </span>
+                  <LocalDateTime iso={item.email_sent_at.toISOString()} />
                 ) : null}
               </p>
             ) : null}
