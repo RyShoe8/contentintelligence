@@ -20,6 +20,11 @@
       "types": "./dist/social-platforms.d.ts",
       "import": "./dist/social-platforms.js",
       "default": "./dist/social-platforms.js"
+    },
+    "./writer-validation": {
+      "types": "./dist/writer-validation.d.ts",
+      "import": "./dist/writer-validation.js",
+      "default": "./dist/writer-validation.js"
     }
   },
   "scripts": {

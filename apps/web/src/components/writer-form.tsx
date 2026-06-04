@@ -8,7 +8,7 @@ import {
   WRITER_LINK_MAX,
   WRITER_SOURCE_MIN_CHARS,
   type WriterLink,
-} from "@content-resourcer/db";
+} from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
 import { Button } from "@/components/ui/button";
 
