@@ -18,6 +18,7 @@ export type WriterRewriteBody = {
   source_text: string;
   links?: { url: string; label?: string }[];
   writer_article_id?: string;
+  rewrite_divergence_min?: number;
 };
 
 export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
@@ -26,6 +27,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     source_text: body.source_text,
     links: body.links ?? [],
     writer_article_id: body.writer_article_id,
+    rewrite_divergence_min: body.rewrite_divergence_min,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -38,7 +40,8 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     throw new Error("organization_id and created_by are required");
   }
 
-  const { voice_id, source_text, links, writer_article_id } = parsed.data;
+  const { voice_id, source_text, links, writer_article_id, rewrite_divergence_min } =
+    parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
     throw new Error("voice_not_found");
@@ -56,13 +59,22 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     savedExamples.filter((a) => a.id !== writer_article_id),
   );
 
-  const { html, sourceTruncated, linksRequested, linksAppended, linksRevised } =
-    await generateArticleRewriteHtml({
-      voice,
-      sourceText: source_text,
-      links,
-      examples,
-    });
+  const {
+    html,
+    sourceTruncated,
+    linksRequested,
+    linksAppended,
+    linksRevised,
+    rewriteDivergenceScore,
+    rewriteDivergenceMin,
+    rewriteDivergenceBelowMin,
+  } = await generateArticleRewriteHtml({
+    voice,
+    sourceText: source_text,
+    links,
+    examples,
+    rewriteDivergenceMin: rewrite_divergence_min,
+  });
 
   const article = await upsertWriterArticleDraft(db, {
     id: writer_article_id,
@@ -81,5 +93,8 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     links_requested: linksRequested,
     links_appended: linksAppended,
     links_revised: linksRevised,
+    rewrite_divergence_score: rewriteDivergenceScore,
+    rewrite_divergence_min: rewriteDivergenceMin,
+    rewrite_divergence_below_min: rewriteDivergenceBelowMin,
   };
 }

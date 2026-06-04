@@ -120,6 +120,9 @@ export function WriterForm({
   const [truncatedNotice, setTruncatedNotice] = useState(false);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
+  const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
+  const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
+  const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -151,6 +154,8 @@ export function WriterForm({
     setTruncatedNotice(false);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
+    setRewriteDivergenceScore(null);
+    setRewriteDivergenceBelowMin(false);
     router.push("/writer");
   }, [router]);
 
@@ -215,6 +220,8 @@ export function WriterForm({
     setTruncatedNotice(false);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
+    setRewriteDivergenceScore(null);
+    setRewriteDivergenceBelowMin(false);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -224,6 +231,7 @@ export function WriterForm({
           source_text: trimmed,
           links,
           writer_article_id: articleId || undefined,
+          rewrite_divergence_min: rewriteDivergenceMin,
         }),
       });
       const data = (await r.json().catch(() => ({}))) as {
@@ -233,6 +241,9 @@ export function WriterForm({
         source_truncated?: boolean;
         links_appended?: number;
         links_revised?: boolean;
+        rewrite_divergence_score?: number;
+        rewrite_divergence_min?: number;
+        rewrite_divergence_below_min?: boolean;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -245,6 +256,12 @@ export function WriterForm({
       }
       if (data.links_revised === true) {
         setLinksRevisedNotice(true);
+      }
+      if (typeof data.rewrite_divergence_score === "number") {
+        setRewriteDivergenceScore(data.rewrite_divergence_score);
+      }
+      if (data.rewrite_divergence_below_min === true) {
+        setRewriteDivergenceBelowMin(true);
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
@@ -422,10 +439,45 @@ export function WriterForm({
           ))}
         </div>
 
-        <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
-          {writing ? "Writing…" : "Write"}
-        </Button>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[200px] flex-1 space-y-1">
+            <label
+              htmlFor="rewrite-divergence-min"
+              className="text-sm text-[var(--muted)]"
+            >
+              Min difference from original: {rewriteDivergenceMin}%
+            </label>
+            <input
+              id="rewrite-divergence-min"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={rewriteDivergenceMin}
+              onChange={(e) => setRewriteDivergenceMin(Number(e.target.value))}
+              disabled={writing}
+              className="w-full accent-[var(--primary)]"
+            />
+            <p className="text-xs text-[var(--muted)]">
+              0 = light edit, 100 = heavy rewrite (same facts).
+            </p>
+          </div>
+          <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
+            {writing ? "Writing…" : "Write"}
+          </Button>
+        </div>
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
+        {rewriteDivergenceScore != null ? (
+          <p className="text-xs text-[var(--muted)]">
+            Difference from original: {rewriteDivergenceScore}%
+          </p>
+        ) : null}
+        {rewriteDivergenceBelowMin ? (
+          <p className="text-xs text-amber-200/90">
+            Rewrite was {rewriteDivergenceScore ?? "—"}% different; your minimum was{" "}
+            {rewriteDivergenceMin}%. Try Write again with a higher setting.
+          </p>
+        ) : null}
         {truncatedNotice ? (
           <p className="text-xs text-amber-200/90">
             Source was truncated for length; review the rewrite.

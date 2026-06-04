@@ -65,4 +65,19 @@ describe("buildArticleRewritePrompts", () => {
     assert.match(systemPrompt, /Brand voice persona/i);
     assert.match(systemPrompt, /skeptical of hype/i);
   });
+
+  it("includes rewrite intensity when divergence min is set", () => {
+    const { systemPrompt, userPrompt } = buildArticleRewritePrompts({
+      voice: minimalVoice(),
+      sourceText: "A".repeat(200),
+      links: [],
+      examples: [],
+      rewriteDivergenceMin: 60,
+    });
+
+    assert.match(systemPrompt, /Rewrite intensity/i);
+    assert.match(systemPrompt, /Substantial rewrite/i);
+    assert.match(userPrompt, /noticeably different/i);
+    assert.match(userPrompt, /60%/);
+  });
 });

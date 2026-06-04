@@ -3,10 +3,14 @@ import { describe, it } from "node:test";
 import {
   ensureWriterLinksInHtml,
   parseWriterLinks,
+  stripHtmlToPlainText,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
   writerLinksClusteredAtEnd,
   writerLinksMissingFromHtml,
+  writerLinksNeedRevision,
+  writerLinksShallowOrFabricated,
+  writerRewriteDivergenceScore,
   writerRewriteInputSchema,
   WRITER_SOURCE_MIN_CHARS,
 } from "./writer-validation.js";
@@ -132,5 +136,80 @@ describe("writerRewriteInputSchema", () => {
       links: [],
     });
     assert.equal(parsed.success, false);
+  });
+
+  it("accepts rewrite_divergence_min 0-100", () => {
+    const parsed = writerRewriteInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      source_text: "x".repeat(WRITER_SOURCE_MIN_CHARS),
+      rewrite_divergence_min: 50,
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.rewrite_divergence_min, 50);
+  });
+});
+
+describe("stripHtmlToPlainText", () => {
+  it("strips tags and normalizes whitespace", () => {
+    assert.equal(
+      stripHtmlToPlainText("<p>Hello <strong>world</strong>.</p>"),
+      "Hello world.",
+    );
+  });
+});
+
+describe("writerRewriteDivergenceScore", () => {
+  it("returns low score for near-identical text", () => {
+    const source = "The quick brown fox jumps over the lazy dog repeatedly.";
+    const html = "<p>The quick brown fox jumps over the lazy dog repeatedly.</p>";
+    const score = writerRewriteDivergenceScore(source, html);
+    assert.ok(score < 15, `expected low score, got ${score}`);
+  });
+
+  it("returns high score for disjoint vocabulary", () => {
+    const source = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
+    const html =
+      "<p>lunar crater meteor orbit nebula quasar pulsar galaxy comet asteroid</p>";
+    const score = writerRewriteDivergenceScore(source, html);
+    assert.ok(score > 70, `expected high score, got ${score}`);
+  });
+});
+
+describe("writerLinksShallowOrFabricated", () => {
+  it("detects fabricated brand sentence when label absent from source", () => {
+    const source = "x".repeat(WRITER_SOURCE_MIN_CHARS);
+    const html =
+      '<p>Body about workflows and tools in general.</p><p>Try <a href="https://tailnote.example">Tailnote</a> today.</p>';
+    assert.equal(
+      writerLinksShallowOrFabricated(source, html, [
+        { url: "https://tailnote.example", label: "Tailnote" },
+      ]),
+      true,
+    );
+  });
+
+  it("returns false for link in long body paragraph on existing topic", () => {
+    const source =
+      "This guide covers Tailnote and other workflow tools for teams building content pipelines. ".repeat(
+        5,
+      );
+    const html = `<p>${source.trim()} See <a href="https://tailnote.example">Tailnote</a> for details on setup.</p>`;
+    assert.equal(
+      writerLinksShallowOrFabricated(source, html, [
+        { url: "https://tailnote.example", label: "Tailnote" },
+      ]),
+      false,
+    );
+  });
+});
+
+describe("writerLinksNeedRevision", () => {
+  it("triggers on shallow fabricated link", () => {
+    const source = "x".repeat(WRITER_SOURCE_MIN_CHARS);
+    const html = '<p>Short pitch for <a href="https://brand.example">BrandX</a>.</p>';
+    assert.equal(
+      writerLinksNeedRevision(html, [{ url: "https://brand.example", label: "BrandX" }], source),
+      true,
+    );
   });
 });

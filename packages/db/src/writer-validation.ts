@@ -28,6 +28,7 @@ export const writerRewriteInputSchema = z.object({
     .max(WRITER_SOURCE_MAX_CHARS),
   links: z.array(writerLinkSchema).max(WRITER_LINK_MAX).default([]),
   writer_article_id: z.string().uuid().optional(),
+  rewrite_divergence_min: z.coerce.number().int().min(0).max(100).default(0),
 });
 
 export type WriterRewriteInput = z.infer<typeof writerRewriteInputSchema>;
@@ -143,6 +144,62 @@ export function writerLinksClusteredAtEnd(html: string, links: WriterLink[]): bo
   return false;
 }
 
+/**
+ * True when a link sits in a short promotional sentence or link-only micro-paragraph.
+ */
+export function writerLinksShallowOrFabricated(
+  sourceText: string,
+  html: string,
+  links: WriterLink[],
+): boolean {
+  const paragraphs = writerHtmlParagraphs(html);
+  const sourceNorm = sourceText.trim();
+
+  for (const link of links) {
+    if (!writerLinkPresentInHtml(html, link.url)) continue;
+
+    const pIdx = writerLinkParagraphForUrl(html, link.url);
+    if (pIdx == null) continue;
+
+    const paragraph = paragraphs[pIdx] ?? "";
+    const plain = stripHtmlToPlainText(paragraph);
+    const wordCount = countWords(plain);
+    const anchor = writerLinkAnchorText(link);
+    const anchorWords = anchorWordsInParagraph(paragraph, link.url);
+    const labelInSource = normalizedContains(sourceNorm, anchor);
+
+    if (
+      !labelInSource &&
+      wordCount <= FABRICATED_LINK_PARAGRAPH_MAX_WORDS &&
+      normalizedContains(plain, anchor)
+    ) {
+      return true;
+    }
+
+    if (
+      wordCount <= SHALLOW_LINK_PARAGRAPH_MAX_WORDS &&
+      anchorWords > 0 &&
+      anchorWords / wordCount >= SHALLOW_ANCHOR_WORD_FRACTION
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function writerLinksNeedRevision(
+  html: string,
+  links: WriterLink[],
+  sourceText: string,
+): boolean {
+  if (!links.length) return false;
+  if (writerLinksMissingFromHtml(html, links).length > 0) return true;
+  if (writerLinksClusteredAtEnd(html, links)) return true;
+  if (writerLinksShallowOrFabricated(sourceText, html, links)) return true;
+  return false;
+}
+
 export function formatWriterLinksForPrompt(links: WriterLink[]): string {
   if (!links.length) return "(none — do not add external links)";
   const lines = links.map((l, i) => {
@@ -153,7 +210,88 @@ export function formatWriterLinksForPrompt(links: WriterLink[]): string {
   return lines.join("\n");
 }
 
-function writerLinkAnchorText(link: WriterLink): string {
+/** Strip HTML to plain text for comparison heuristics. */
+export function stripHtmlToPlainText(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .trim();
+}
+
+const DIVERGENCE_MIN_WORD_LEN = 2;
+
+function tokenizeForDivergence(text: string): Set<string> {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= DIVERGENCE_MIN_WORD_LEN);
+  return new Set(tokens);
+}
+
+/**
+ * 0 = nearly identical wording, 100 = very different (Jaccard distance on word sets).
+ */
+export function writerRewriteDivergenceScore(sourceText: string, rewriteHtml: string): number {
+  const sourceTokens = tokenizeForDivergence(sourceText.trim());
+  const rewriteTokens = tokenizeForDivergence(stripHtmlToPlainText(rewriteHtml));
+  if (!sourceTokens.size && !rewriteTokens.size) return 0;
+  if (!sourceTokens.size || !rewriteTokens.size) return 100;
+
+  let intersection = 0;
+  for (const t of sourceTokens) {
+    if (rewriteTokens.has(t)) intersection++;
+  }
+  const union = sourceTokens.size + rewriteTokens.size - intersection;
+  if (union === 0) return 0;
+  const jaccardSimilarity = intersection / union;
+  return Math.round(100 * (1 - jaccardSimilarity));
+}
+
+export function writerLinkParagraphForUrl(html: string, url: string): number | null {
+  const indices = writerLinkParagraphIndices(html, url);
+  return indices.length ? Math.min(...indices) : null;
+}
+
+const FABRICATED_LINK_PARAGRAPH_MAX_WORDS = 25;
+const SHALLOW_LINK_PARAGRAPH_MAX_WORDS = 12;
+const SHALLOW_ANCHOR_WORD_FRACTION = 0.35;
+
+function countWords(text: string): number {
+  const plain = text.trim();
+  if (!plain) return 0;
+  return plain.split(/\s+/).filter(Boolean).length;
+}
+
+function normalizedContains(haystack: string, needle: string): boolean {
+  const h = haystack.toLowerCase();
+  const n = needle.trim().toLowerCase();
+  return n.length > 0 && h.includes(n);
+}
+
+function anchorWordsInParagraph(paragraphHtml: string, url: string): number {
+  const variants = new Set(writerLinkUrlVariants(url));
+  const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(paragraphHtml)) !== null) {
+    const href = m[1]?.trim();
+    if (href && variants.has(href)) {
+      return countWords(stripHtmlToPlainText(m[2] ?? ""));
+    }
+  }
+  return 0;
+}
+
+export function writerLinkAnchorText(link: WriterLink): string {
   const label = link.label?.trim();
   if (label) return label;
   try {

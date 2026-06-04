@@ -4,8 +4,9 @@ import {
   type GenerationConstraints,
   type Voice,
   type WriterLink,
-  writerLinksClusteredAtEnd,
+  writerLinksNeedRevision,
   writerLinksMissingFromHtml,
+  writerRewriteDivergenceScore,
 } from "@content-resourcer/db";
 import { writerArticleHtmlForLearning, type WriterArticle } from "@content-resourcer/db";
 import OpenAI from "openai";
@@ -25,10 +26,38 @@ const LINK_WEAVE_RULES = `
 Link integration:
 - Weave each URL into the most relevant section (intro, body, or natural CTA); spread multiple links across the article.
 - Use suggested anchor text as inline phrasing inside normal sentences, not as a bare URL or standalone line.
+- Suggested anchor text is a hint only—prefer natural phrasing already in the article.
+- Do NOT add sentences whose main purpose is to name a product/brand from the link list.
+- If the source does not discuss a brand/product, do NOT invent a pitch line; place the link on an existing relevant phrase in a matching section.
 - Do NOT add closing sentences whose only purpose is to hold a link.
 - Do NOT put all links in the final paragraph or final three sentences.
 - Do NOT add a "Related links" or link-dump section.
 - Each listed URL must appear exactly once in contextually appropriate places throughout the article.`;
+
+function rewriteIntensityBlock(min: number): string {
+  if (min <= 20) {
+    return `
+Rewrite intensity (target ~${min}% difference from source wording):
+- Light polish: keep section order and most sentences; change voice and tone.`;
+  }
+  if (min <= 50) {
+    return `
+Rewrite intensity (target ~${min}% difference from source wording):
+- Moderate rewrite: rephrase paragraphs and adjust headings; keep the same facts.`;
+  }
+  if (min <= 80) {
+    return `
+Rewrite intensity (target ~${min}% difference from source wording):
+- Substantial rewrite: new structure and flow; fresh phrasing; same facts.`;
+  }
+  return `
+Rewrite intensity (target ~${min}% difference from source wording):
+- Heavy rewrite: new outline and fresh phrasing throughout; same facts.`;
+}
+
+function rewriteTemperature(min: number): number {
+  return 0.35 + (Math.min(100, Math.max(0, min)) / 100) * 0.35;
+}
 
 export type ArticleRewriteExample = {
   title: string;
@@ -40,6 +69,7 @@ export type BuildArticleRewritePromptsOpts = {
   sourceText: string;
   links: WriterLink[];
   examples: ArticleRewriteExample[];
+  rewriteDivergenceMin?: number;
 };
 
 export type ArticleRewritePrompts = {
@@ -157,6 +187,11 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
     systemPrompt = buildDefaultArticleSystemPrompt(style);
   }
 
+  const divergenceMin = Math.min(100, Math.max(0, opts.rewriteDivergenceMin ?? 0));
+  if (divergenceMin > 0) {
+    systemPrompt += rewriteIntensityBlock(divergenceMin);
+  }
+
   const maxChars = env.maxWriterInputChars;
   let sourceText = opts.sourceText.trim();
   let sourceTruncated = false;
@@ -173,6 +208,9 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
   const userParts = [
     "Source article to rewrite:",
     sourceText,
+    divergenceMin > 0
+      ? `Rewrite so the wording is noticeably different from the source (target at least ~${divergenceMin}% change in phrasing while keeping facts).`
+      : null,
     "",
     "Links to weave in (required when listed):",
     formatWriterLinksForPrompt(opts.links),
@@ -196,6 +234,9 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   linksRequested: number;
   linksAppended: number;
   linksRevised: boolean;
+  rewriteDivergenceScore: number;
+  rewriteDivergenceMin: number;
+  rewriteDivergenceBelowMin: boolean;
 }> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -205,12 +246,13 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
     throw new Error("voice_persona_not_ready");
   }
 
+  const divergenceMin = Math.min(100, Math.max(0, opts.rewriteDivergenceMin ?? 0));
   const { systemPrompt, userPrompt, sourceTruncated } = buildArticleRewritePrompts(opts);
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensWriter,
-    temperature: 0.45,
+    temperature: rewriteTemperature(divergenceMin),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -220,16 +262,18 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   const raw = res.choices[0]?.message?.content?.trim();
   if (!raw) throw new Error("article_rewrite_empty");
 
-  const missingFromRaw = writerLinksMissingFromHtml(raw, opts.links);
-  const clustered = writerLinksClusteredAtEnd(raw, opts.links);
   let html = raw;
   let linksRevised = false;
 
-  if (opts.links.length > 0 && (missingFromRaw.length > 0 || clustered)) {
+  if (
+    opts.links.length > 0 &&
+    writerLinksNeedRevision(raw, opts.links, opts.sourceText.trim())
+  ) {
     html = await reviseWriterLinksInHtml({
       html: raw,
       links: opts.links,
       voice: opts.voice,
+      sourceText: opts.sourceText.trim(),
     });
     linksRevised = true;
   }
@@ -237,11 +281,18 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   const missingBeforeAppend = writerLinksMissingFromHtml(html, opts.links);
   html = ensureWriterLinksInHtml(html, opts.links);
 
+  const rewriteDivergenceScore = writerRewriteDivergenceScore(opts.sourceText.trim(), html);
+  const rewriteDivergenceBelowMin =
+    divergenceMin > 0 && rewriteDivergenceScore < divergenceMin;
+
   return {
     html,
     sourceTruncated,
     linksRequested: opts.links.length,
     linksAppended: missingBeforeAppend.length,
     linksRevised,
+    rewriteDivergenceScore,
+    rewriteDivergenceMin: divergenceMin,
+    rewriteDivergenceBelowMin,
   };
 }
