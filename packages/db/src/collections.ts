@@ -7,6 +7,7 @@ export const COLLECTIONS = {
   sources: "sources",
   signal_items: "signal_items",
   posts: "posts",
+  writer_articles: "writer_articles",
   gmail_oauth: "gmail_oauth",
   users: "users",
   /** Legacy collections migrated on startup */

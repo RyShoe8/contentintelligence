@@ -83,6 +83,10 @@ async function runEnsureIndexes(db: Db): Promise<void> {
     { key: { signal_item_id: 1, deal_key: 1 }, unique: true },
     { key: { organization_id: 1, content_signal_id: 1, status: 1, created_at: -1 } },
   ]);
+  await db.collection(COLLECTIONS.writer_articles).createIndexes([
+    { key: { id: 1 }, unique: true },
+    { key: { organization_id: 1, voice_id: 1, updated_at: -1 } },
+  ]);
 }
 
 /** Run migrations and index creation once per server instance (not per page request). */

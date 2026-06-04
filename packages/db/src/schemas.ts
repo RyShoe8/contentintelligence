@@ -626,6 +626,31 @@ export const gmailOAuthSchema = z.object({
 
 export type GmailOAuthDoc = z.infer<typeof gmailOAuthSchema>;
 
+export const writerArticleStatusSchema = z.enum(["draft", "saved"]);
+export type WriterArticleStatus = z.infer<typeof writerArticleStatusSchema>;
+
+export const writerArticleLinkSchema = z.object({
+  url: z.string().url(),
+  label: z.string().max(80).optional(),
+});
+
+export const writerArticleSchema = z.object({
+  id: z.string().uuid(),
+  organization_id: z.string().uuid(),
+  voice_id: z.string().uuid(),
+  title: z.string().min(1).max(200),
+  source_text: z.string(),
+  links: z.array(writerArticleLinkSchema).max(5).default([]),
+  generated_html: z.string().default(""),
+  final_html: z.string().optional(),
+  status: writerArticleStatusSchema.default("draft"),
+  created_by: z.string().email(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type WriterArticle = z.infer<typeof writerArticleSchema>;
+
 /** Human-readable label for feed rows (no user-defined source name). */
 export function sourceDisplayLabel(config: GmailSourceConfig): string {
   const labels = config.labels?.filter(Boolean) ?? [];

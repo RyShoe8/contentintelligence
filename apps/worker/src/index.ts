@@ -19,6 +19,7 @@ import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
+import { runWriterRewrite } from "./writer-rewrite.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -367,6 +368,41 @@ async function main(): Promise<void> {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       return reply.code(500).send({ error: message });
+    }
+  });
+
+  app.post("/writer/rewrite", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await runWriterRewrite(db, {
+        voice_id: String(body.voice_id ?? "").trim(),
+        organization_id: String(body.organization_id ?? "").trim(),
+        created_by: String(body.created_by ?? "").trim(),
+        source_text: String(body.source_text ?? ""),
+        links: Array.isArray(body.links)
+          ? (body.links as { url: string; label?: string }[])
+          : [],
+        writer_article_id: body.writer_article_id
+          ? String(body.writer_article_id).trim()
+          : undefined,
+      });
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const status =
+        message === "voice_not_found" ||
+        message === "writer_article_not_found" ||
+        message.includes("at least")
+          ? 400
+          : message === "openai_not_configured" || message === "voice_persona_not_ready"
+            ? 503
+            : 500;
+      return reply.code(status).send({ error: message });
     }
   });
 

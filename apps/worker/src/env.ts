@@ -32,6 +32,8 @@ export const env = {
   maxTokensSummary: num("MAX_TOKENS_SUMMARY", 200),
   maxTokensDeal: num("MAX_TOKENS_DEAL", 250),
   maxTokensSocialPost: num("MAX_TOKENS_SOCIAL_POST", 300),
+  maxTokensWriter: num("MAX_TOKENS_WRITER", 4096),
+  maxWriterInputChars: num("MAX_WRITER_INPUT_CHARS", 32000),
   maxTokensBrandAnalyze: num("MAX_TOKENS_BRAND_ANALYZE", 1200),
   maxTokensVisualAnalyze: num("MAX_TOKENS_VISUAL_ANALYZE", 900),
   maxTokensImagePrompt: num("MAX_TOKENS_IMAGE_PROMPT", 400),
