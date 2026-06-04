@@ -49,6 +49,79 @@ export function parseWriterLinks(raw: unknown): WriterLink[] {
   return out;
 }
 
+/** Escape text for HTML text nodes and double-quoted attributes. */
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** URL variants to match in generated HTML (trailing slash, encoded forms). */
+function writerLinkUrlVariants(url: string): string[] {
+  const trimmed = url.trim();
+  const variants = new Set<string>([trimmed]);
+  if (trimmed.endsWith("/")) {
+    variants.add(trimmed.slice(0, -1));
+  } else {
+    variants.add(`${trimmed}/`);
+  }
+  try {
+    const parsed = new URL(trimmed);
+    variants.add(parsed.href);
+    if (parsed.pathname.endsWith("/") && parsed.pathname.length > 1) {
+      const noSlash = new URL(trimmed);
+      noSlash.pathname = parsed.pathname.replace(/\/$/, "");
+      variants.add(noSlash.href);
+    }
+  } catch {
+    // keep trimmed variants only
+  }
+  return [...variants];
+}
+
+export function writerLinkPresentInHtml(html: string, url: string): boolean {
+  if (!url.trim()) return false;
+  const haystack = html;
+  for (const variant of writerLinkUrlVariants(url)) {
+    if (haystack.includes(variant)) return true;
+  }
+  return false;
+}
+
+export function writerLinksMissingFromHtml(html: string, links: WriterLink[]): WriterLink[] {
+  return links.filter((l) => !writerLinkPresentInHtml(html, l.url));
+}
+
+function writerLinkAnchorText(link: WriterLink): string {
+  const label = link.label?.trim();
+  if (label) return label;
+  try {
+    return new URL(link.url).hostname.replace(/^www\./i, "");
+  } catch {
+    return link.url;
+  }
+}
+
+/** Append a Related links block for any URLs missing from model output. */
+export function ensureWriterLinksInHtml(html: string, links: WriterLink[]): string {
+  const missing = writerLinksMissingFromHtml(html, links);
+  if (!missing.length) return html;
+
+  const items = missing
+    .map((link) => {
+      const href = escapeHtmlText(link.url);
+      const text = escapeHtmlText(writerLinkAnchorText(link));
+      return `<li><a href="${href}">${text}</a></li>`;
+    })
+    .join("\n");
+
+  const block = `<h2>Related links</h2>\n<ul>\n${items}\n</ul>`;
+  const trimmed = html.trim();
+  return trimmed ? `${trimmed}\n\n${block}` : block;
+}
+
 export function defaultWriterTitle(sourceText: string): string {
   const line = sourceText
     .split(/\r?\n/)

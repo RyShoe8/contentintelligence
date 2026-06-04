@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  ensureWriterLinksInHtml,
   parseWriterLinks,
+  writerLinkPresentInHtml,
+  writerLinksMissingFromHtml,
   writerRewriteInputSchema,
   WRITER_SOURCE_MIN_CHARS,
 } from "./writer-validation.js";
@@ -24,6 +27,47 @@ describe("parseWriterLinks", () => {
       links: [{ url: "http://insecure.com" }],
     });
     assert.equal(parsed.success, false);
+  });
+});
+
+describe("writerLinkPresentInHtml", () => {
+  it("matches exact and trailing-slash href variants", () => {
+    const html = '<p>See <a href="https://example.com/deal/">offer</a>.</p>';
+    assert.equal(writerLinkPresentInHtml(html, "https://example.com/deal"), true);
+    assert.equal(writerLinkPresentInHtml(html, "https://other.org"), false);
+  });
+});
+
+describe("writerLinksMissingFromHtml", () => {
+  it("returns links not found in html", () => {
+    const html = '<a href="https://one.example">One</a>';
+    const missing = writerLinksMissingFromHtml(html, [
+      { url: "https://one.example" },
+      { url: "https://two.example", label: "Two" },
+    ]);
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0]?.url, "https://two.example");
+  });
+});
+
+describe("ensureWriterLinksInHtml", () => {
+  it("leaves html unchanged when all links are present", () => {
+    const html = '<p><a href="https://a.example">A</a> <a href="https://b.example">B</a></p>';
+    const links = [{ url: "https://a.example" }, { url: "https://b.example" }];
+    assert.equal(ensureWriterLinksInHtml(html, links), html);
+  });
+
+  it("appends related links block for missing urls", () => {
+    const html = "<p>Intro only.</p>";
+    const out = ensureWriterLinksInHtml(html, [
+      { url: "https://casino.example/deal", label: "Claim offer" },
+      { url: "https://blog.example/review" },
+    ]);
+    assert.match(out, /<h2>Related links<\/h2>/);
+    assert.match(out, /href="https:\/\/casino\.example\/deal"/);
+    assert.match(out, />Claim offer</);
+    assert.match(out, /href="https:\/\/blog\.example\/review"/);
+    assert.match(out, />blog\.example</);
   });
 });
 

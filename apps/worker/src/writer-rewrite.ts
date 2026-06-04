@@ -56,12 +56,13 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     savedExamples.filter((a) => a.id !== writer_article_id),
   );
 
-  const { html, sourceTruncated } = await generateArticleRewriteHtml({
-    voice,
-    sourceText: source_text,
-    links,
-    examples,
-  });
+  const { html, sourceTruncated, linksRequested, linksAppended } =
+    await generateArticleRewriteHtml({
+      voice,
+      sourceText: source_text,
+      links,
+      examples,
+    });
 
   const article = await upsertWriterArticleDraft(db, {
     id: writer_article_id,
@@ -77,5 +78,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     writer_article_id: article.id,
     generated_html: html,
     source_truncated: sourceTruncated,
+    links_requested: linksRequested,
+    links_appended: linksAppended,
   };
 }

@@ -1,4 +1,10 @@
-import type { GenerationConstraints, Voice, WriterLink } from "@content-resourcer/db";
+import {
+  ensureWriterLinksInHtml,
+  type GenerationConstraints,
+  type Voice,
+  type WriterLink,
+  writerLinksMissingFromHtml,
+} from "@content-resourcer/db";
 import { writerArticleHtmlForLearning, type WriterArticle } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { formatConstraintsForPrompt } from "./services/constraints/assemble-generation-constraints.js";
@@ -156,12 +162,18 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
     sourceTruncated = true;
   }
 
+  const linkRequirement =
+    opts.links.length > 0
+      ? `REQUIRED: Include exactly ${opts.links.length} distinct <a href="..."> tags — one per listed URL. Do not skip any.`
+      : null;
+
   const userParts = [
     "Source article to rewrite:",
     sourceText,
     "",
     "Links to weave in (required when listed):",
     formatLinksForPrompt(opts.links),
+    linkRequirement,
     ctx.preferredPhrases?.length
       ? formatPreferredPhrasesForUserMessage(ctx.preferredPhrases)
       : null,
@@ -178,6 +190,8 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
 export async function generateArticleRewriteHtml(opts: BuildArticleRewritePromptsOpts): Promise<{
   html: string;
   sourceTruncated: boolean;
+  linksRequested: number;
+  linksAppended: number;
 }> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -201,5 +215,14 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
 
   const raw = res.choices[0]?.message?.content?.trim();
   if (!raw) throw new Error("article_rewrite_empty");
-  return { html: raw, sourceTruncated };
+
+  const missingBefore = writerLinksMissingFromHtml(raw, opts.links);
+  const html = ensureWriterLinksInHtml(raw, opts.links);
+
+  return {
+    html,
+    sourceTruncated,
+    linksRequested: opts.links.length,
+    linksAppended: missingBefore.length,
+  };
 }

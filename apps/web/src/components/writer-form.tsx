@@ -111,6 +111,7 @@ export function WriterForm({
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
+  const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -140,6 +141,7 @@ export function WriterForm({
     setOutputHtml("");
     setWriteError(null);
     setTruncatedNotice(false);
+    setLinksAppendedNotice(null);
     router.push("/writer");
   }, [router]);
 
@@ -189,17 +191,20 @@ export function WriterForm({
       setWriteError(`Paste at least ${WRITER_SOURCE_MIN_CHARS} characters of source article.`);
       return;
     }
-    let links: WriterLink[];
-    try {
-      links = rowsToLinks(linkRows);
-    } catch {
-      setWriteError("Each link must be a valid https:// URL.");
+    const filledLinkRows = linkRows.filter((r) => r.url.trim());
+    const links = rowsToLinks(linkRows);
+    if (filledLinkRows.length > links.length) {
+      const skipped = filledLinkRows.length - links.length;
+      setWriteError(
+        `${skipped} link${skipped === 1 ? " was" : "s were"} skipped — use valid https:// URLs.`,
+      );
       return;
     }
 
     setWriting(true);
     setWriteError(null);
     setTruncatedNotice(false);
+    setLinksAppendedNotice(null);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -216,6 +221,7 @@ export function WriterForm({
         writer_article_id?: string;
         generated_html?: string;
         source_truncated?: boolean;
+        links_appended?: number;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -223,6 +229,9 @@ export function WriterForm({
       }
       if (data.generated_html) setOutputHtml(data.generated_html);
       if (data.source_truncated) setTruncatedNotice(true);
+      if (typeof data.links_appended === "number" && data.links_appended > 0) {
+        setLinksAppendedNotice(data.links_appended);
+      }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
         router.push(`/writer?article_id=${encodeURIComponent(data.writer_article_id)}`);
@@ -395,6 +404,12 @@ export function WriterForm({
         {truncatedNotice ? (
           <p className="text-xs text-amber-200/90">
             Source was truncated for length; review the rewrite.
+          </p>
+        ) : null}
+        {linksAppendedNotice != null && linksAppendedNotice > 0 ? (
+          <p className="text-xs text-amber-200/90">
+            {linksAppendedNotice} link{linksAppendedNotice === 1 ? " was" : "s were"} added
+            automatically at the end because the draft omitted them.
           </p>
         ) : null}
       </section>
