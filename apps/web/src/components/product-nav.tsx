@@ -13,12 +13,12 @@ const NAV_ITEMS = [
   },
   { href: "/feed", label: "Feed", match: (p: string) => p === "/feed" || p.startsWith("/feed/") },
   { href: "/posts", label: "Posts", match: (p: string) => p === "/posts" || p.startsWith("/posts/") },
-  { href: "/writer", label: "Writer", match: (p: string) => p === "/writer" || p.startsWith("/writer/") },
   {
     href: "/voices",
     label: "Voices",
     match: (p: string) => p === "/voices" || p.startsWith("/voices/"),
   },
+  { href: "/writer", label: "Writer", match: (p: string) => p === "/writer" || p.startsWith("/writer/") },
 ] as const;
 
 export function ProductNav() {

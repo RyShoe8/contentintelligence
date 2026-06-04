@@ -84,7 +84,7 @@ export async function upsertWriterArticleDraft(
     source_text: data.source_text,
     links: data.links,
     generated_html: data.generated_html,
-    final_html: existing?.final_html,
+    final_html: existing?.final_html ?? undefined,
     status: "draft" as WriterArticleStatus,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,

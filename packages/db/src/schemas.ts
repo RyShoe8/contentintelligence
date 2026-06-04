@@ -644,7 +644,10 @@ export const writerArticleSchema = z.object({
   source_text: z.string(),
   links: z.array(writerArticleLinkSchema).max(5).default([]),
   generated_html: z.string().default(""),
-  final_html: z.string().optional(),
+  final_html: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().optional(),
+  ),
   status: writerArticleStatusSchema.default("draft"),
   created_by: z.string().email(),
   created_at: z.coerce.date(),
