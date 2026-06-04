@@ -9,6 +9,7 @@ import {
   upsertSignalItem,
   listEnabledSources,
   purgeExpiredSignalItems,
+  formatGmailIngestError,
   setGmailOAuthIngestError,
   touchContentSignalLastIngest,
 } from "@content-resourcer/db";
@@ -18,6 +19,7 @@ import {
   getNormalizedMessageAndPayload,
   listMessageIds,
 } from "./gmail-client.js";
+import { ensureGmailOAuthHealthy } from "./gmail-oauth-health.js";
 import { fetchEmailImageAttachments } from "./email-images.js";
 import { env } from "./env.js";
 import { ingestLog, ingestVerbose } from "./ingest-log.js";
@@ -163,6 +165,22 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       continue;
     }
 
+    const health = await ensureGmailOAuthHealthy(db, email, oauth);
+    if (!health.ok) {
+      ingestLog("gmail_token_invalid", {
+        sourceId: source.id,
+        email_address: email,
+        message: health.message,
+      });
+      console.warn(`[ingest] Gmail token check failed for ${email}: ${health.message}`);
+      stats.sourceErrors.push({
+        sourceId: source.id,
+        email_address: email,
+        error: health.message,
+      });
+      continue;
+    }
+
     let gmail;
     try {
       gmail = createGmailClient(oauth.refresh_token);
@@ -197,7 +215,8 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       ids = await listMessageIds(gmail, source.config, 80, effectiveHours);
       await setGmailOAuthIngestError(db, email, null);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const raw = e instanceof Error ? e.message : String(e);
+      const msg = formatGmailIngestError(raw);
       console.error("[ingest] list messages failed", source.id, e);
       ingestLog("list_messages_error", { sourceId: source.id, message: msg });
       await setGmailOAuthIngestError(db, email, msg);
@@ -206,10 +225,9 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         email_address: email,
         error: msg,
       });
-      if (msg.includes("invalid_grant")) {
+      if (raw.includes("invalid_grant")) {
         console.warn(
-          `[ingest] Gmail token rejected for ${email}. ` +
-            "Re-connect Gmail on the source editor and ensure Render GMAIL_CLIENT_ID/SECRET match Vercel.",
+          `[ingest] Gmail token rejected for ${email}. Re-connect Gmail on the source editor (Testing tokens last ~7 days).`,
         );
       }
       continue;

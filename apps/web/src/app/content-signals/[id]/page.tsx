@@ -8,6 +8,7 @@ import {
   listSourcesByContentSignal,
   sourceDisplayLabel,
 } from "@content-resourcer/db";
+import { GmailAuthExpiryStatus } from "@/components/gmail-auth-expiry-status";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
 import {
@@ -40,10 +41,14 @@ export default async function ContentSignalDetailPage({
     sources.map(async (s) => {
       const email = s.config.email_address?.trim();
       const oauth = email ? await getGmailOAuth(db, email) : null;
+      const oauthStartUrl = `/api/gmail/oauth/start?source_id=${encodeURIComponent(s.id)}&content_signal_id=${encodeURIComponent(id)}${email ? `&login_hint=${encodeURIComponent(email)}` : ""}`;
       return {
         ...s,
         connected: !!oauth?.refresh_token,
         lastIngestError: oauth?.last_ingest_error ?? null,
+        refreshTokenIssuedAt: oauth?.refresh_token_issued_at ?? null,
+        oauthUpdatedAt: oauth?.updated_at ?? null,
+        oauthStartUrl,
       };
     }),
   );
@@ -162,12 +167,17 @@ export default async function ContentSignalDetailPage({
                     </form>
                   </div>
                 </div>
-                {s.lastIngestError ? (
-                  <p className="mt-2 text-xs text-red-300/90">
-                    Last ingest error: {s.lastIngestError.includes("invalid_grant")
-                      ? "Gmail authorization expired — Re-connect on the source editor."
-                      : s.lastIngestError}
-                  </p>
+                <GmailAuthExpiryStatus
+                  connected={s.connected}
+                  refreshTokenIssuedAt={s.refreshTokenIssuedAt}
+                  updatedAt={s.oauthUpdatedAt}
+                  lastIngestError={s.lastIngestError}
+                  reconnectHref={s.oauthStartUrl}
+                />
+                {s.lastIngestError &&
+                !s.lastIngestError.includes("invalid_grant") &&
+                !s.lastIngestError.toLowerCase().includes("authorization expired") ? (
+                  <p className="mt-2 text-xs text-red-300/90">Last ingest error: {s.lastIngestError}</p>
                 ) : null}
               </li>
             ))}

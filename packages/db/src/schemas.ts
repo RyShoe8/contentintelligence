@@ -617,6 +617,8 @@ export const gmailOAuthSchema = z.object({
   refresh_token: z.string(),
   access_token: z.string().optional(),
   access_token_expiry: z.coerce.date().optional(),
+  /** When the current refresh token was issued (re-connect resets Testing-mode ~7-day TTL). */
+  refresh_token_issued_at: z.coerce.date().optional(),
   last_ingest_error: z.string().optional(),
   last_ingest_error_at: z.coerce.date().optional(),
   updated_at: z.coerce.date(),

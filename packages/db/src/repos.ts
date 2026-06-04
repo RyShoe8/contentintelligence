@@ -373,18 +373,35 @@ export async function clearFeedForContentSignal(db: Db, contentSignalId: string)
 
 export async function saveGmailOAuth(
   db: Db,
-  data: { email_address: string; refresh_token: string; access_token?: string; access_token_expiry?: Date },
+  data: {
+    email_address: string;
+    refresh_token: string;
+    access_token?: string;
+    access_token_expiry?: Date;
+    /** When true, sets refresh_token_issued_at to now (new refresh token from Google). */
+    issuedNewRefreshToken?: boolean;
+  },
 ): Promise<void> {
   const now = new Date();
-  await gmailOAuth(db).replaceOne(
+  const existing = await getGmailOAuth(db, data.email_address);
+  const set: Record<string, unknown> = {
+    email_address: data.email_address,
+    refresh_token: data.refresh_token,
+    updated_at: now,
+  };
+  if (data.access_token !== undefined) set.access_token = data.access_token;
+  if (data.access_token_expiry !== undefined) {
+    set.access_token_expiry = data.access_token_expiry;
+  }
+  if (data.issuedNewRefreshToken) {
+    set.refresh_token_issued_at = now;
+  } else if (!existing?.refresh_token_issued_at) {
+    set.refresh_token_issued_at = now;
+  }
+
+  await gmailOAuth(db).updateOne(
     { email_address: data.email_address },
-    {
-      email_address: data.email_address,
-      refresh_token: data.refresh_token,
-      access_token: data.access_token,
-      access_token_expiry: data.access_token_expiry,
-      updated_at: now,
-    },
+    { $set: set },
     { upsert: true },
   );
   await setGmailOAuthIngestError(db, data.email_address, null);

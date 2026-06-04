@@ -5,6 +5,7 @@ import {
   getDb,
   isContentSignalIngestDue,
   listScheduledContentSignals,
+  getGmailOAuth,
   saveGmailOAuth,
   updateVoicePersonaStatus,
 } from "@content-resourcer/db";
@@ -75,16 +76,22 @@ async function main(): Promise<void> {
     const gmail = google.gmail({ version: "v1", auth: oauth2 });
     const profile = await gmail.users.getProfile({ userId: "me" });
     const email = profile.data.emailAddress;
-    if (!email || !tokens.refresh_token) {
-      return reply.code(400).send({ error: "missing_refresh_or_email" });
+    if (!email) {
+      return reply.code(400).send({ error: "missing_email" });
     }
     const db = await getDb();
     await ensureIndexes(db);
+    const existing = await getGmailOAuth(db, email);
+    const refreshToken = tokens.refresh_token ?? existing?.refresh_token;
+    if (!refreshToken) {
+      return reply.code(400).send({ error: "missing_refresh_or_email" });
+    }
     await saveGmailOAuth(db, {
       email_address: email,
-      refresh_token: tokens.refresh_token,
+      refresh_token: refreshToken,
       access_token: tokens.access_token ?? undefined,
       access_token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+      issuedNewRefreshToken: Boolean(tokens.refresh_token),
     });
     return { ok: true, email_address: email };
   });

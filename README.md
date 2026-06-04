@@ -187,9 +187,18 @@ npm install
 npm run build
 ```
 
+## Gmail OAuth (Testing mode)
+
+If your Google OAuth app stays in **Testing** (no Production verification for `gmail.readonly`), Google expires **refresh tokens after ~7 days**. The app cannot extend that TTL in code.
+
+- **Re-connect every 6 days** (or before day 7) on each source: **Content Signals → [signal] → Sources → [source] → Re-connect Gmail**. That issues a new refresh token and resets the clock.
+- **OAuth client alignment:** On the source editor, the **Gmail connection** section shows diagnostics comparing Vercel vs Render `GMAIL_CLIENT_ID` suffixes. Green = same client; red = fix env on both hosts, then re-connect.
+- **Reminders:** The source editor and content signal page show days until expiry; days 5–6 show a prominent warning.
+- Keep your Google account on the OAuth app’s **Test users** list while in Testing mode.
+
 ## Troubleshooting ingest
 
-- **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired, or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
+- **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired (~7 days in Testing mode), or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
 - **Posts shows “Due now” but nothing syncs for hours:** Scheduled ingest did not run. On **Vercel Hobby**, use **cron-job.org** (see Feed sync schedule above). Confirm `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel. In cron-job.org history, a **200 on `/login?next=/api/cron/ingest-due`** means auth middleware blocked the cron (fixed by exempting `/api/cron/*` from session auth); a successful tick stays on `/api/cron/ingest-due` and returns JSON (`accepted`, `due_count`, etc.). Check for **401** (wrong secret), **502** (bad `WORKER_URL` or cold start timeout), and Render logs for `signal_schedule_start`. Add a worker `/health` keep-alive ping if ticks time out.
 - **Deal link shows `w3.org/1999/xhtml`:** Re-sync the feed after deploy so `original_url` is recomputed. New ingests filter namespace and asset URLs; the UI also hides known junk links on old rows until re-synced.

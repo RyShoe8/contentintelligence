@@ -1,5 +1,12 @@
 import { google } from "googleapis";
-import { ensureIndexes, getDb, getSource, saveGmailOAuth, upsertSource } from "@content-resourcer/db";
+import {
+  ensureIndexes,
+  getDb,
+  getGmailOAuth,
+  getSource,
+  saveGmailOAuth,
+  upsertSource,
+} from "@content-resourcer/db";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -64,9 +71,6 @@ export async function GET(req: NextRequest) {
     const oauth2 = new google.auth.OAuth2(id, secret, redirectUri);
     const { tokens } = await oauth2.getToken(code);
     oauth2.setCredentials(tokens);
-    if (!tokens.refresh_token) {
-      return redirectTo(req, returnPath, { gmail_error: "missing_refresh_token" });
-    }
 
     const gmail = google.gmail({ version: "v1", auth: oauth2 });
     const profile = await gmail.users.getProfile({ userId: "me" });
@@ -77,11 +81,18 @@ export async function GET(req: NextRequest) {
 
     const db = await getDb();
     await ensureIndexes(db);
+    const existing = await getGmailOAuth(db, email);
+    const refreshToken = tokens.refresh_token ?? existing?.refresh_token;
+    if (!refreshToken) {
+      return redirectTo(req, returnPath, { gmail_error: "missing_refresh_token" });
+    }
+
     await saveGmailOAuth(db, {
       email_address: email,
-      refresh_token: tokens.refresh_token,
+      refresh_token: refreshToken,
       access_token: tokens.access_token ?? undefined,
       access_token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+      issuedNewRefreshToken: Boolean(tokens.refresh_token),
     });
 
     if (sourceId && contentSignalId) {

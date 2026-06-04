@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ensureIndexes, getContentSignal, getGmailOAuth, getSource } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
+import { GmailAuthExpiryStatus } from "@/components/gmail-auth-expiry-status";
 import { GmailOAuthDiagnostics } from "@/components/gmail-oauth-diagnostics";
 import { saveSourceAction } from "../../../actions";
 import { LabelWithTip } from "@/app/signals/label-with-tip";
@@ -106,6 +107,13 @@ export default async function SourceEditorPage({
             >
               {connected ? "Re-connect Gmail" : "Connect Gmail"}
             </a>
+            <GmailAuthExpiryStatus
+              connected={connected}
+              refreshTokenIssuedAt={oauth?.refresh_token_issued_at ?? null}
+              updatedAt={oauth?.updated_at ?? null}
+              lastIngestError={oauth?.last_ingest_error ?? null}
+              reconnectHref={oauthStartUrl}
+            />
             <div className="mt-3">
               <GmailOAuthDiagnostics />
             </div>
