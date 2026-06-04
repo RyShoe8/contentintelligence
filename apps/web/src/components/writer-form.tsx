@@ -10,7 +10,9 @@ import {
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
+import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 
 export type WriterArticleListItem = {
   id: string;
@@ -42,6 +44,9 @@ type Props = {
   workerConfigured: boolean;
 };
 
+const articlePaneClass =
+  "min-h-[320px] flex-1 rounded border border-[var(--border)] bg-[var(--input-bg)]";
+
 function emptyLinkRow(): LinkRow {
   return { url: "", label: "" };
 }
@@ -65,6 +70,19 @@ function displayHtml(article: WriterArticleDetail | null, draftHtml: string): st
   return article.final_html?.trim() || article.generated_html || "";
 }
 
+function initialExpandedVoiceIds(
+  voices: WriterVoiceOption[],
+  articles: WriterArticleListItem[],
+  selectedArticle: WriterArticleDetail | null,
+): Set<string> {
+  const ids = new Set<string>();
+  const focus =
+    selectedArticle?.voice_id ?? voices.find((v) => v.ready)?.id ?? voices[0]?.id ?? "";
+  if (focus) ids.add(focus);
+  for (const a of articles) ids.add(a.voice_id);
+  return ids;
+}
+
 export function WriterForm({
   voices,
   articles,
@@ -77,6 +95,9 @@ export function WriterForm({
   const [voiceId, setVoiceId] = useState(
     selectedArticle?.voice_id ?? readyVoices[0]?.id ?? "",
   );
+  const [expandedVoiceIds, setExpandedVoiceIds] = useState<Set<string>>(() =>
+    initialExpandedVoiceIds(voices, articles, selectedArticle),
+  );
   const [articleId, setArticleId] = useState(selectedArticle?.id ?? "");
   const [title, setTitle] = useState(selectedArticle?.title ?? "");
   const [sourceText, setSourceText] = useState(selectedArticle?.source_text ?? "");
@@ -86,6 +107,7 @@ export function WriterForm({
   const [outputHtml, setOutputHtml] = useState(() =>
     displayHtml(selectedArticle, selectedArticle?.generated_html ?? ""),
   );
+  const [showHtmlPreview, setShowHtmlPreview] = useState(true);
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
@@ -106,6 +128,10 @@ export function WriterForm({
     [voices],
   );
 
+  const selectedVoice = voices.find((v) => v.id === voiceId);
+  const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
+  const showRewriteColumn = Boolean(outputHtml.trim() || articleId);
+
   const resetComposer = useCallback(() => {
     setArticleId("");
     setTitle("");
@@ -123,6 +149,20 @@ export function WriterForm({
     },
     [router],
   );
+
+  const toggleVoiceExpanded = useCallback((id: string) => {
+    setExpandedVoiceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectVoice = useCallback((id: string) => {
+    setVoiceId(id);
+    setExpandedVoiceIds((prev) => new Set(prev).add(id));
+  }, []);
 
   function updateLinkRow(index: number, patch: Partial<LinkRow>) {
     setLinkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -143,7 +183,7 @@ export function WriterForm({
   }
 
   async function handleWrite() {
-    if (!workerConfigured || !voiceId) return;
+    if (!canWrite) return;
     const trimmed = sourceText.trim();
     if (trimmed.length < WRITER_SOURCE_MIN_CHARS) {
       setWriteError(`Paste at least ${WRITER_SOURCE_MIN_CHARS} characters of source article.`);
@@ -196,10 +236,10 @@ export function WriterForm({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(220px,280px)_1fr]">
-      <aside className="space-y-4">
+    <div className="space-y-6">
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">By voice</h2>
+          <h2 className="text-sm font-medium text-[var(--fg)]">Voices</h2>
           <button
             type="button"
             onClick={resetComposer}
@@ -208,152 +248,235 @@ export function WriterForm({
             New article
           </button>
         </div>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-2 text-sm">
           {sortedVoices.map((voice) => {
             const list = articlesByVoice.get(voice.id) ?? [];
+            const expanded = expandedVoiceIds.has(voice.id);
+            const isSelectedVoice = voice.id === voiceId;
             return (
-              <div key={voice.id} className="rounded-md border border-[var(--border)]">
-                <div className="border-b border-[var(--border)] bg-[var(--surface-light)] px-3 py-2 font-medium">
-                  {voice.name}
-                  {!voice.ready ? (
-                    <span className="ml-1 text-xs font-normal text-amber-200/90">(persona pending)</span>
-                  ) : null}
-                </div>
-                {list.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-[var(--muted)]">No articles yet</p>
-                ) : (
-                  <ul className="divide-y divide-[var(--border)]">
-                    {list.map((a) => (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onClick={() => loadArticle(a.id)}
-                          className={`w-full px-3 py-2 text-left text-xs hover:bg-[var(--surface-light)] ${
-                            a.id === articleId ? "bg-[var(--surface-light)] text-[var(--primary)]" : ""
-                          }`}
-                        >
-                          <span className="block font-medium text-[var(--fg)]">{a.title}</span>
-                          <span className="text-[var(--muted)]">
-                            {a.status === "saved" ? "Saved" : "Draft"} ·{" "}
-                            {new Date(a.updated_at).toLocaleDateString()}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+              <div
+                key={voice.id}
+                className={cn(
+                  "rounded-md border border-[var(--border)]",
+                  isSelectedVoice && "ring-1 ring-[var(--primary)]",
                 )}
+              >
+                <div className="flex items-stretch bg-[var(--surface-light)]">
+                  <button
+                    type="button"
+                    onClick={() => selectVoice(voice.id)}
+                    className={cn(
+                      "min-w-0 flex-1 px-3 py-2 text-left font-medium",
+                      isSelectedVoice ? "text-[var(--primary)]" : "text-[var(--fg)]",
+                    )}
+                  >
+                    {voice.name}
+                    {!voice.ready ? (
+                      <span className="ml-1 text-xs font-normal text-amber-200/90">
+                        (persona pending)
+                      </span>
+                    ) : null}
+                    <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+                      {list.length} article{list.length === 1 ? "" : "s"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleVoiceExpanded(voice.id)}
+                    aria-expanded={expanded}
+                    aria-label={expanded ? "Collapse articles" : "Expand articles"}
+                    className="shrink-0 border-l border-[var(--border)] px-3 py-2 text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)]"
+                  >
+                    {expanded ? "▼" : "▶"}
+                  </button>
+                </div>
+                {expanded ? (
+                  list.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-[var(--muted)]">No articles yet</p>
+                  ) : (
+                    <ul className="divide-y divide-[var(--border)]">
+                      {list.map((a) => (
+                        <li key={a.id}>
+                          <button
+                            type="button"
+                            onClick={() => loadArticle(a.id)}
+                            className={cn(
+                              "w-full px-3 py-2 text-left text-xs hover:bg-[var(--surface-light)]",
+                              a.id === articleId &&
+                                "bg-[var(--surface-light)] text-[var(--primary)]",
+                            )}
+                          >
+                            <span className="block font-medium text-[var(--fg)]">{a.title}</span>
+                            <span className="text-[var(--muted)]">
+                              {a.status === "saved" ? "Saved" : "Draft"} ·{" "}
+                              {new Date(a.updated_at).toLocaleDateString()}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : null}
               </div>
             );
           })}
         </div>
-      </aside>
+      </section>
 
-      <div className="space-y-6">
-        {!workerConfigured ? (
-          <p className="ui-alert-error text-sm">
-            Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable Writer.
-          </p>
-        ) : null}
-        {readyVoices.length === 0 ? (
-          <p className="text-sm text-amber-200/90">
-            No voices with a ready persona.{" "}
-            <Link href="/voices" className="text-[var(--primary)] hover:underline">
-              Generate a persona on Voices
-            </Link>{" "}
-            first.
-          </p>
-        ) : null}
+      {!workerConfigured ? (
+        <p className="ui-alert-error text-sm">
+          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable Writer.
+        </p>
+      ) : null}
+      {readyVoices.length === 0 ? (
+        <p className="text-sm text-amber-200/90">
+          No voices with a ready persona.{" "}
+          <Link href="/voices" className="text-[var(--primary)] hover:underline">
+            Generate a persona on Voices
+          </Link>{" "}
+          first.
+        </p>
+      ) : null}
+      {voiceId && !selectedVoice?.ready ? (
+        <p className="text-sm text-amber-200/90">
+          Select a voice with a ready persona to write.{" "}
+          <Link href="/voices" className="text-[var(--primary)] hover:underline">
+            Voices
+          </Link>
+        </p>
+      ) : null}
 
-        <section className="ui-card space-y-4 p-6">
-          <h2 className="text-lg font-medium">Source</h2>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-[var(--muted)]">Voice</span>
-            <select
-              value={voiceId}
-              onChange={(e) => setVoiceId(e.target.value)}
-              disabled={!readyVoices.length}
-              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-[var(--fg)]"
+      <section className="ui-card space-y-4 p-6">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">
+              Links to include (up to {WRITER_LINK_MAX})
+            </span>
+            <button
+              type="button"
+              onClick={addLinkRow}
+              disabled={linkRows.length >= WRITER_LINK_MAX}
+              className="text-xs text-[var(--primary)] hover:underline disabled:opacity-50"
             >
-              {readyVoices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-[var(--muted)]">Article to rewrite</span>
-            <textarea
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-              rows={12}
-              placeholder="Paste the full source article…"
-              className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 font-mono text-sm text-[var(--fg)]"
-            />
-          </label>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--muted)]">Links to include (up to {WRITER_LINK_MAX})</span>
+              Add link
+            </button>
+          </div>
+          {linkRows.map((row, i) => (
+            <div key={i} className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
+              <input
+                type="url"
+                value={row.url}
+                onChange={(e) => updateLinkRow(i, { url: e.target.value })}
+                placeholder="https://…"
+                className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+              />
+              <input
+                type="text"
+                value={row.label}
+                onChange={(e) => updateLinkRow(i, { label: e.target.value })}
+                placeholder="Anchor text (optional)"
+                className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+              />
               <button
                 type="button"
-                onClick={addLinkRow}
-                disabled={linkRows.length >= WRITER_LINK_MAX}
-                className="text-xs text-[var(--primary)] hover:underline disabled:opacity-50"
+                onClick={() => removeLinkRow(i)}
+                className="text-xs text-red-400 hover:underline"
               >
-                Add link
+                Remove
               </button>
             </div>
-            {linkRows.map((row, i) => (
-              <div key={i} className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
-                <input
-                  type="url"
-                  value={row.url}
-                  onChange={(e) => updateLinkRow(i, { url: e.target.value })}
-                  placeholder="https://…"
-                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                />
-                <input
-                  type="text"
-                  value={row.label}
-                  onChange={(e) => updateLinkRow(i, { label: e.target.value })}
-                  placeholder="Anchor text (optional)"
-                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
-                />
+          ))}
+        </div>
+
+        <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
+          {writing ? "Writing…" : "Write"}
+        </Button>
+        {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
+        {truncatedNotice ? (
+          <p className="text-xs text-amber-200/90">
+            Source was truncated for length; review the rewrite.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="flex min-h-[360px] flex-col gap-2">
+          <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
+          <textarea
+            value={sourceText}
+            onChange={(e) => setSourceText(e.target.value)}
+            rows={16}
+            placeholder="Paste the full source article…"
+            className={cn(articlePaneClass, "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]")}
+          />
+        </div>
+
+        <div className="flex min-h-[360px] flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-[var(--fg)]">Rewritten article</h2>
+            {showRewriteColumn ? (
+              <div className="flex rounded-md border border-[var(--border)] p-0.5 text-xs">
                 <button
                   type="button"
-                  onClick={() => removeLinkRow(i)}
-                  className="text-xs text-red-400 hover:underline"
+                  onClick={() => setShowHtmlPreview(true)}
+                  className={cn(
+                    "rounded px-2 py-1",
+                    showHtmlPreview
+                      ? "bg-[var(--primary)] text-white"
+                      : "text-[var(--muted)] hover:text-[var(--fg)]",
+                  )}
                 >
-                  Remove
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHtmlPreview(false)}
+                  className={cn(
+                    "rounded px-2 py-1",
+                    !showHtmlPreview
+                      ? "bg-[var(--primary)] text-white"
+                      : "text-[var(--muted)] hover:text-[var(--fg)]",
+                  )}
+                >
+                  HTML source
                 </button>
               </div>
-            ))}
+            ) : null}
           </div>
 
-          <Button
-            type="button"
-            disabled={writing || !workerConfigured || !voiceId}
-            onClick={() => void handleWrite()}
-          >
-            {writing ? "Writing…" : "Write"}
-          </Button>
-          {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
-          {truncatedNotice ? (
-            <p className="text-xs text-amber-200/90">Source was truncated for length; review the rewrite.</p>
-          ) : null}
-        </section>
-
-        {(outputHtml || articleId) && (
-          <section className="ui-card space-y-4 p-6">
-            <h2 className="text-lg font-medium">Rewritten article (HTML)</h2>
-            <p className="text-xs text-[var(--muted)]">
-              Edit below, then save. Paste into your blog WYSIWYG editor (HTML mode or paste from source).
-            </p>
-
-            <form action={saveWriterArticleAction} className="space-y-4">
+          {showRewriteColumn ? (
+            <form action={saveWriterArticleAction} className="flex min-h-0 flex-1 flex-col gap-4">
               <input type="hidden" name="writer_article_id" value={articleId} />
+              {showHtmlPreview ? (
+                <input type="hidden" name="final_html" value={outputHtml} />
+              ) : null}
+
+              <div className={cn(articlePaneClass, "flex min-h-0 flex-col overflow-hidden")}>
+                {showHtmlPreview ? (
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {outputHtml.trim() ? (
+                      <EmailHtmlPreview html={outputHtml} />
+                    ) : (
+                      <p className="text-sm text-[var(--muted)]">No HTML to preview.</p>
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    name="final_html"
+                    value={outputHtml}
+                    onChange={(e) => setOutputHtml(e.target.value)}
+                    rows={16}
+                    className="min-h-[280px] flex-1 resize-y border-0 bg-transparent px-3 py-2 font-mono text-xs text-[var(--fg)] focus:outline-none"
+                  />
+                )}
+              </div>
+
+              <p className="text-xs text-[var(--muted)]">
+                {showHtmlPreview
+                  ? "Switch to HTML source to edit markup. Save uses the current HTML."
+                  : "Edit HTML, then save. Paste into your blog WYSIWYG (HTML mode)."}
+              </p>
+
               <label className="flex flex-col gap-1 text-sm">
                 <span className="text-[var(--muted)]">Title</span>
                 <input
@@ -363,34 +486,34 @@ export function WriterForm({
                   className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-[var(--muted)]">HTML body</span>
-                <textarea
-                  name="final_html"
-                  value={outputHtml}
-                  onChange={(e) => setOutputHtml(e.target.value)}
-                  rows={16}
-                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 font-mono text-xs text-[var(--fg)]"
-                />
-              </label>
+
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" variant="primary" disabled={!articleId}>
                   Save article
                 </Button>
               </div>
             </form>
+          ) : (
+            <div
+              className={cn(
+                articlePaneClass,
+                "flex flex-1 items-center justify-center p-4 text-sm text-[var(--muted)]",
+              )}
+            >
+              Run Write to generate a rewrite for the selected voice.
+            </div>
+          )}
 
-            {articleId ? (
-              <form action={deleteWriterArticleAction}>
-                <input type="hidden" name="writer_article_id" value={articleId} />
-                <Button type="submit" variant="danger" size="sm">
-                  Delete
-                </Button>
-              </form>
-            ) : null}
-          </section>
-        )}
-      </div>
+          {articleId && showRewriteColumn ? (
+            <form action={deleteWriterArticleAction}>
+              <input type="hidden" name="writer_article_id" value={articleId} />
+              <Button type="submit" variant="danger" size="sm">
+                Delete
+              </Button>
+            </form>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
