@@ -384,6 +384,8 @@ export const voiceSchema = z.preprocess(
     z.string().optional(),
   ),
   persona_generated_at: z.coerce.date().optional(),
+  /** Set when a generate/retry was last kicked off (stale-pending detection). */
+  persona_requested_at: z.coerce.date().optional(),
   brand_profile: z.preprocess(
     (v) => (v == null ? undefined : v),
     brandProfileSchema.optional(),

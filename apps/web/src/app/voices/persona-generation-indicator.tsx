@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VoicePersonaStatus } from "@content-resourcer/db";
+import { isPersonaPendingStale } from "./persona-poll";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
@@ -11,7 +12,9 @@ type PersonaStatusResponse = {
   persona_status?: VoicePersonaStatus;
   persona_error?: string;
   persona_generated_at?: string;
+  persona_requested_at?: string;
   persona?: string;
+  error?: string;
 };
 
 function applyPersonaToForm(persona: string | undefined) {
@@ -27,6 +30,8 @@ type Props = {
   startPolling: boolean;
   voiceIdParam?: string;
   generatingParam?: string;
+  personaRequestedAtIso?: string;
+  initialStale?: boolean;
 };
 
 export function PersonaGenerationIndicator({
@@ -36,12 +41,20 @@ export function PersonaGenerationIndicator({
   startPolling,
   voiceIdParam,
   generatingParam,
+  personaRequestedAtIso,
+  initialStale,
 }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<VoicePersonaStatus>(initialStatus);
-  const [error, setError] = useState(initialError ?? "");
+  const [error, setError] = useState(
+    initialStale
+      ? "Persona generation may have stalled on the worker. Use Retry below or check Render logs."
+      : (initialError ?? ""),
+  );
   const [message, setMessage] = useState("");
-  const [polling, setPolling] = useState(startPolling && initialStatus === "pending");
+  const [polling, setPolling] = useState(
+    startPolling && initialStatus === "pending" && !initialStale,
+  );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartedRef = useRef(0);
 
@@ -57,9 +70,9 @@ export function PersonaGenerationIndicator({
   }, []);
 
   const clearGeneratingParam = useCallback(() => {
-    if (generatingParam !== "1" || !voiceIdParam) return;
+    if (!voiceIdParam) return;
     router.replace(`/voices?voice_id=${voiceIdParam}`);
-  }, [generatingParam, router, voiceIdParam]);
+  }, [router, voiceIdParam]);
 
   const finish = useCallback(
     (data: PersonaStatusResponse) => {
@@ -82,6 +95,15 @@ export function PersonaGenerationIndicator({
     [clearGeneratingParam, router, stopPolling],
   );
 
+  const handleStale = useCallback(() => {
+    stopPolling();
+    setMessage("");
+    setError(
+      "Persona generation may have stalled on the worker. Use Retry below or check Render logs.",
+    );
+    clearGeneratingParam();
+  }, [clearGeneratingParam, stopPolling]);
+
   const startPollingLoop = useCallback(() => {
     stopPolling();
     setPolling(true);
@@ -95,33 +117,47 @@ export function PersonaGenerationIndicator({
 
     const tick = async () => {
       if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
-        stopPolling();
-        setMessage("");
-        setError("Persona generation is taking longer than expected. Refresh manually.");
+        handleStale();
         return;
       }
       try {
         const r = await fetch(`/api/voices/${voiceId}/persona-status`, { cache: "no-store" });
         const data = (await r.json().catch(() => ({}))) as PersonaStatusResponse;
-        if (!r.ok) return;
+        if (!r.ok) {
+          stopPolling();
+          setMessage("");
+          setError(data.error ?? `Status check failed (${r.status})`);
+          clearGeneratingParam();
+          return;
+        }
         if (data.persona_status === "ready" || data.persona_status === "failed") {
           finish(data);
+          return;
+        }
+        if (
+          data.persona_status === "pending" &&
+          isPersonaPendingStale({
+            persona_status: "pending",
+            persona_requested_at: data.persona_requested_at,
+          })
+        ) {
+          handleStale();
         }
       } catch {
-        // keep polling on transient errors
+        // keep polling on transient network errors
       }
     };
 
     void tick();
     pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
-  }, [finish, stopPolling, voiceId]);
+  }, [clearGeneratingParam, finish, handleStale, stopPolling, voiceId]);
 
   useEffect(() => {
-    if (startPolling && initialStatus === "pending") {
+    if (startPolling && initialStatus === "pending" && !initialStale) {
       startPollingLoop();
     }
     return () => stopPolling();
-  }, [initialStatus, startPolling, startPollingLoop, stopPolling]);
+  }, [initialStale, initialStatus, startPolling, startPollingLoop, stopPolling]);
 
   if (polling) {
     return (
@@ -130,12 +166,23 @@ export function PersonaGenerationIndicator({
         role="status"
         aria-live="polite"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent"
             aria-hidden
           />
           <span>{message || "Generating persona…"}</span>
+          <button
+            type="button"
+            onClick={() => {
+              stopPolling();
+              setMessage("");
+              clearGeneratingParam();
+            }}
+            className="ml-auto text-xs text-[var(--muted)] hover:text-[var(--primary)] hover:underline"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );

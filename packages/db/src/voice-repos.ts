@@ -18,12 +18,14 @@ export type VoiceConfig = Omit<
   | "updated_at"
   | "persona_status"
   | "persona_generated_at"
+  | "persona_requested_at"
   | "brand_profile"
   | "corpus_hash"
   | "brand_profile_version"
 > & {
   persona_status?: Voice["persona_status"];
   persona_generated_at?: Date;
+  persona_requested_at?: Date;
   brand_profile?: BrandProfile;
   corpus_hash?: string;
   brand_profile_version?: number;
@@ -75,6 +77,7 @@ export async function upsertVoice(
     persona_status: data.persona_status ?? existing?.persona_status ?? "pending",
     persona_error: data.persona_error ?? undefined,
     persona_generated_at: data.persona_generated_at ?? existing?.persona_generated_at,
+    persona_requested_at: data.persona_requested_at ?? existing?.persona_requested_at,
     brand_profile: data.brand_profile ?? existing?.brand_profile,
     corpus_hash: data.corpus_hash ?? existing?.corpus_hash,
     brand_profile_version: data.brand_profile_version ?? existing?.brand_profile_version ?? 0,
@@ -169,6 +172,7 @@ export async function updateVoicePersonaStatus(
     persona_status: Voice["persona_status"];
     persona_error?: string;
     persona_generated_at?: Date;
+    persona_requested_at?: Date;
   },
 ): Promise<Voice | null> {
   const existing = await voices(db).findOne({ id });
@@ -180,6 +184,7 @@ export async function updateVoicePersonaStatus(
     persona_status: update.persona_status,
     persona_error: update.persona_error ?? undefined,
     persona_generated_at: update.persona_generated_at ?? existing.persona_generated_at,
+    persona_requested_at: update.persona_requested_at ?? existing.persona_requested_at,
     updated_at: now,
   });
   await voices(db).replaceOne({ id }, row);

@@ -10,16 +10,18 @@ import { requireOrgMember } from "@/lib/org-auth";
 import {
   deleteVoiceAction,
   generateVoicePersonaAction,
+  retryVoicePersonaAction,
   saveVoiceAction,
 } from "./actions";
+import { isPersonaPendingStale, shouldPollPersona } from "./persona-poll";
 import { BrandMentionSlider } from "./brand-mention-slider";
 import { SourcesInPostsSlider } from "./sources-in-posts-slider";
 import { DistributionPlatformsEditor } from "./distribution-platforms-editor";
 import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
-import { PersonaGeneratedAt } from "./persona-generated-at";
 import { VOICE_FIELD_TIPS } from "./field-help";
 import { PageHeader } from "@/components/ui/page-header";
+import { LocalDateTime } from "@/components/local-date-time";
 import { LabelWithTip } from "../signals/label-with-tip";
 
 export const dynamic = "force-dynamic";
@@ -32,21 +34,6 @@ function personaStatusLabel(
   if (status === "ready") return "Ready";
   if (status === "failed") return "Failed";
   return "Pending";
-}
-
-function shouldPollPersona(
-  voice: {
-    persona_status: string;
-    persona?: string;
-    persona_generated_at?: Date;
-  },
-  generatingParam?: string,
-): boolean {
-  return (
-    generatingParam === "1" ||
-    (voice.persona_status === "pending" &&
-      (voice.persona_generated_at != null || Boolean(voice.persona?.trim())))
-  );
 }
 
 function socialLinksToText(links: { label?: string; url: string }[]): string {
@@ -89,7 +76,12 @@ export default async function VoicesPage({
   const activeVoice =
     editing && editing.organization_id === orgId ? editing : null;
   const workerConfigured = !!process.env.WORKER_URL;
-  const activePersonaPolling = activeVoice ? shouldPollPersona(activeVoice, sp.generating) : false;
+  const activePersonaStale = activeVoice
+    ? isPersonaPendingStale(activeVoice)
+    : false;
+  const activePersonaPolling = activeVoice
+    ? shouldPollPersona(activeVoice, sp.generating) && !activePersonaStale
+    : false;
 
   const errorMsg =
     sp.error === "name"
@@ -132,6 +124,8 @@ export default async function VoicesPage({
           startPolling={activePersonaPolling}
           voiceIdParam={activeVoice.id}
           generatingParam={sp.generating}
+          personaRequestedAtIso={activeVoice.persona_requested_at?.toISOString()}
+          initialStale={activePersonaStale}
         />
       ) : null}
       {errorMsg ? (
@@ -333,7 +327,7 @@ export default async function VoicesPage({
               <span className="text-xs text-red-600">{activeVoice.persona_error}</span>
             ) : null}
             {activeVoice?.persona_generated_at ? (
-              <PersonaGeneratedAt iso={activeVoice.persona_generated_at.toISOString()} />
+              <LocalDateTime iso={activeVoice.persona_generated_at.toISOString()} />
             ) : null}
           </label>
 
@@ -349,12 +343,27 @@ export default async function VoicesPage({
                 <button
                   formAction={generateVoicePersonaAction}
                   type="submit"
-                  disabled={!workerConfigured || (activePersonaPolling && activeVoice.persona_status === "pending")}
+                  disabled={
+                    !workerConfigured ||
+                    (activePersonaPolling && activeVoice.persona_status === "pending")
+                  }
                   data-persona-generate
                   className="rounded border border-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary)] hover:bg-surface disabled:opacity-50"
                 >
                   {activeVoice.persona_status === "ready" ? "Regenerate persona" : "Generate persona"}
                 </button>
+                {(activeVoice.persona_status === "failed" || activePersonaStale) &&
+                activeVoice.persona_status !== "ready" ? (
+                  <button
+                    formAction={retryVoicePersonaAction}
+                    type="submit"
+                    disabled={!workerConfigured}
+                    data-persona-generate
+                    className="rounded border border-amber-500/50 px-4 py-2 text-sm font-medium text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
+                  >
+                    Retry persona
+                  </button>
+                ) : null}
                 <button
                   formAction={deleteVoiceAction}
                   type="submit"

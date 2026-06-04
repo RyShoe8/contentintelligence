@@ -275,6 +275,7 @@ export async function generateVoicePersonaAction(formData: FormData) {
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
   const isRegenerate = existing.persona_status === "ready";
 
+  const requestedAt = new Date();
   await upsertVoice(db, {
     ...existing,
     name: fields.name,
@@ -291,11 +292,68 @@ export async function generateVoicePersonaAction(formData: FormData) {
     persona: isRegenerate ? existing.persona : fields.persona,
     persona_status: "pending",
     persona_error: undefined,
+    persona_requested_at: requestedAt,
   });
   await linkVoiceToSignals(db, voiceId, orgId, signalIds);
 
   try {
     await workerVoiceGenerate(voiceId, isRegenerate);
+  } catch (e) {
+    revalidatePath("/voices");
+    const detail = encodeURIComponent(
+      (e instanceof Error ? e.message : String(e)).slice(0, 240),
+    );
+    redirect(`/voices?voice_id=${voiceId}&error=generate_failed&error_detail=${detail}`);
+  }
+
+  revalidatePath("/voices");
+  redirect(`/voices?voice_id=${voiceId}&generating=1`);
+}
+
+export async function retryVoicePersonaAction(formData: FormData) {
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
+  const voiceId = String(formData.get("voice_id") ?? "").trim();
+  if (!voiceId) redirect("/voices?error=missing_voice");
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const existing = await getVoiceForSession(db, voiceId, orgId);
+  if (!existing) redirect("/voices?error=not_found");
+
+  if (existing.persona_status !== "pending" && existing.persona_status !== "failed") {
+    redirect(`/voices?voice_id=${voiceId}`);
+  }
+
+  const fields = parseVoiceFields(formData);
+  if (!fields.name) redirect(`/voices?voice_id=${voiceId}&error=name`);
+
+  const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
+  const force = existing.persona_generated_at != null;
+  const requestedAt = new Date();
+
+  await upsertVoice(db, {
+    ...existing,
+    name: fields.name,
+    brand_mention_level: fields.brand_mention_level,
+    sources_in_posts_level: fields.sources_in_posts_level,
+    website_url: fields.website_url,
+    rss_feed_url: fields.rss_feed_url,
+    social_links: fields.social_links,
+    keywords: fields.keywords,
+    preferred_phrases: fields.preferred_phrases,
+    content_signal_ids: signalIds,
+    organization_id: orgId,
+    created_by: existing.created_by,
+    persona: existing.persona || fields.persona,
+    persona_status: "pending",
+    persona_error: undefined,
+    persona_requested_at: requestedAt,
+  });
+  await linkVoiceToSignals(db, voiceId, orgId, signalIds);
+
+  try {
+    await workerVoiceGenerate(voiceId, force);
   } catch (e) {
     revalidatePath("/voices");
     const detail = encodeURIComponent(

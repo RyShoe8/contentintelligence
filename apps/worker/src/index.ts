@@ -19,6 +19,10 @@ import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
+import {
+  isVoicePersonaGenerateInFlight,
+  runVoicePersonaGenerateExclusive,
+} from "./voice-generate-lock.js";
 import { runWriterRewrite } from "./writer-rewrite.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
@@ -406,8 +410,6 @@ async function main(): Promise<void> {
     }
   });
 
-  let voiceGenerateInFlight: Promise<void> | null = null;
-
   app.post("/voices/generate", async (req, reply) => {
     if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
       return reply.code(401).send({ error: "unauthorized" });
@@ -418,31 +420,34 @@ async function main(): Promise<void> {
       return reply.code(400).send({ error: "voice_id is required" });
     }
     const forceRebuild = q.force === "1" || q.force === "true";
-    if (voiceGenerateInFlight) {
+    if (isVoicePersonaGenerateInFlight(voiceId)) {
       return reply.code(409).send({ error: "voice_generate_already_running" });
     }
 
-    voiceGenerateInFlight = (async () => {
+    app.log.info({ voice_id: voiceId, force_rebuild: forceRebuild }, "voice_persona_generate_accepted");
+
+    void runVoicePersonaGenerateExclusive(voiceId, async () => {
       const db = await getDb();
       await ensureIndexes(db);
-      await runVoicePersonaGeneration(db, voiceId, { forceRebuild });
-    })()
-      .catch(async (e) => {
-        app.log.error(e);
-        try {
-          const db = await getDb();
-          const message = e instanceof Error ? e.message : String(e);
-          await updateVoicePersonaStatus(db, voiceId, {
-            persona_status: "failed",
-            persona_error: message,
-          });
-        } catch (secondary) {
-          app.log.error(secondary);
-        }
-      })
-      .finally(() => {
-        voiceGenerateInFlight = null;
-      });
+      try {
+        await runVoicePersonaGeneration(db, voiceId, { forceRebuild });
+        app.log.info({ voice_id: voiceId }, "voice_persona_generate_done");
+      } catch (e) {
+        app.log.error({ voice_id: voiceId, err: e }, "voice_persona_generate_failed");
+        throw e;
+      }
+    }).catch(async (e) => {
+      try {
+        const db = await getDb();
+        const message = e instanceof Error ? e.message : String(e);
+        await updateVoicePersonaStatus(db, voiceId, {
+          persona_status: "failed",
+          persona_error: message,
+        });
+      } catch (secondary) {
+        app.log.error(secondary);
+      }
+    });
 
     return reply.code(202).send({
       accepted: true,

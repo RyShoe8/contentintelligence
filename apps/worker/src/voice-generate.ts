@@ -6,6 +6,24 @@ import {
 } from "@content-resourcer/db";
 import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
 
+export const PERSONA_GENERATION_TIMEOUT_MS = 12 * 60 * 1000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export async function runVoicePersonaGeneration(
   db: Db,
   voiceId: string,
@@ -22,9 +40,13 @@ export async function runVoicePersonaGeneration(
   });
 
   try {
-    const { profile, persona, corpusHash, cached } = await analyzeBrandProfile(db, voice, {
-      forceRebuild: options?.forceRebuild,
-    });
+    const { profile, persona, corpusHash, cached } = await withTimeout(
+      analyzeBrandProfile(db, voice, {
+        forceRebuild: options?.forceRebuild,
+      }),
+      PERSONA_GENERATION_TIMEOUT_MS,
+      "persona_generation_timeout",
+    );
     const nextVersion = cached
       ? (voice.brand_profile_version ?? 0)
       : (voice.brand_profile_version ?? 0) + 1;

@@ -8,7 +8,7 @@ export function LocalDateTime({ iso }: Props) {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return null;
   return (
-    <time dateTime={iso}>
+    <time dateTime={iso} suppressHydrationWarning>
       {d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
     </time>
   );
