@@ -56,7 +56,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     savedExamples.filter((a) => a.id !== writer_article_id),
   );
 
-  const { html, sourceTruncated, linksRequested, linksAppended } =
+  const { html, sourceTruncated, linksRequested, linksAppended, linksRevised } =
     await generateArticleRewriteHtml({
       voice,
       sourceText: source_text,
@@ -80,5 +80,6 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     source_truncated: sourceTruncated,
     links_requested: linksRequested,
     links_appended: linksAppended,
+    links_revised: linksRevised,
   };
 }

@@ -1,8 +1,10 @@
 import {
   ensureWriterLinksInHtml,
+  formatWriterLinksForPrompt,
   type GenerationConstraints,
   type Voice,
   type WriterLink,
+  writerLinksClusteredAtEnd,
   writerLinksMissingFromHtml,
 } from "@content-resourcer/db";
 import { writerArticleHtmlForLearning, type WriterArticle } from "@content-resourcer/db";
@@ -15,8 +17,18 @@ import {
   formatPreferredPhrasesForUserMessage,
   type VoiceStylePromptOpts,
 } from "./voice-style-rules.js";
+import { reviseWriterLinksInHtml } from "./writer-revise-links.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
+
+const LINK_WEAVE_RULES = `
+Link integration:
+- Weave each URL into the most relevant section (intro, body, or natural CTA); spread multiple links across the article.
+- Use suggested anchor text as inline phrasing inside normal sentences, not as a bare URL or standalone line.
+- Do NOT add closing sentences whose only purpose is to hold a link.
+- Do NOT put all links in the final paragraph or final three sentences.
+- Do NOT add a "Related links" or link-dump section.
+- Each listed URL must appear exactly once in contextually appropriate places throughout the article.`;
 
 export type ArticleRewriteExample = {
   title: string;
@@ -74,9 +86,9 @@ Rules:
 - Use clear structure with HTML headings (<h2>, <h3>) and paragraphs (<p>) where appropriate.
 - Output an HTML fragment only: use <p>, <h2>, <h3>, <ul>, <li>, and <a href="..."> for links.
 - Do NOT wrap in <html>, <head>, or <body>. Do NOT use markdown.
-- Every provided link URL must appear at least once as an <a href="URL">…</a> with natural anchor text (use the suggested label when provided).
 - Do NOT add URLs that were not provided.
 - Respect taboos; avoid generic affiliate hype and fake urgency.
+${LINK_WEAVE_RULES}
 ${archetypeLine ?? ""}${styleRulesBlock(style)}${sharedIdentityBlock(constraints)}${personaBlock}
 
 Brand generation constraints (JSON):
@@ -90,8 +102,8 @@ Rules:
 - Match the persona's tone, vocabulary, and rhythm throughout.
 - Use clear structure with HTML headings and paragraphs where appropriate.
 - Output an HTML fragment only (<p>, <h2>, <h3>, lists, <a href="...">). No <html>/<body>. No markdown.
-- Every provided link URL must appear at least once as <a href="URL">…</a> with natural anchor text.
-- Do NOT add URLs that were not provided.${styleRulesBlock(style)}
+- Do NOT add URLs that were not provided.
+${LINK_WEAVE_RULES}${styleRulesBlock(style)}
 
 Brand voice persona:
 ${persona.trim()}`;
@@ -103,17 +115,8 @@ Rules:
 - Preserve factual claims from the source.
 - Informative, engaging promotional/editorial tone.
 - HTML fragment only (<p>, <h2>, <h3>, <a href="...">). No markdown. No <html>/<body>.
-- Use every provided link at least once as <a href="URL">…</a>. Do not invent URLs.${styleRulesBlock(style)}`;
-}
-
-function formatLinksForPrompt(links: WriterLink[]): string {
-  if (!links.length) return "(none — do not add external links)";
-  return links
-    .map((l, i) => {
-      const label = l.label?.trim();
-      return `${i + 1}. URL: ${l.url}${label ? ` — suggested anchor: ${label}` : ""}`;
-    })
-    .join("\n");
+- Do not invent URLs.
+${LINK_WEAVE_RULES}${styleRulesBlock(style)}`;
 }
 
 function formatExamplesForPrompt(examples: ArticleRewriteExample[]): string {
@@ -164,7 +167,7 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
 
   const linkRequirement =
     opts.links.length > 0
-      ? `REQUIRED: Include exactly ${opts.links.length} distinct <a href="..."> tags — one per listed URL. Do not skip any.`
+      ? "Each listed URL must appear exactly once, woven into contextually appropriate places throughout the article (not clustered at the end)."
       : null;
 
   const userParts = [
@@ -172,7 +175,7 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
     sourceText,
     "",
     "Links to weave in (required when listed):",
-    formatLinksForPrompt(opts.links),
+    formatWriterLinksForPrompt(opts.links),
     linkRequirement,
     ctx.preferredPhrases?.length
       ? formatPreferredPhrasesForUserMessage(ctx.preferredPhrases)
@@ -192,6 +195,7 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   sourceTruncated: boolean;
   linksRequested: number;
   linksAppended: number;
+  linksRevised: boolean;
 }> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -216,13 +220,28 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   const raw = res.choices[0]?.message?.content?.trim();
   if (!raw) throw new Error("article_rewrite_empty");
 
-  const missingBefore = writerLinksMissingFromHtml(raw, opts.links);
-  const html = ensureWriterLinksInHtml(raw, opts.links);
+  const missingFromRaw = writerLinksMissingFromHtml(raw, opts.links);
+  const clustered = writerLinksClusteredAtEnd(raw, opts.links);
+  let html = raw;
+  let linksRevised = false;
+
+  if (opts.links.length > 0 && (missingFromRaw.length > 0 || clustered)) {
+    html = await reviseWriterLinksInHtml({
+      html: raw,
+      links: opts.links,
+      voice: opts.voice,
+    });
+    linksRevised = true;
+  }
+
+  const missingBeforeAppend = writerLinksMissingFromHtml(html, opts.links);
+  html = ensureWriterLinksInHtml(html, opts.links);
 
   return {
     html,
     sourceTruncated,
     linksRequested: opts.links.length,
-    linksAppended: missingBefore.length,
+    linksAppended: missingBeforeAppend.length,
+    linksRevised,
   };
 }

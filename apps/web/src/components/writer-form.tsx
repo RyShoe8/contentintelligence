@@ -119,6 +119,7 @@ export function WriterForm({
   const [writeError, setWriteError] = useState<string | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
+  const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -149,6 +150,7 @@ export function WriterForm({
     setWriteError(null);
     setTruncatedNotice(false);
     setLinksAppendedNotice(null);
+    setLinksRevisedNotice(false);
     router.push("/writer");
   }, [router]);
 
@@ -212,6 +214,7 @@ export function WriterForm({
     setWriteError(null);
     setTruncatedNotice(false);
     setLinksAppendedNotice(null);
+    setLinksRevisedNotice(false);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -229,6 +232,7 @@ export function WriterForm({
         generated_html?: string;
         source_truncated?: boolean;
         links_appended?: number;
+        links_revised?: boolean;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -238,6 +242,9 @@ export function WriterForm({
       if (data.source_truncated) setTruncatedNotice(true);
       if (typeof data.links_appended === "number" && data.links_appended > 0) {
         setLinksAppendedNotice(data.links_appended);
+      }
+      if (data.links_revised === true) {
+        setLinksRevisedNotice(true);
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
@@ -422,6 +429,11 @@ export function WriterForm({
         {truncatedNotice ? (
           <p className="text-xs text-amber-200/90">
             Source was truncated for length; review the rewrite.
+          </p>
+        ) : null}
+        {linksRevisedNotice ? (
+          <p className="text-xs text-amber-200/90">
+            Links were reworked for more natural placement in the article.
           </p>
         ) : null}
         {linksAppendedNotice != null && linksAppendedNotice > 0 ? (

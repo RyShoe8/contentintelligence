@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import {
   ensureWriterLinksInHtml,
   parseWriterLinks,
+  writerLinkParagraphIndices,
   writerLinkPresentInHtml,
+  writerLinksClusteredAtEnd,
   writerLinksMissingFromHtml,
   writerRewriteInputSchema,
   WRITER_SOURCE_MIN_CHARS,
@@ -47,6 +49,57 @@ describe("writerLinksMissingFromHtml", () => {
     ]);
     assert.equal(missing.length, 1);
     assert.equal(missing[0]?.url, "https://two.example");
+  });
+});
+
+describe("writerLinksClusteredAtEnd", () => {
+  it("returns false when links are spread across the article", () => {
+    const html = [
+      '<p>Intro with <a href="https://a.example">A</a>.</p>',
+      "<p>Middle body text.</p>",
+      '<p>Later <a href="https://b.example">B</a> and more.</p>',
+      '<p>End <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example" },
+      { url: "https://b.example" },
+      { url: "https://c.example" },
+    ];
+    assert.equal(writerLinksClusteredAtEnd(html, links), false);
+  });
+
+  it("returns true when all links are only in the last paragraphs", () => {
+    const html = [
+      "<p>Opening paragraph with no links.</p>",
+      "<p>Second paragraph still no links.</p>",
+      "<p>Third paragraph still no links.</p>",
+      '<p>Fourth with <a href="https://a.example">A</a> and <a href="https://b.example">B</a>.</p>',
+      '<p>Fifth with <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example" },
+      { url: "https://b.example" },
+      { url: "https://c.example" },
+    ];
+    assert.equal(writerLinksClusteredAtEnd(html, links), true);
+  });
+
+  it("returns false when any link is missing from html", () => {
+    const html = '<p>Only <a href="https://a.example">A</a>.</p><p>End.</p>';
+    assert.equal(
+      writerLinksClusteredAtEnd(html, [
+        { url: "https://a.example" },
+        { url: "https://b.example" },
+      ]),
+      false,
+    );
+  });
+});
+
+describe("writerLinkParagraphIndices", () => {
+  it("finds paragraph index for href", () => {
+    const html = "<p>One.</p><p>Two <a href=\"https://x.example\">x</a>.</p>";
+    assert.deepEqual(writerLinkParagraphIndices(html, "https://x.example"), [1]);
   });
 });
 

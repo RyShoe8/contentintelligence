@@ -94,6 +94,65 @@ export function writerLinksMissingFromHtml(html: string, links: WriterLink[]): W
   return links.filter((l) => !writerLinkPresentInHtml(html, l.url));
 }
 
+/** Split HTML fragment into `<p>...</p>` blocks for placement heuristics. */
+export function writerHtmlParagraphs(html: string): string[] {
+  const re = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  return html.match(re) ?? [];
+}
+
+/** Paragraph indices (0-based) where the URL appears inside a `<p>` block. */
+export function writerLinkParagraphIndices(html: string, url: string): number[] {
+  const paragraphs = writerHtmlParagraphs(html);
+  const indices: number[] = [];
+  for (let i = 0; i < paragraphs.length; i++) {
+    if (writerLinkPresentInHtml(paragraphs[i] ?? "", url)) indices.push(i);
+  }
+  return indices;
+}
+
+const CLUSTER_END_PARAGRAPH_FRACTION = 0.6;
+
+/**
+ * True when multiple links all appear only near the end (shoehorned closing sentences).
+ */
+export function writerLinksClusteredAtEnd(html: string, links: WriterLink[]): boolean {
+  if (links.length < 2) return false;
+  const paragraphs = writerHtmlParagraphs(html);
+  const pCount = paragraphs.length;
+  if (pCount < 2) return false;
+
+  const threshold = Math.ceil(pCount * CLUSTER_END_PARAGRAPH_FRACTION);
+  const minIndices: number[] = [];
+
+  for (const link of links) {
+    const found = writerLinkParagraphIndices(html, link.url);
+    if (!found.length) return false;
+    minIndices.push(Math.min(...found));
+  }
+
+  if (minIndices.every((i) => i >= threshold)) return true;
+
+  const lastSpan = Math.max(1, Math.ceil(pCount * (1 - CLUSTER_END_PARAGRAPH_FRACTION)));
+  const startIdx = pCount - lastSpan;
+  if (minIndices.every((i) => i >= startIdx)) return true;
+
+  if (pCount >= 3 && new Set(minIndices).size === 1 && minIndices[0]! >= pCount - 2) {
+    return true;
+  }
+
+  return false;
+}
+
+export function formatWriterLinksForPrompt(links: WriterLink[]): string {
+  if (!links.length) return "(none — do not add external links)";
+  const lines = links.map((l, i) => {
+    const label = l.label?.trim();
+    return `${i + 1}. URL: ${l.url}${label ? ` — suggested anchor: ${label}` : ""}`;
+  });
+  lines.push("Placement: distribute links across the article body, not clustered at the end.");
+  return lines.join("\n");
+}
+
 function writerLinkAnchorText(link: WriterLink): string {
   const label = link.label?.trim();
   if (label) return label;

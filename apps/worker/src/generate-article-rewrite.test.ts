@@ -47,7 +47,9 @@ describe("buildArticleRewritePrompts", () => {
     assert.match(userPrompt, /https:\/\/casino\.example\/deal/);
     assert.match(userPrompt, /Claim offer/);
     assert.match(userPrompt, /https:\/\/blog\.example\/review/);
-    assert.match(userPrompt, /exactly 2 distinct/i);
+    assert.match(userPrompt, /contextually appropriate places/i);
+    assert.match(userPrompt, /not clustered at the end/i);
+    assert.match(systemPrompt, /Do NOT put all links in the final paragraph/i);
     assert.match(userPrompt, /Published examples in this voice/);
     assert.match(userPrompt, /Prior post/);
   });
