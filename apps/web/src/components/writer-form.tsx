@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
   WRITER_LINK_MAX,
@@ -10,8 +10,8 @@ import {
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
-import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { Button } from "@/components/ui/button";
+import { WriterHtmlPreview } from "@/components/writer-html-preview";
 import { cn } from "@/lib/cn";
 
 export type WriterArticleListItem = {
@@ -62,6 +62,13 @@ function rowsToLinks(rows: LinkRow[]): WriterLink[] {
       .filter((r) => r.url.trim())
       .map((r) => ({ url: r.url.trim(), label: r.label.trim() || undefined })),
   );
+}
+
+function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
+  const label = title.trim() || "this article";
+  if (!confirm(`Delete "${label}"? This cannot be undone.`)) {
+    e.preventDefault();
+  }
 }
 
 function displayHtml(article: WriterArticleDetail | null, draftHtml: string): string {
@@ -305,12 +312,12 @@ export function WriterForm({
                   ) : (
                     <ul className="divide-y divide-[var(--border)]">
                       {list.map((a) => (
-                        <li key={a.id}>
+                        <li key={a.id} className="flex items-stretch">
                           <button
                             type="button"
                             onClick={() => loadArticle(a.id)}
                             className={cn(
-                              "w-full px-3 py-2 text-left text-xs hover:bg-[var(--surface-light)]",
+                              "min-w-0 flex-1 px-3 py-2 text-left text-xs hover:bg-[var(--surface-light)]",
                               a.id === articleId &&
                                 "bg-[var(--surface-light)] text-[var(--primary)]",
                             )}
@@ -321,6 +328,17 @@ export function WriterForm({
                               {new Date(a.updated_at).toLocaleDateString()}
                             </span>
                           </button>
+                          <form
+                            action={deleteWriterArticleAction}
+                            onSubmit={(e) => confirmDeleteArticle(a.title, e)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex shrink-0 items-center border-l border-[var(--border)] px-2"
+                          >
+                            <input type="hidden" name="writer_article_id" value={a.id} />
+                            <Button type="submit" variant="danger" size="sm">
+                              Delete
+                            </Button>
+                          </form>
                         </li>
                       ))}
                     </ul>
@@ -460,7 +478,11 @@ export function WriterForm({
           </div>
 
           {showRewriteColumn ? (
-            <form action={saveWriterArticleAction} className="flex min-h-0 flex-1 flex-col gap-4">
+            <form
+              id="writer-save-form"
+              action={saveWriterArticleAction}
+              className="flex min-h-0 flex-1 flex-col gap-4"
+            >
               <input type="hidden" name="writer_article_id" value={articleId} />
               {showHtmlPreview ? (
                 <input type="hidden" name="final_html" value={outputHtml} />
@@ -470,7 +492,7 @@ export function WriterForm({
                 {showHtmlPreview ? (
                   <div className="flex-1 overflow-y-auto p-4">
                     {outputHtml.trim() ? (
-                      <EmailHtmlPreview html={outputHtml} />
+                      <WriterHtmlPreview html={outputHtml} />
                     ) : (
                       <p className="text-sm text-[var(--muted)]">No HTML to preview.</p>
                     )}
@@ -502,11 +524,6 @@ export function WriterForm({
                 />
               </label>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" variant="primary" disabled={!articleId}>
-                  Save article
-                </Button>
-              </div>
             </form>
           ) : (
             <div
@@ -519,13 +536,28 @@ export function WriterForm({
             </div>
           )}
 
-          {articleId && showRewriteColumn ? (
-            <form action={deleteWriterArticleAction}>
-              <input type="hidden" name="writer_article_id" value={articleId} />
-              <Button type="submit" variant="danger" size="sm">
-                Delete
-              </Button>
-            </form>
+          {articleId ? (
+            <div className="flex flex-wrap gap-2">
+              {showRewriteColumn ? (
+                <Button
+                  type="submit"
+                  form="writer-save-form"
+                  variant="primary"
+                  disabled={!articleId}
+                >
+                  Save article
+                </Button>
+              ) : null}
+              <form
+                action={deleteWriterArticleAction}
+                onSubmit={(e) => confirmDeleteArticle(title, e)}
+              >
+                <input type="hidden" name="writer_article_id" value={articleId} />
+                <Button type="submit" variant="danger" size="sm">
+                  Delete article
+                </Button>
+              </form>
+            </div>
           ) : null}
         </div>
       </section>
