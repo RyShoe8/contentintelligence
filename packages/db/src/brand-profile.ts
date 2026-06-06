@@ -35,6 +35,11 @@ export const brandMemorySchema = z.object({
   recurringJokes: stringList(20),
   recurringCTAs: stringList(20),
   recurringEnemies: stringList(20),
+  favoriteOpenings: stringList(20),
+  favoriteClosings: stringList(20),
+  favoriteTransitions: stringList(20),
+  recurringOpinions: stringList(20),
+  recurringWarnings: stringList(20),
   memoryUpdatedAt: z.coerce.date().optional(),
 });
 
@@ -188,13 +193,7 @@ export function emptySharedIdentity(): SharedIdentity {
 }
 
 export function emptyBrandMemory(): BrandMemory {
-  return {
-    favoritePhrases: [],
-    recurringTopics: [],
-    recurringJokes: [],
-    recurringCTAs: [],
-    recurringEnemies: [],
-  };
+  return brandMemorySchema.parse({});
 }
 
 export function emptyBrandProfile(): BrandProfile {

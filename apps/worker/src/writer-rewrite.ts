@@ -2,14 +2,10 @@ import type { Db } from "mongodb";
 import {
   getVoice,
   getWriterArticle,
-  listSavedWriterExamplesForVoice,
   upsertWriterArticleDraft,
   writerRewriteInputSchema,
 } from "@content-resourcer/db";
-import {
-  generateArticleRewriteHtml,
-  writerArticlesToExamples,
-} from "./generate-article-rewrite.js";
+import { generateArticleRewriteHtml } from "./generate-article-rewrite.js";
 
 export type WriterRewriteBody = {
   voice_id: string;
@@ -54,11 +50,6 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     }
   }
 
-  const savedExamples = await listSavedWriterExamplesForVoice(db, organizationId, voice_id);
-  const examples = writerArticlesToExamples(
-    savedExamples.filter((a) => a.id !== writer_article_id),
-  );
-
   const {
     html,
     sourceTruncated,
@@ -75,11 +66,18 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     rewriteDivergenceMin,
     rewriteDivergenceBelowMin,
     rewriteDivergenceAttempts,
+    factsExtracted,
+    humanAuthenticityScore,
+    brandConsistencyScore,
+    genericityScore,
+    humanizationAttempts,
   } = await generateArticleRewriteHtml({
+    db,
+    organizationId,
     voice,
     sourceText: source_text,
     links,
-    examples,
+    writerArticleId: writer_article_id,
     rewriteDivergenceMin: rewrite_divergence_min,
   });
 
@@ -110,5 +108,10 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     rewrite_divergence_min: rewriteDivergenceMin,
     rewrite_divergence_below_min: rewriteDivergenceBelowMin,
     rewrite_divergence_attempts: rewriteDivergenceAttempts,
+    facts_extracted: factsExtracted,
+    human_authenticity_score: humanAuthenticityScore,
+    brand_consistency_score: brandConsistencyScore,
+    genericity_score: genericityScore,
+    humanization_attempts: humanizationAttempts,
   };
 }

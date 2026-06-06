@@ -151,6 +151,15 @@ export async function mergeVoiceBrandMemory(
     recurringJokes: mergeList(mem.recurringJokes, memoryPatch.recurringJokes, 20),
     recurringCTAs: mergeList(mem.recurringCTAs, memoryPatch.recurringCTAs, 20),
     recurringEnemies: mergeList(mem.recurringEnemies, memoryPatch.recurringEnemies, 20),
+    favoriteOpenings: mergeList(mem.favoriteOpenings ?? [], memoryPatch.favoriteOpenings, 20),
+    favoriteClosings: mergeList(mem.favoriteClosings ?? [], memoryPatch.favoriteClosings, 20),
+    favoriteTransitions: mergeList(
+      mem.favoriteTransitions ?? [],
+      memoryPatch.favoriteTransitions,
+      20,
+    ),
+    recurringOpinions: mergeList(mem.recurringOpinions ?? [], memoryPatch.recurringOpinions, 20),
+    recurringWarnings: mergeList(mem.recurringWarnings ?? [], memoryPatch.recurringWarnings, 20),
     memoryUpdatedAt: new Date(),
   };
 

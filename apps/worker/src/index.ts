@@ -23,6 +23,7 @@ import {
   isVoicePersonaGenerateInFlight,
   runVoicePersonaGenerateExclusive,
 } from "./voice-generate-lock.js";
+import { runWriterFingerprintsExtract } from "./writer-fingerprints.js";
 import { runWriterRewrite } from "./writer-rewrite.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
@@ -394,6 +395,12 @@ async function main(): Promise<void> {
         writer_article_id: body.writer_article_id
           ? String(body.writer_article_id).trim()
           : undefined,
+        rewrite_divergence_min:
+          body.rewrite_divergence_min !== undefined &&
+          body.rewrite_divergence_min !== null &&
+          body.rewrite_divergence_min !== ""
+            ? Number(body.rewrite_divergence_min)
+            : undefined,
       });
       return result;
     } catch (e) {
@@ -406,6 +413,28 @@ async function main(): Promise<void> {
           : message === "openai_not_configured" || message === "voice_persona_not_ready"
             ? 503
             : 500;
+      return reply.code(status).send({ error: message });
+    }
+  });
+
+  app.post("/writer/fingerprints", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await runWriterFingerprintsExtract(db, {
+        voice_id: String(body.voice_id ?? "").trim(),
+        organization_id: String(body.organization_id ?? "").trim(),
+        html: String(body.html ?? ""),
+      });
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const status =
+        message === "voice_not_found" || message.includes("required") ? 400 : 500;
       return reply.code(status).send({ error: message });
     }
   });

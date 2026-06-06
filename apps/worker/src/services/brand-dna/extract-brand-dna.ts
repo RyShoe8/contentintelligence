@@ -1,4 +1,5 @@
 import type { BrandProfile } from "@content-resourcer/db";
+import { emptyBrandMemory } from "@content-resourcer/db";
 import { env } from "../../env.js";
 import { completeJson } from "../llm/json-completion.js";
 
@@ -97,6 +98,7 @@ Infer from the corpus. Be specific to this brand, not generic marketing advice.`
         .slice(0, 10),
     },
     memory: {
+      ...emptyBrandMemory(),
       favoritePhrases: (parsed.memory?.favoritePhrases ?? [])
         .map((t) => String(t).trim())
         .filter(Boolean)
@@ -141,11 +143,8 @@ export function fallbackCoreBrandAnalysis(voiceName: string, keywords: string[])
       doesNotSoundLike: ["generic casino affiliate", "corporate marketer"],
     },
     memory: {
-      favoritePhrases: [],
+      ...emptyBrandMemory(),
       recurringTopics: keywords.slice(0, 5),
-      recurringJokes: [],
-      recurringCTAs: [],
-      recurringEnemies: [],
     },
   };
 }

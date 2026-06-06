@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { Db } from "mongodb";
 import type { Voice } from "@content-resourcer/db";
 import { buildArticleRewritePrompts } from "./generate-article-rewrite.js";
 
@@ -26,72 +27,38 @@ function minimalVoice(overrides: Partial<Voice> = {}): Voice {
   } as Voice;
 }
 
+const stubDb = {} as Db;
+
 describe("buildArticleRewritePrompts", () => {
-  it("includes provided links and saved examples in user prompt", () => {
+  it("builds facts-only reconstruction system prompt with persona and links", () => {
     const { systemPrompt, userPrompt } = buildArticleRewritePrompts({
+      db: stubDb,
+      organizationId: "00000000-0000-4000-8000-000000000020",
       voice: minimalVoice(),
       sourceText: "A".repeat(200),
       links: [
         { url: "https://casino.example/deal", label: "Claim offer" },
         { url: "https://blog.example/review" },
       ],
-      examples: [
-        {
-          title: "Prior post",
-          html: "<p>Example saved article with <a href=\"https://old.example\">link</a>.</p>",
-        },
-      ],
     });
 
     assert.match(systemPrompt, /HTML fragment/i);
-    assert.match(userPrompt, /https:\/\/casino\.example\/deal/);
-    assert.match(userPrompt, /Claim offer/);
-    assert.match(userPrompt, /https:\/\/blog\.example\/review/);
-    assert.match(userPrompt, /contextually appropriate places/i);
-    assert.match(userPrompt, /not clustered at the end/i);
-    assert.match(systemPrompt, /Do NOT put all links in the final paragraph/i);
-    assert.match(userPrompt, /Published examples in this voice/);
-    assert.match(userPrompt, /Prior post/);
-  });
-
-  it("embeds persona in system prompt", () => {
-    const { systemPrompt } = buildArticleRewritePrompts({
-      voice: minimalVoice(),
-      sourceText: "Source article body here with enough text for testing purposes only.",
-      links: [],
-      examples: [],
-    });
-
-    assert.match(systemPrompt, /Brand voice persona/i);
+    assert.match(systemPrompt, /Do NOT rewrite any original draft text/i);
     assert.match(systemPrompt, /skeptical of hype/i);
+    assert.match(systemPrompt, /act now/i);
+    assert.match(userPrompt, /Facts-only reconstruction/i);
   });
 
-  it("includes rewrite intensity when divergence min is set", () => {
-    const { systemPrompt, userPrompt } = buildArticleRewritePrompts({
+  it("does not include source article text in user prompt", () => {
+    const source = "Unique source phrase xyz123 for rewrite testing only here.";
+    const { userPrompt } = buildArticleRewritePrompts({
+      db: stubDb,
+      organizationId: "00000000-0000-4000-8000-000000000020",
       voice: minimalVoice(),
-      sourceText: "A".repeat(200),
+      sourceText: source,
       links: [],
-      examples: [],
-      rewriteDivergenceMin: 60,
     });
 
-    assert.match(systemPrompt, /Rewrite intensity/i);
-    assert.match(systemPrompt, /Substantial rewrite/i);
-    assert.match(systemPrompt, /5\+ consecutive words/i);
-    assert.match(userPrompt, /noticeably different/i);
-    assert.match(userPrompt, /60%/);
-  });
-
-  it("uses substantial intensity at 50 percent minimum", () => {
-    const { systemPrompt } = buildArticleRewritePrompts({
-      voice: minimalVoice(),
-      sourceText: "A".repeat(200),
-      links: [],
-      examples: [],
-      rewriteDivergenceMin: 50,
-    });
-
-    assert.match(systemPrompt, /Substantial rewrite/i);
-    assert.doesNotMatch(systemPrompt, /Moderate rewrite/i);
+    assert.doesNotMatch(userPrompt, /Unique source phrase xyz123/);
   });
 });

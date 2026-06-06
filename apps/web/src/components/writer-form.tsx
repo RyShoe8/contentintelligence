@@ -131,6 +131,10 @@ export function WriterForm({
   const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
   const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
   const [rewriteDivergenceAttempts, setRewriteDivergenceAttempts] = useState<number | null>(null);
+  const [humanAuthenticityScore, setHumanAuthenticityScore] = useState<number | null>(null);
+  const [brandConsistencyScore, setBrandConsistencyScore] = useState<number | null>(null);
+  const [genericityScore, setGenericityScore] = useState<number | null>(null);
+  const [humanizationAttempts, setHumanizationAttempts] = useState<number | null>(null);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -172,6 +176,10 @@ export function WriterForm({
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
     setRewriteDivergenceAttempts(null);
+    setHumanAuthenticityScore(null);
+    setBrandConsistencyScore(null);
+    setGenericityScore(null);
+    setHumanizationAttempts(null);
     router.push("/writer");
   }, [router]);
 
@@ -246,6 +254,10 @@ export function WriterForm({
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
     setRewriteDivergenceAttempts(null);
+    setHumanAuthenticityScore(null);
+    setBrandConsistencyScore(null);
+    setGenericityScore(null);
+    setHumanizationAttempts(null);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -276,6 +288,10 @@ export function WriterForm({
         rewrite_divergence_min?: number;
         rewrite_divergence_below_min?: boolean;
         rewrite_divergence_attempts?: number;
+        human_authenticity_score?: number;
+        brand_consistency_score?: number;
+        genericity_score?: number;
+        humanization_attempts?: number;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -312,6 +328,18 @@ export function WriterForm({
       }
       if (typeof data.rewrite_divergence_attempts === "number") {
         setRewriteDivergenceAttempts(data.rewrite_divergence_attempts);
+      }
+      if (typeof data.human_authenticity_score === "number") {
+        setHumanAuthenticityScore(data.human_authenticity_score);
+      }
+      if (typeof data.brand_consistency_score === "number") {
+        setBrandConsistencyScore(data.brand_consistency_score);
+      }
+      if (typeof data.genericity_score === "number") {
+        setGenericityScore(data.genericity_score);
+      }
+      if (typeof data.humanization_attempts === "number") {
+        setHumanizationAttempts(data.humanization_attempts);
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
@@ -554,6 +582,16 @@ export function WriterForm({
               </p>
             ) : null}
           </div>
+        ) : null}
+        {humanAuthenticityScore != null && genericityScore != null ? (
+          <p className="text-xs text-[var(--muted)]">
+            Human authenticity: {humanAuthenticityScore}
+            {brandConsistencyScore != null ? ` · Brand consistency: ${brandConsistencyScore}` : ""}
+            {` · Genericity: ${genericityScore}`}
+            {humanizationAttempts != null && humanizationAttempts > 1
+              ? ` (${humanizationAttempts} humanization passes)`
+              : ""}
+          </p>
         ) : null}
         {rewriteDivergenceScore != null ? (
           <p className="text-xs text-[var(--muted)]">
