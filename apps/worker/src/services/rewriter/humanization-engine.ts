@@ -1,6 +1,9 @@
 import type { Db } from "mongodb";
 import {
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  isProceduralContentFacts,
+  rewriterProceduralCompletenessIssues,
+  rewriterProceduralQualityGatePassed,
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
   type ContentFacts,
@@ -27,6 +30,7 @@ export type HumanizationEngineOpts = {
   sourceText: string;
   links: WriterLink[];
   writerArticleId?: string;
+  preserveInstructions?: boolean;
 };
 
 export type HumanizationEngineResult = {
@@ -46,13 +50,42 @@ type AttemptSnapshot = {
   genericity: GenericityAnalysis;
   critique: SelfCritiqueResult;
   composite: number;
+  completenessIssueCount: number;
 };
 
 function mergeRetryIssues(
   genericity: GenericityAnalysis,
   critique: SelfCritiqueResult,
+  completenessIssues: string[],
 ): string[] {
-  return [...new Set([...genericity.issues, ...critique.issues])].slice(0, 10);
+  return [...new Set([...completenessIssues, ...genericity.issues, ...critique.issues])].slice(
+    0,
+    12,
+  );
+}
+
+function factsExtracted(facts: ContentFacts): boolean {
+  if (isProceduralContentFacts(facts)) return true;
+  return facts.keyDetails.length > 0;
+}
+
+function qualityGatePassed(
+  facts: ContentFacts,
+  html: string,
+  genericity: GenericityAnalysis,
+  critique: SelfCritiqueResult,
+): boolean {
+  if (isProceduralContentFacts(facts)) {
+    return rewriterProceduralQualityGatePassed(facts, html, critique);
+  }
+  return rewriterQualityGatePassed(genericity, critique);
+}
+
+function snapshotScore(snapshot: AttemptSnapshot, procedural: boolean): number {
+  if (procedural) {
+    return snapshot.composite - snapshot.completenessIssueCount * 15;
+  }
+  return snapshot.composite;
 }
 
 export async function runHumanizationEngine(
@@ -64,7 +97,10 @@ export async function runHumanizationEngine(
     ? `${sourceTrimmed.slice(0, env.maxWriterInputChars)}\n\n[Source truncated for length.]`
     : sourceTrimmed;
 
-  const facts = await extractContentFacts(factsInput);
+  const facts = await extractContentFacts(factsInput, {
+    preserveInstructions: opts.preserveInstructions,
+  });
+  const procedural = isProceduralContentFacts(facts);
   const ctx = resolveVoiceGenerationContext(opts.voice);
   const interpretation = await interpretBrand(facts, ctx);
   const examples = await retrieveRankedExamples(
@@ -96,18 +132,29 @@ export async function runHumanizationEngine(
       html,
       retryIssues,
       attempt: attempts,
+      skip: procedural,
     });
 
     const genericity = await analyzeGenericity(html);
     const critique = await runSelfCritique(html, facts, ctx);
+    const completenessIssues = procedural ? rewriterProceduralCompletenessIssues(facts, html) : [];
     const composite = rewriterQualityCompositeScore(critique);
-    const snapshot: AttemptSnapshot = { html, genericity, critique, composite };
+    const snapshot: AttemptSnapshot = {
+      html,
+      genericity,
+      critique,
+      composite,
+      completenessIssueCount: completenessIssues.length,
+    };
 
-    if (!best || composite > best.composite) {
+    if (
+      !best ||
+      snapshotScore(snapshot, procedural) > snapshotScore(best, procedural)
+    ) {
       best = snapshot;
     }
 
-    if (rewriterQualityGatePassed(genericity, critique)) {
+    if (qualityGatePassed(facts, html, genericity, critique)) {
       return {
         html: snapshot.html,
         sourceTruncated,
@@ -117,11 +164,11 @@ export async function runHumanizationEngine(
         brandConsistencyScore: critique.brandConsistency,
         genericityScore: Math.max(genericity.score, critique.genericity),
         humanizationAttempts: attempts,
-        factsExtracted: facts.keyDetails.length > 0,
+        factsExtracted: factsExtracted(facts),
       };
     }
 
-    retryIssues = mergeRetryIssues(genericity, critique);
+    retryIssues = mergeRetryIssues(genericity, critique, completenessIssues);
   }
 
   const final = best!;
@@ -134,6 +181,6 @@ export async function runHumanizationEngine(
     brandConsistencyScore: final.critique.brandConsistency,
     genericityScore: Math.max(final.genericity.score, final.critique.genericity),
     humanizationAttempts: attempts,
-    factsExtracted: facts.keyDetails.length > 0,
+    factsExtracted: factsExtracted(facts),
   };
 }

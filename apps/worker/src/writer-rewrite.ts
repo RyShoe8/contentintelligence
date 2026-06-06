@@ -15,6 +15,7 @@ export type WriterRewriteBody = {
   links?: { url: string; label?: string }[];
   writer_article_id?: string;
   rewrite_divergence_min?: number;
+  preserve_instructions?: boolean;
 };
 
 export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
@@ -24,6 +25,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     links: body.links ?? [],
     writer_article_id: body.writer_article_id,
     rewrite_divergence_min: body.rewrite_divergence_min,
+    preserve_instructions: body.preserve_instructions,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -36,8 +38,14 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     throw new Error("organization_id and created_by are required");
   }
 
-  const { voice_id, source_text, links, writer_article_id, rewrite_divergence_min } =
-    parsed.data;
+  const {
+    voice_id,
+    source_text,
+    links,
+    writer_article_id,
+    rewrite_divergence_min,
+    preserve_instructions,
+  } = parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
     throw new Error("voice_not_found");
@@ -79,6 +87,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     links,
     writerArticleId: writer_article_id,
     rewriteDivergenceMin: rewrite_divergence_min,
+    preserveInstructions: preserve_instructions,
   });
 
   const article = await upsertWriterArticleDraft(db, {

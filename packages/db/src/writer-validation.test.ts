@@ -261,6 +261,16 @@ describe("writerRewriteInputSchema", () => {
     assert.equal(parsed.success, true);
     assert.equal(parsed.data?.rewrite_divergence_min, 50);
   });
+
+  it("accepts preserve_instructions boolean", () => {
+    const parsed = writerRewriteInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      source_text: "x".repeat(WRITER_SOURCE_MIN_CHARS),
+      preserve_instructions: true,
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.preserve_instructions, true);
+  });
 });
 
 describe("stripHtmlToPlainText", () => {

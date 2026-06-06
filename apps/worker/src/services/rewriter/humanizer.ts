@@ -10,9 +10,11 @@ export type HumanizeArticleOpts = {
   html: string;
   retryIssues?: string[];
   attempt?: number;
+  skip?: boolean;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
+  if (opts.skip) return opts.html;
   if (!env.openaiApiKey) throw new Error("openai_not_configured");
 
   const ctx = resolveVoiceGenerationContext(opts.voice);

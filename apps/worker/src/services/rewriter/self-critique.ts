@@ -1,4 +1,6 @@
 import {
+  isProceduralContentFacts,
+  rewriterProceduralCompletenessIssues,
   selfCritiqueResultSchema,
   stripHtmlToPlainText,
   type ContentFacts,
@@ -19,6 +21,12 @@ export async function runSelfCritique(
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
+  const procedural = isProceduralContentFacts(facts);
+  const completenessIssues = procedural ? rewriterProceduralCompletenessIssues(facts, html) : [];
+
+  const proceduralBlock = procedural
+    ? `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`
+    : "";
 
   const raw = await completeJson<unknown>({
     system: `Critique whether this article sounds human-authored for the brand.
@@ -29,7 +37,8 @@ Scores 0–100. Answer these internally:
 humanAuthenticity: reads like a real operator wrote it.
 brandConsistency: matches the stated persona/constraints.
 genericity: template/AI feel (high = bad).
-issues: short bullets for failures.`,
+issues: short bullets for failures.
+${proceduralBlock}`,
     user: [
       personaBlock,
       "",
@@ -46,12 +55,17 @@ issues: short bullets for failures.`,
   });
 
   const parsed = parseSelfCritiqueResult(raw);
-  if (parsed) return parsed;
+  if (parsed) {
+    return selfCritiqueResultSchema.parse({
+      ...parsed,
+      issues: [...new Set([...completenessIssues, ...parsed.issues])].slice(0, 12),
+    });
+  }
 
   return selfCritiqueResultSchema.parse({
     humanAuthenticity: 70,
     brandConsistency: 70,
     genericity: 40,
-    issues: ["Critique unavailable"],
+    issues: completenessIssues.length ? completenessIssues : ["Critique unavailable"],
   });
 }

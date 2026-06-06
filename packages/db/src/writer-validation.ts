@@ -29,6 +29,7 @@ export const writerRewriteInputSchema = z.object({
   links: z.array(writerLinkSchema).max(WRITER_LINK_MAX).default([]),
   writer_article_id: z.string().uuid().optional(),
   rewrite_divergence_min: z.coerce.number().int().min(0).max(100).default(0),
+  preserve_instructions: z.boolean().default(false),
 });
 
 export type WriterRewriteInput = z.infer<typeof writerRewriteInputSchema>;

@@ -60,6 +60,7 @@ export type BuildArticleRewritePromptsOpts = {
   links: WriterLink[];
   writerArticleId?: string;
   rewriteDivergenceMin?: number;
+  preserveInstructions?: boolean;
 };
 
 export function writerArticlesToExamples(articles: WriterArticle[]): ArticleRewriteExample[] {
@@ -243,6 +244,7 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
     sourceText: opts.sourceText,
     links: opts.links,
     writerArticleId: opts.writerArticleId,
+    preserveInstructions: opts.preserveInstructions,
   });
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, opts);

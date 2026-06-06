@@ -128,6 +128,7 @@ export function WriterForm({
   const [linksRedistributedNotice, setLinksRedistributedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
   const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
+  const [preserveInstructions, setPreserveInstructions] = useState(false);
   const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
   const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
   const [rewriteDivergenceAttempts, setRewriteDivergenceAttempts] = useState<number | null>(null);
@@ -176,6 +177,7 @@ export function WriterForm({
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
     setRewriteDivergenceAttempts(null);
+    setPreserveInstructions(false);
     setHumanAuthenticityScore(null);
     setBrandConsistencyScore(null);
     setGenericityScore(null);
@@ -268,6 +270,7 @@ export function WriterForm({
           links,
           writer_article_id: articleId || undefined,
           rewrite_divergence_min: rewriteDivergenceMin,
+          preserve_instructions: preserveInstructions,
         }),
       });
       const data = (await r.json().catch(() => ({}))) as {
@@ -540,6 +543,21 @@ export function WriterForm({
               0 = light edit, 100 = heavy rewrite. Score reflects wording and phrasing change, not new facts.
             </p>
           </div>
+          <label className="flex min-w-[220px] flex-1 items-start gap-2 text-sm text-[var(--fg)]">
+            <input
+              type="checkbox"
+              checked={preserveInstructions}
+              onChange={(e) => setPreserveInstructions(e.target.checked)}
+              disabled={writing}
+              className="mt-1 accent-[var(--primary)]"
+            />
+            <span>
+              Preserve instructions
+              <span className="block text-xs text-[var(--muted)]">
+                Keep all steps and version-specific sections for how-to guides.
+              </span>
+            </span>
+          </label>
           <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
             {writing ? "Writing…" : "Write"}
           </Button>

@@ -1,5 +1,6 @@
 import {
   formatWriterLinksForPrompt,
+  isProceduralContentFacts,
   rewriterBlacklistPromptBlock,
   type BrandInterpretation,
   type BrandMemory,
@@ -38,6 +39,21 @@ function fingerprintsBlock(memory?: BrandMemory): string {
     parts.push(`Recurring warnings: ${memory.recurringWarnings.slice(0, 5).join(" | ")}`);
   }
   return parts.length ? `\nHuman fingerprints (use naturally when they fit):\n${parts.join("\n")}` : "";
+}
+
+function proceduralRulesBlock(facts: ContentFacts): string {
+  if (!isProceduralContentFacts(facts)) return "";
+  return `
+Procedural instructions (strict):
+- Render EVERY section as its own <h2> or <h3> using the section title.
+- Render EVERY step as an ordered <ol><li> list under its section. Preserve step order.
+- Do NOT merge version-specific sections into one generic flow.
+- Rephrase for brand voice without omitting steps, menu paths, or settings names.`;
+}
+
+function formatSectionsForPrompt(facts: ContentFacts): string {
+  if (!isProceduralContentFacts(facts) || !facts.sections?.length) return "";
+  return `\n\nProcedural sections (include ALL steps):\n${JSON.stringify(facts.sections, null, 2)}`;
 }
 
 function formatExamplesForPrompt(examples: ArticleRewriteExample[]): string {
@@ -89,7 +105,7 @@ Rules:
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}
+${rewriterBlacklistPromptBlock()}${proceduralRulesBlock(opts.facts)}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
@@ -109,6 +125,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
   const userPrompt = [
     "Extracted facts (JSON):",
     JSON.stringify(opts.facts, null, 2),
+    formatSectionsForPrompt(opts.facts),
     "",
     "Brand interpretation (JSON):",
     JSON.stringify(opts.interpretation, null, 2),

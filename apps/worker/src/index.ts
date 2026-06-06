@@ -401,6 +401,7 @@ async function main(): Promise<void> {
           body.rewrite_divergence_min !== ""
             ? Number(body.rewrite_divergence_min)
             : undefined,
+        preserve_instructions: body.preserve_instructions === true,
       });
       return result;
     } catch (e) {

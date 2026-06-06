@@ -54,4 +54,34 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Human fingerprints/i);
     assert.match(prompt, /Here's the deal/);
   });
+
+  it("includes procedural rules when facts are procedural", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "procedural",
+        sections: [
+          {
+            title: "Outlook 2016",
+            steps: ["Open File > Options > Mail"],
+          },
+        ],
+        keyDetails: [],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful guide",
+        qualityScore: 8,
+        bestFor: "Outlook users",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+    });
+
+    assert.match(prompt, /Procedural instructions \(strict\)/i);
+    assert.match(prompt, /Do NOT merge version-specific sections/i);
+  });
 });
