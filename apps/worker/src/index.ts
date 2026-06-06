@@ -25,6 +25,7 @@ import {
 } from "./voice-generate-lock.js";
 import { runWriterFingerprintsExtract } from "./writer-fingerprints.js";
 import { runWriterRewrite } from "./writer-rewrite.js";
+import { runWriterCompose } from "./writer-compose.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -416,6 +417,47 @@ async function main(): Promise<void> {
         message.includes("at least")
           ? 400
           : message === "openai_not_configured" || message === "voice_persona_not_ready"
+            ? 503
+            : 500;
+      return reply.code(status).send({ error: message });
+    }
+  });
+
+  app.post("/writer/compose", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const db = await getDb();
+      await ensureIndexes(db);
+      const result = await runWriterCompose(db, {
+        voice_id: String(body.voice_id ?? "").trim(),
+        organization_id: String(body.organization_id ?? "").trim(),
+        created_by: String(body.created_by ?? "").trim(),
+        topic: String(body.topic ?? ""),
+        reference_urls: Array.isArray(body.reference_urls)
+          ? (body.reference_urls as string[])
+          : [],
+        links: Array.isArray(body.links)
+          ? (body.links as { url: string; label?: string }[])
+          : [],
+        writer_article_id: body.writer_article_id
+          ? String(body.writer_article_id).trim()
+          : undefined,
+      });
+      return result;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const status =
+        message === "voice_not_found" ||
+        message === "writer_article_not_found" ||
+        message.includes("at least") ||
+        message.includes("Topic must")
+          ? 400
+          : message === "openai_not_configured" ||
+              message === "voice_persona_not_ready" ||
+              message === "research_brief_empty"
             ? 503
             : 500;
       return reply.code(status).send({ error: message });

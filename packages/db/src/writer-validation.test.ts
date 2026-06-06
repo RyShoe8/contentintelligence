@@ -20,8 +20,12 @@ import {
   writerRequestedLinksCarriedFromSource,
   writerRewriteDivergenceScore,
   writerRewriteInputSchema,
+  writerComposeInputSchema,
+  parseWriterReferenceUrls,
   writerUrlInSourceText,
   WRITER_SOURCE_MIN_CHARS,
+  WRITER_TOPIC_MIN_CHARS,
+  WRITER_REFERENCE_URL_MAX,
 } from "./writer-validation.js";
 
 describe("parseWriterLinks", () => {
@@ -239,6 +243,56 @@ describe("ensureWriterLinksInHtml", () => {
     assert.match(out, />Claim offer</);
     assert.match(out, /href="https:\/\/blog\.example\/review"/);
     assert.match(out, />blog\.example</);
+  });
+});
+
+describe("writerComposeInputSchema", () => {
+  it("requires minimum topic length", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "short",
+      reference_urls: [],
+      links: [],
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  it("accepts topic and reference urls", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "How to evaluate content marketing ROI for B2B teams",
+      reference_urls: ["https://example.com/guide", "https://other.org/stats"],
+      links: [{ url: "https://product.example", label: "Our tool" }],
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.reference_urls.length, 2);
+  });
+
+  it("rejects non-https reference urls", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      reference_urls: ["http://insecure.com"],
+    });
+    assert.equal(parsed.success, false);
+  });
+});
+
+describe("parseWriterReferenceUrls", () => {
+  it("parses valid https urls and skips invalid entries", () => {
+    const urls = parseWriterReferenceUrls([
+      "https://one.example",
+      "ftp://bad.example",
+      "",
+      "https://two.example/path",
+    ]);
+    assert.deepEqual(urls, ["https://one.example", "https://two.example/path"]);
+  });
+
+  it("caps at WRITER_REFERENCE_URL_MAX", () => {
+    const raw = Array.from({ length: 20 }, (_, i) => `https://site${i}.example`);
+    const urls = parseWriterReferenceUrls(raw);
+    assert.equal(urls.length, WRITER_REFERENCE_URL_MAX);
   });
 });
 

@@ -641,11 +641,17 @@ export const writerArticleLinkSchema = z.object({
   label: z.string().max(80).optional(),
 });
 
+export const writerArticleModeSchema = z.enum(["compose", "rewrite"]);
+export type WriterArticleMode = z.infer<typeof writerArticleModeSchema>;
+
 export const writerArticleSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
   voice_id: z.string().uuid(),
+  mode: writerArticleModeSchema.default("rewrite"),
   title: z.string().min(1).max(200),
+  topic: z.string().trim().max(500).optional(),
+  reference_urls: z.array(z.string().url()).max(15).default([]),
   source_text: z.string(),
   links: z.array(writerArticleLinkSchema).max(5).default([]),
   generated_html: z.string().default(""),

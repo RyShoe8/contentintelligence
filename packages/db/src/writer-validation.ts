@@ -1,8 +1,11 @@
 import { z } from "zod";
 
 export const WRITER_LINK_MAX = 5;
+export const WRITER_REFERENCE_URL_MAX = 15;
 export const WRITER_SOURCE_MIN_CHARS = 100;
 export const WRITER_SOURCE_MAX_CHARS = 32_000;
+export const WRITER_TOPIC_MIN_CHARS = 10;
+export const WRITER_TOPIC_MAX_CHARS = 500;
 export const WRITER_LINK_LABEL_MAX = 80;
 
 const httpsUrl = z
@@ -33,6 +36,33 @@ export const writerRewriteInputSchema = z.object({
 });
 
 export type WriterRewriteInput = z.infer<typeof writerRewriteInputSchema>;
+
+export const writerComposeInputSchema = z.object({
+  voice_id: z.string().uuid(),
+  topic: z
+    .string()
+    .trim()
+    .min(WRITER_TOPIC_MIN_CHARS, `Topic must be at least ${WRITER_TOPIC_MIN_CHARS} characters`)
+    .max(WRITER_TOPIC_MAX_CHARS),
+  reference_urls: z.array(httpsUrl).max(WRITER_REFERENCE_URL_MAX).default([]),
+  links: z.array(writerLinkSchema).max(WRITER_LINK_MAX).default([]),
+  writer_article_id: z.string().uuid().optional(),
+});
+
+export type WriterComposeInput = z.infer<typeof writerComposeInputSchema>;
+
+export function parseWriterReferenceUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    const url = typeof item === "string" ? item.trim() : String(item ?? "").trim();
+    if (!url) continue;
+    const parsed = httpsUrl.safeParse(url);
+    if (parsed.success) out.push(parsed.data);
+    if (out.length >= WRITER_REFERENCE_URL_MAX) break;
+  }
+  return out;
+}
 
 export function parseWriterLinks(raw: unknown): WriterLink[] {
   if (!Array.isArray(raw)) return [];
@@ -695,4 +725,10 @@ export function defaultWriterTitle(sourceText: string): string {
     .find(Boolean);
   if (!line) return "Untitled article";
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
+}
+
+export function defaultComposeTitle(topic: string): string {
+  const trimmed = topic.trim();
+  if (!trimmed) return "Untitled article";
+  return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
 }

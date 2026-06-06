@@ -32,22 +32,22 @@ async function extractWriterFingerprints(voiceId: string, organizationId: string
   });
 }
 
-export async function saveWriterArticleAction(formData: FormData) {
+export async function saveRewriterArticleAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
   const id = String(formData.get("writer_article_id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const finalHtml = String(formData.get("final_html") ?? "").trim();
 
-  if (!id) redirect("/writer?error=missing_article");
+  if (!id) redirect("/rewriter?error=missing_article");
   if (finalHtml.length < WRITER_SOURCE_MIN_CHARS) {
-    redirect(`/writer?article_id=${id}&error=content_too_short`);
+    redirect(`/rewriter?article_id=${id}&error=content_too_short`);
   }
 
   const db = await connectMongo();
   await ensureIndexes(db);
   const existing = await getWriterArticle(db, id, orgId);
-  if (!existing || existing.mode !== "compose") redirect("/writer?error=not_found");
+  if (!existing || existing.mode !== "rewrite") redirect("/rewriter?error=not_found");
 
   await updateWriterArticle(db, id, orgId, {
     title: title || existing.title,
@@ -57,20 +57,20 @@ export async function saveWriterArticleAction(formData: FormData) {
 
   void extractWriterFingerprints(existing.voice_id, orgId, finalHtml).catch(() => {});
 
-  revalidatePath("/writer");
-  redirect(`/writer?article_id=${id}&saved=1`);
+  revalidatePath("/rewriter");
+  redirect(`/rewriter?article_id=${id}&saved=1`);
 }
 
-export async function deleteWriterArticleAction(formData: FormData) {
+export async function deleteRewriterArticleAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
   const id = String(formData.get("writer_article_id") ?? "").trim();
-  if (!id) redirect("/writer?error=missing_article");
+  if (!id) redirect("/rewriter?error=missing_article");
 
   const db = await connectMongo();
   await ensureIndexes(db);
   await deleteWriterArticle(db, id, orgId);
 
-  revalidatePath("/writer");
-  redirect("/writer?deleted=1");
+  revalidatePath("/rewriter");
+  redirect("/rewriter?deleted=1");
 }

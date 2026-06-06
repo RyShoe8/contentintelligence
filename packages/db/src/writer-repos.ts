@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
 import type { WriterArticle, WriterArticleStatus } from "./schemas.js";
 import { writerArticleSchema } from "./schemas.js";
-import { defaultWriterTitle, type WriterLink } from "./writer-validation.js";
+import type { WriterArticleMode } from "./schemas.js";
+import {
+  defaultComposeTitle,
+  defaultWriterTitle,
+  type WriterLink,
+} from "./writer-validation.js";
 
 function writerArticles(db: Db): Collection<WriterArticle> {
   return db.collection<WriterArticle>(COLLECTIONS.writer_articles);
@@ -34,6 +39,21 @@ export async function listWriterArticlesByOrg(
   return docs.map((d) => writerArticleSchema.parse(d));
 }
 
+export async function listWriterArticlesByOrgAndMode(
+  db: Db,
+  organizationId: string,
+  mode: WriterArticleMode,
+): Promise<WriterArticle[]> {
+  const docs = await writerArticles(db)
+    .find({
+      organization_id: organizationId,
+      $or: [{ mode }, ...(mode === "rewrite" ? [{ mode: { $exists: false } }] : [])],
+    })
+    .sort({ voice_id: 1, updated_at: -1 })
+    .toArray();
+  return docs.map((d) => writerArticleSchema.parse(d));
+}
+
 export async function listSavedWriterExamplesForVoice(
   db: Db,
   organizationId: string,
@@ -58,6 +78,9 @@ export type UpsertWriterArticleDraftInput = {
   id?: string;
   organization_id: string;
   voice_id: string;
+  mode?: WriterArticleMode;
+  topic?: string;
+  reference_urls?: string[];
   source_text: string;
   links: WriterLink[];
   generated_html: string;
@@ -76,11 +99,20 @@ export async function upsertWriterArticleDraft(
     organization_id: data.organization_id,
   });
 
+  const mode = data.mode ?? existing?.mode ?? "rewrite";
+  const defaultTitle =
+    mode === "compose" && (data.topic?.trim() || existing?.topic)
+      ? defaultComposeTitle(data.topic?.trim() || existing?.topic || "")
+      : defaultWriterTitle(data.source_text);
+
   const row: WriterArticle = writerArticleSchema.parse({
     id,
     organization_id: data.organization_id,
     voice_id: data.voice_id,
-    title: data.title?.trim() || existing?.title || defaultWriterTitle(data.source_text),
+    mode,
+    topic: data.topic?.trim() || existing?.topic,
+    reference_urls: data.reference_urls ?? existing?.reference_urls ?? [],
+    title: data.title?.trim() || existing?.title || defaultTitle,
     source_text: data.source_text,
     links: data.links,
     generated_html: data.generated_html,

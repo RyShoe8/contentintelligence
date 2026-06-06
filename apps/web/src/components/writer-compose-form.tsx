@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
+  parseWriterReferenceUrls,
   WRITER_LINK_MAX,
-  WRITER_SOURCE_MIN_CHARS,
+  WRITER_REFERENCE_URL_MAX,
+  WRITER_TOPIC_MIN_CHARS,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
-import { saveRewriterArticleAction, deleteRewriterArticleAction } from "@/app/rewriter/actions";
+import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
 import { Button } from "@/components/ui/button";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
 import { cn } from "@/lib/cn";
 
-export type WriterArticleListItem = {
+export type WriterComposeArticleListItem = {
   id: string;
   voice_id: string;
   title: string;
@@ -22,13 +24,15 @@ export type WriterArticleListItem = {
   updated_at: string;
 };
 
-export type WriterVoiceOption = {
+export type WriterComposeVoiceOption = {
   id: string;
   name: string;
   ready: boolean;
 };
 
-export type WriterArticleDetail = WriterArticleListItem & {
+export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
+  topic: string;
+  reference_urls: string[];
   source_text: string;
   links: WriterLink[];
   generated_html: string;
@@ -38,9 +42,9 @@ export type WriterArticleDetail = WriterArticleListItem & {
 type LinkRow = { url: string; label: string };
 
 type Props = {
-  voices: WriterVoiceOption[];
-  articles: WriterArticleListItem[];
-  selectedArticle: WriterArticleDetail | null;
+  voices: WriterComposeVoiceOption[];
+  articles: WriterComposeArticleListItem[];
+  selectedArticle: WriterComposeArticleDetail | null;
   workerConfigured: boolean;
 };
 
@@ -51,9 +55,18 @@ function emptyLinkRow(): LinkRow {
   return { url: "", label: "" };
 }
 
+function emptyReferenceUrlRow(): string {
+  return "";
+}
+
 function linksToRows(links: WriterLink[]): LinkRow[] {
   if (!links.length) return [emptyLinkRow()];
   return links.map((l) => ({ url: l.url, label: l.label ?? "" }));
+}
+
+function referenceUrlsToRows(urls: string[]): string[] {
+  if (!urls.length) return [emptyReferenceUrlRow()];
+  return [...urls];
 }
 
 function rowsToLinks(rows: LinkRow[]): WriterLink[] {
@@ -71,16 +84,16 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
-function displayHtml(article: WriterArticleDetail | null, draftHtml: string): string {
+function displayHtml(article: WriterComposeArticleDetail | null, draftHtml: string): string {
   if (draftHtml) return draftHtml;
   if (!article) return "";
   return article.final_html?.trim() || article.generated_html || "";
 }
 
 function initialExpandedVoiceIds(
-  voices: WriterVoiceOption[],
-  articles: WriterArticleListItem[],
-  selectedArticle: WriterArticleDetail | null,
+  voices: WriterComposeVoiceOption[],
+  articles: WriterComposeArticleListItem[],
+  selectedArticle: WriterComposeArticleDetail | null,
 ): Set<string> {
   const ids = new Set<string>();
   const focus =
@@ -90,7 +103,7 @@ function initialExpandedVoiceIds(
   return ids;
 }
 
-export function WriterForm({
+export function WriterComposeForm({
   voices,
   articles,
   selectedArticle,
@@ -107,7 +120,11 @@ export function WriterForm({
   );
   const [articleId, setArticleId] = useState(selectedArticle?.id ?? "");
   const [title, setTitle] = useState(selectedArticle?.title ?? "");
-  const [sourceText, setSourceText] = useState(selectedArticle?.source_text ?? "");
+  const [topic, setTopic] = useState(selectedArticle?.topic ?? "");
+  const [referenceUrlRows, setReferenceUrlRows] = useState<string[]>(() =>
+    referenceUrlsToRows(selectedArticle?.reference_urls ?? []),
+  );
+  const [researchBrief, setResearchBrief] = useState(selectedArticle?.source_text ?? "");
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
@@ -117,28 +134,22 @@ export function WriterForm({
   const [showHtmlPreview, setShowHtmlPreview] = useState(true);
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
-  const [truncatedNotice, setTruncatedNotice] = useState(false);
+  const [referencesFetched, setReferencesFetched] = useState<number | null>(null);
+  const [referencesFailed, setReferencesFailed] = useState<string[]>([]);
   const [linksPresent, setLinksPresent] = useState<number | null>(null);
   const [linksRequested, setLinksRequested] = useState<number | null>(null);
-  const [linksCarriedFromSource, setLinksCarriedFromSource] = useState<number | null>(null);
   const [linksAdded, setLinksAdded] = useState<number | null>(null);
-  const [linksNonRequestedInOutput, setLinksNonRequestedInOutput] = useState<number | null>(null);
   const [linksWovenNotice, setLinksWovenNotice] = useState<number | null>(null);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
   const [linksRedistributedNotice, setLinksRedistributedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
-  const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
-  const [preserveInstructions, setPreserveInstructions] = useState(false);
-  const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
-  const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
-  const [rewriteDivergenceAttempts, setRewriteDivergenceAttempts] = useState<number | null>(null);
   const [humanAuthenticityScore, setHumanAuthenticityScore] = useState<number | null>(null);
   const [brandConsistencyScore, setBrandConsistencyScore] = useState<number | null>(null);
   const [genericityScore, setGenericityScore] = useState<number | null>(null);
   const [humanizationAttempts, setHumanizationAttempts] = useState<number | null>(null);
 
   const articlesByVoice = useMemo(() => {
-    const map = new Map<string, WriterArticleListItem[]>();
+    const map = new Map<string, WriterComposeArticleListItem[]>();
     for (const v of voices) map.set(v.id, []);
     for (const a of articles) {
       const list = map.get(a.voice_id) ?? [];
@@ -155,39 +166,36 @@ export function WriterForm({
 
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
-  const showRewriteColumn = Boolean(outputHtml.trim() || articleId);
+  const showOutputColumn = Boolean(outputHtml.trim() || articleId);
 
   const resetComposer = useCallback(() => {
     setArticleId("");
     setTitle("");
-    setSourceText("");
+    setTopic("");
+    setReferenceUrlRows([emptyReferenceUrlRow()]);
+    setResearchBrief("");
     setLinkRows([emptyLinkRow()]);
     setOutputHtml("");
     setWriteError(null);
-    setTruncatedNotice(false);
+    setReferencesFetched(null);
+    setReferencesFailed([]);
     setLinksPresent(null);
     setLinksRequested(null);
-    setLinksCarriedFromSource(null);
     setLinksAdded(null);
-    setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRedistributedNotice(null);
     setLinksRevisedNotice(false);
-    setRewriteDivergenceScore(null);
-    setRewriteDivergenceBelowMin(false);
-    setRewriteDivergenceAttempts(null);
-    setPreserveInstructions(false);
     setHumanAuthenticityScore(null);
     setBrandConsistencyScore(null);
     setGenericityScore(null);
     setHumanizationAttempts(null);
-    router.push("/rewriter");
+    router.push("/writer");
   }, [router]);
 
   const loadArticle = useCallback(
     (id: string) => {
-      router.push(`/rewriter?article_id=${encodeURIComponent(id)}`);
+      router.push(`/writer?article_id=${encodeURIComponent(id)}`);
     },
     [router],
   );
@@ -224,13 +232,42 @@ export function WriterForm({
     });
   }
 
+  function updateReferenceUrlRow(index: number, value: string) {
+    setReferenceUrlRows((prev) => prev.map((row, i) => (i === index ? value : row)));
+  }
+
+  function addReferenceUrlRow() {
+    setReferenceUrlRows((prev) => {
+      if (prev.length >= WRITER_REFERENCE_URL_MAX) return prev;
+      return [...prev, emptyReferenceUrlRow()];
+    });
+  }
+
+  function removeReferenceUrlRow(index: number) {
+    setReferenceUrlRows((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      return next.length ? next : [emptyReferenceUrlRow()];
+    });
+  }
+
   async function handleWrite() {
     if (!canWrite) return;
-    const trimmed = sourceText.trim();
-    if (trimmed.length < WRITER_SOURCE_MIN_CHARS) {
-      setWriteError(`Paste at least ${WRITER_SOURCE_MIN_CHARS} characters of source article.`);
+    const trimmedTopic = topic.trim();
+    if (trimmedTopic.length < WRITER_TOPIC_MIN_CHARS) {
+      setWriteError(`Enter a topic of at least ${WRITER_TOPIC_MIN_CHARS} characters.`);
       return;
     }
+
+    const filledReferenceRows = referenceUrlRows.filter((r) => r.trim());
+    const referenceUrls = parseWriterReferenceUrls(filledReferenceRows);
+    if (filledReferenceRows.length > referenceUrls.length) {
+      const skipped = filledReferenceRows.length - referenceUrls.length;
+      setWriteError(
+        `${skipped} reference URL${skipped === 1 ? "" : "s"} skipped — use valid https:// URLs.`,
+      );
+      return;
+    }
+
     const filledLinkRows = linkRows.filter((r) => r.url.trim());
     const links = rowsToLinks(linkRows);
     if (filledLinkRows.length > links.length) {
@@ -243,74 +280,66 @@ export function WriterForm({
 
     setWriting(true);
     setWriteError(null);
-    setTruncatedNotice(false);
+    setReferencesFetched(null);
+    setReferencesFailed([]);
     setLinksPresent(null);
     setLinksRequested(null);
-    setLinksCarriedFromSource(null);
     setLinksAdded(null);
-    setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRedistributedNotice(null);
     setLinksRevisedNotice(false);
-    setRewriteDivergenceScore(null);
-    setRewriteDivergenceBelowMin(false);
-    setRewriteDivergenceAttempts(null);
     setHumanAuthenticityScore(null);
     setBrandConsistencyScore(null);
     setGenericityScore(null);
     setHumanizationAttempts(null);
+
     try {
-      const r = await fetch("/api/worker/writer/rewrite", {
+      const r = await fetch("/api/worker/writer/compose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           voice_id: voiceId,
-          source_text: trimmed,
+          topic: trimmedTopic,
+          reference_urls: referenceUrls,
           links,
           writer_article_id: articleId || undefined,
-          rewrite_divergence_min: rewriteDivergenceMin,
-          preserve_instructions: preserveInstructions,
         }),
       });
       const data = (await r.json().catch(() => ({}))) as {
         error?: string;
         writer_article_id?: string;
         generated_html?: string;
-        source_truncated?: boolean;
+        research_brief?: string;
+        references_fetched?: number;
+        references_failed?: string[];
         links_requested?: number;
         links_present?: number;
-        links_carried_from_source?: number;
         links_added?: number;
-        links_non_requested_in_output?: number;
-        links_appended?: number;
         links_woven?: number;
+        links_appended?: number;
         links_redistributed?: number;
         links_revised?: boolean;
-        rewrite_divergence_score?: number;
-        rewrite_divergence_min?: number;
-        rewrite_divergence_below_min?: boolean;
-        rewrite_divergence_attempts?: number;
         human_authenticity_score?: number;
         brand_consistency_score?: number;
         genericity_score?: number;
         humanization_attempts?: number;
       };
       if (!r.ok) {
-        setWriteError(data.error ?? "Rewrite failed");
+        setWriteError(data.error ?? "Generation failed");
         return;
       }
       if (data.generated_html) setOutputHtml(data.generated_html);
-      if (data.source_truncated) setTruncatedNotice(true);
+      if (data.research_brief) setResearchBrief(data.research_brief);
+      if (typeof data.references_fetched === "number") {
+        setReferencesFetched(data.references_fetched);
+      }
+      if (Array.isArray(data.references_failed)) {
+        setReferencesFailed(data.references_failed);
+      }
       if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
       if (typeof data.links_present === "number") setLinksPresent(data.links_present);
-      if (typeof data.links_carried_from_source === "number") {
-        setLinksCarriedFromSource(data.links_carried_from_source);
-      }
       if (typeof data.links_added === "number") setLinksAdded(data.links_added);
-      if (typeof data.links_non_requested_in_output === "number") {
-        setLinksNonRequestedInOutput(data.links_non_requested_in_output);
-      }
       if (typeof data.links_woven === "number" && data.links_woven > 0) {
         setLinksWovenNotice(data.links_woven);
       }
@@ -320,18 +349,7 @@ export function WriterForm({
       if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
         setLinksRedistributedNotice(data.links_redistributed);
       }
-      if (data.links_revised === true) {
-        setLinksRevisedNotice(true);
-      }
-      if (typeof data.rewrite_divergence_score === "number") {
-        setRewriteDivergenceScore(data.rewrite_divergence_score);
-      }
-      if (data.rewrite_divergence_below_min === true) {
-        setRewriteDivergenceBelowMin(true);
-      }
-      if (typeof data.rewrite_divergence_attempts === "number") {
-        setRewriteDivergenceAttempts(data.rewrite_divergence_attempts);
-      }
+      if (data.links_revised === true) setLinksRevisedNotice(true);
       if (typeof data.human_authenticity_score === "number") {
         setHumanAuthenticityScore(data.human_authenticity_score);
       }
@@ -346,11 +364,11 @@ export function WriterForm({
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
-        router.push(`/rewriter?article_id=${encodeURIComponent(data.writer_article_id)}`);
+        router.push(`/writer?article_id=${encodeURIComponent(data.writer_article_id)}`);
         router.refresh();
       }
     } catch {
-      setWriteError("Rewrite failed");
+      setWriteError("Generation failed");
     } finally {
       setWriting(false);
     }
@@ -434,7 +452,7 @@ export function WriterForm({
                             </span>
                           </button>
                           <form
-                            action={deleteRewriterArticleAction}
+                            action={deleteWriterArticleAction}
                             onSubmit={(e) => confirmDeleteArticle(a.title, e)}
                             onClick={(e) => e.stopPropagation()}
                             className="flex shrink-0 items-center border-l border-[var(--border)] px-2"
@@ -457,7 +475,7 @@ export function WriterForm({
 
       {!workerConfigured ? (
         <p className="ui-alert-error text-sm">
-          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable ReWriter.
+          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable Writer.
         </p>
       ) : null}
       {readyVoices.length === 0 ? (
@@ -479,6 +497,51 @@ export function WriterForm({
       ) : null}
 
       <section className="ui-card space-y-4 p-6">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[var(--muted)]">Topic</span>
+          <textarea
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            rows={3}
+            placeholder="What should this article cover?"
+            className="resize-y rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">
+              Reference sources (up to {WRITER_REFERENCE_URL_MAX}, research only)
+            </span>
+            <button
+              type="button"
+              onClick={addReferenceUrlRow}
+              disabled={referenceUrlRows.length >= WRITER_REFERENCE_URL_MAX}
+              className="text-xs text-[var(--primary)] hover:underline disabled:opacity-50"
+            >
+              Add URL
+            </button>
+          </div>
+          {referenceUrlRows.map((row, i) => (
+            <div key={i} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                type="url"
+                value={row}
+                onChange={(e) => updateReferenceUrlRow(i, e.target.value)}
+                placeholder="https://…"
+                className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => removeReferenceUrlRow(i)}
+                className="text-xs text-red-400 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[var(--muted)]">
@@ -521,85 +584,33 @@ export function WriterForm({
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
-          <div className="min-w-[200px] flex-1 space-y-1">
-            <label
-              htmlFor="rewrite-divergence-min"
-              className="text-sm text-[var(--muted)]"
-            >
-              Min difference from original: {rewriteDivergenceMin}%
-            </label>
-            <input
-              id="rewrite-divergence-min"
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={rewriteDivergenceMin}
-              onChange={(e) => setRewriteDivergenceMin(Number(e.target.value))}
-              disabled={writing}
-              className="w-full accent-[var(--primary)]"
-            />
-            <p className="text-xs text-[var(--muted)]">
-              0 = light edit, 100 = heavy rewrite. Score reflects wording and phrasing change, not new facts.
-            </p>
-          </div>
-          <label className="flex min-w-[220px] flex-1 items-start gap-2 text-sm text-[var(--fg)]">
-            <input
-              type="checkbox"
-              checked={preserveInstructions}
-              onChange={(e) => setPreserveInstructions(e.target.checked)}
-              disabled={writing}
-              className="mt-1 accent-[var(--primary)]"
-            />
-            <span>
-              Preserve instructions
-              <span className="block text-xs text-[var(--muted)]">
-                Keep step-by-step sections intact; rewrite the rest as a full article.
-              </span>
-            </span>
-          </label>
           <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
             {writing ? "Writing…" : "Write"}
           </Button>
         </div>
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
+        {referencesFetched != null || referencesFailed.length > 0 ? (
+          <p className="text-xs text-[var(--muted)]">
+            References fetched: {referencesFetched ?? 0}
+            {referencesFailed.length > 0
+              ? ` · ${referencesFailed.length} failed to load`
+              : ""}
+          </p>
+        ) : null}
         {linksRequested != null && linksRequested > 0 ? (
-          <div className="space-y-1">
-            <p
-              className={cn(
-                "text-xs",
-                linksPresent != null && linksPresent < linksRequested
-                  ? "text-amber-200/90"
-                  : "text-[var(--muted)]",
-              )}
-            >
-              Requested links included: {linksPresent ?? "—"}/{linksRequested}
-              {linksCarriedFromSource != null && linksCarriedFromSource > 0
-                ? ` (${linksCarriedFromSource} ${
-                    linksCarriedFromSource === 1 ? "was" : "were"
-                  } already in your source article)`
-                : ""}
-              {linksWovenNotice != null && linksWovenNotice > 0
-                ? ` (${linksWovenNotice} woven into body automatically)`
-                : ""}
-            </p>
-            {linksAdded != null &&
-            linksCarriedFromSource != null &&
-            linksRequested > 0 &&
-            linksAdded < linksRequested &&
-            linksCarriedFromSource > 0 ? (
-              <p className="text-xs text-amber-200/90">
-                Only {linksAdded}/{linksRequested} newly included; {linksCarriedFromSource} carried
-                from source
-              </p>
-            ) : null}
-            {linksNonRequestedInOutput != null && linksNonRequestedInOutput > 0 ? (
-              <p className="text-xs text-[var(--muted)]">
-                Article also keeps {linksNonRequestedInOutput} other link
-                {linksNonRequestedInOutput === 1 ? "" : "s"} from the source
-              </p>
-            ) : null}
-          </div>
+          <p
+            className={cn(
+              "text-xs",
+              linksPresent != null && linksPresent < linksRequested
+                ? "text-amber-200/90"
+                : "text-[var(--muted)]",
+            )}
+          >
+            Requested links included: {linksPresent ?? "—"}/{linksRequested}
+            {linksWovenNotice != null && linksWovenNotice > 0
+              ? ` (${linksWovenNotice} woven into body automatically)`
+              : ""}
+          </p>
         ) : null}
         {humanAuthenticityScore != null && genericityScore != null ? (
           <p className="text-xs text-[var(--muted)]">
@@ -609,30 +620,6 @@ export function WriterForm({
             {humanizationAttempts != null && humanizationAttempts > 1
               ? ` (${humanizationAttempts} humanization passes)`
               : ""}
-          </p>
-        ) : null}
-        {rewriteDivergenceScore != null ? (
-          <p className="text-xs text-[var(--muted)]">
-            Difference from original: {rewriteDivergenceScore}%
-          </p>
-        ) : null}
-        {rewriteDivergenceAttempts != null && rewriteDivergenceAttempts > 1 ? (
-          <p className="text-xs text-[var(--muted)]">
-            Retried {rewriteDivergenceAttempts - 1}{" "}
-            {rewriteDivergenceAttempts - 1 === 1 ? "time" : "times"} for more difference from the
-            original.
-          </p>
-        ) : null}
-        {rewriteDivergenceBelowMin ? (
-          <p className="text-xs text-amber-200/90">
-            Rewrite was {rewriteDivergenceScore ?? "—"}% different; your minimum was{" "}
-            {rewriteDivergenceMin}%. Meeting the slider target is best-effort after retries, not
-            guaranteed for fact-heavy articles. Try Write again with a higher setting.
-          </p>
-        ) : null}
-        {truncatedNotice ? (
-          <p className="text-xs text-amber-200/90">
-            Source was truncated for length; review the rewrite.
           </p>
         ) : null}
         {linksRevisedNotice ? (
@@ -656,20 +643,25 @@ export function WriterForm({
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="flex min-h-[360px] flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
+          <h2 className="text-sm font-medium text-[var(--fg)]">Research brief</h2>
           <textarea
-            value={sourceText}
-            onChange={(e) => setSourceText(e.target.value)}
+            value={researchBrief}
+            onChange={(e) => setResearchBrief(e.target.value)}
             rows={16}
-            placeholder="Paste the full source article…"
-            className={cn(articlePaneClass, "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]")}
+            readOnly={!researchBrief.trim()}
+            placeholder="Generated research brief appears here after Write."
+            className={cn(
+              articlePaneClass,
+              "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]",
+              researchBrief.trim() && "opacity-90",
+            )}
           />
         </div>
 
         <div className="flex min-h-[360px] flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-[var(--fg)]">Rewritten article</h2>
-            {showRewriteColumn ? (
+            <h2 className="text-sm font-medium text-[var(--fg)]">Article</h2>
+            {showOutputColumn ? (
               <div className="flex rounded-md border border-[var(--border)] p-0.5 text-xs">
                 <button
                   type="button"
@@ -699,10 +691,10 @@ export function WriterForm({
             ) : null}
           </div>
 
-          {showRewriteColumn ? (
+          {showOutputColumn ? (
             <form
-              id="writer-save-form"
-              action={saveRewriterArticleAction}
+              id="writer-compose-save-form"
+              action={saveWriterArticleAction}
               className="flex min-h-0 flex-1 flex-col gap-4"
             >
               <input type="hidden" name="writer_article_id" value={articleId} />
@@ -745,7 +737,6 @@ export function WriterForm({
                   className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2"
                 />
               </label>
-
             </form>
           ) : (
             <div
@@ -754,16 +745,16 @@ export function WriterForm({
                 "flex flex-1 items-center justify-center p-4 text-sm text-[var(--muted)]",
               )}
             >
-              Run Write to generate a rewrite for the selected voice.
+              Run Write to generate an article for the selected voice.
             </div>
           )}
 
           {articleId ? (
             <div className="flex flex-wrap gap-2">
-              {showRewriteColumn ? (
+              {showOutputColumn ? (
                 <Button
                   type="submit"
-                  form="writer-save-form"
+                  form="writer-compose-save-form"
                   variant="primary"
                   disabled={!articleId}
                 >
@@ -771,7 +762,7 @@ export function WriterForm({
                 </Button>
               ) : null}
               <form
-                action={deleteRewriterArticleAction}
+                action={deleteWriterArticleAction}
                 onSubmit={(e) => confirmDeleteArticle(title, e)}
               >
                 <input type="hidden" name="writer_article_id" value={articleId} />

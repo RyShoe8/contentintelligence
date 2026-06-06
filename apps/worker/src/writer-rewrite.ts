@@ -53,7 +53,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
 
   if (writer_article_id) {
     const existing = await getWriterArticle(db, writer_article_id, organizationId);
-    if (!existing || existing.voice_id !== voice_id) {
+    if (!existing || existing.voice_id !== voice_id || existing.mode !== "rewrite") {
       throw new Error("writer_article_not_found");
     }
   }
@@ -94,6 +94,7 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     id: writer_article_id,
     organization_id: organizationId,
     voice_id,
+    mode: "rewrite",
     source_text,
     links,
     generated_html: html,

@@ -4,11 +4,7 @@ import {
   listVoices,
   listWriterArticlesByOrgAndMode,
 } from "@content-resourcer/db";
-import {
-  WriterComposeForm,
-  type WriterComposeArticleDetail,
-  type WriterComposeArticleListItem,
-} from "@/components/writer-compose-form";
+import { WriterForm, type WriterArticleDetail, type WriterArticleListItem } from "@/components/writer-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -25,7 +21,7 @@ function voiceIsReady(voice: {
   return Boolean(voice.persona?.trim());
 }
 
-export default async function WriterPage({
+export default async function RewriterPage({
   searchParams,
 }: {
   searchParams: Promise<{
@@ -43,14 +39,14 @@ export default async function WriterPage({
 
   const [voices, articles] = await Promise.all([
     listVoices(db, orgId),
-    listWriterArticlesByOrgAndMode(db, orgId, "compose"),
+    listWriterArticlesByOrgAndMode(db, orgId, "rewrite"),
   ]);
 
   const workerConfigured = !!process.env.WORKER_URL;
   const selectedId = sp.article_id?.trim() ?? "";
   const selectedRaw = selectedId ? await getWriterArticle(db, selectedId, orgId) : null;
 
-  const articleList: WriterComposeArticleListItem[] = articles.map((a) => ({
+  const articleList: WriterArticleListItem[] = articles.map((a) => ({
     id: a.id,
     voice_id: a.voice_id,
     title: a.title,
@@ -58,16 +54,14 @@ export default async function WriterPage({
     updated_at: a.updated_at.toISOString(),
   }));
 
-  const selectedArticle: WriterComposeArticleDetail | null =
-    selectedRaw && selectedRaw.mode === "compose"
+  const selectedArticle: WriterArticleDetail | null =
+    selectedRaw && selectedRaw.mode === "rewrite"
       ? {
           id: selectedRaw.id,
           voice_id: selectedRaw.voice_id,
           title: selectedRaw.title,
           status: selectedRaw.status,
           updated_at: selectedRaw.updated_at.toISOString(),
-          topic: selectedRaw.topic ?? "",
-          reference_urls: selectedRaw.reference_urls ?? [],
           source_text: selectedRaw.source_text,
           links: selectedRaw.links,
           generated_html: selectedRaw.generated_html,
@@ -93,8 +87,8 @@ export default async function WriterPage({
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Writer"
-        description="Generate researched articles from a topic and optional reference URLs. Weave in your links, edit, and save."
+        title="ReWriter"
+        description="Reconstruct articles from extracted facts in a voice persona, weave in your links, edit, and save. Saved articles guide future rewrites for that voice."
       />
 
       {sp.saved === "1" ? (
@@ -105,7 +99,7 @@ export default async function WriterPage({
       ) : null}
       {errorMsg ? <p className="ui-alert-error text-sm">{errorMsg}</p> : null}
 
-      <WriterComposeForm
+      <WriterForm
         key={selectedArticle?.id ?? "new"}
         voices={voiceOptions}
         articles={articleList}
