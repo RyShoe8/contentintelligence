@@ -37,4 +37,35 @@ describe("parseContentFacts", () => {
     assert.equal(facts!.contentType, "procedural");
     assert.equal(facts!.sections?.length, 2);
   });
+
+  it("parses hybrid narrative and procedural sections", () => {
+    const facts = parseContentFacts({
+      contentType: "hybrid",
+      narrativeSections: [
+        {
+          title: "Why Your Outlook Signature Matters",
+          points: ["Reinforces brand", "Makes contact easy"],
+        },
+        {
+          title: "Frequently Asked Questions",
+          points: ["Can I have multiple signatures?"],
+        },
+      ],
+      sections: [
+        {
+          title: "Outlook for Windows",
+          steps: ["Open File > Options", "Select Mail > Signatures"],
+        },
+        {
+          title: "Outlook on the Web",
+          steps: ["Open Settings", "Click Save"],
+        },
+      ],
+      keyDetails: ["Outlook signature guide"],
+    });
+    assert.ok(facts);
+    assert.equal(facts!.contentType, "hybrid");
+    assert.equal(facts!.narrativeSections?.length, 2);
+    assert.equal(facts!.sections?.length, 2);
+  });
 });

@@ -11,6 +11,7 @@ export type HumanizeArticleOpts = {
   retryIssues?: string[];
   attempt?: number;
   skip?: boolean;
+  proceduralLock?: boolean;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
@@ -32,6 +33,13 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
       ? `\nAddress these issues:\n${opts.retryIssues.map((i) => `- ${i}`).join("\n")}`
       : "";
 
+  const proceduralLockBlock = opts.proceduralLock
+    ? `
+- Do NOT remove, merge, or shorten steps under procedural how-to headings.
+- Preserve every <ol><li> step list under procedural section headings verbatim in meaning and order.
+- You may polish narrative paragraphs and lists outside procedural step blocks.`
+    : "";
+
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.
 Rules:
 - Output HTML fragment only. No markdown.
@@ -39,7 +47,7 @@ Rules:
 - Remove marketing clichés and affiliate spam tone.
 - Do not use:
 ${rewriterBlacklistPromptBlock()}
-- Keep every factual claim and every existing <a href> URL unchanged.
+- Keep every factual claim and every existing <a href> URL unchanged.${proceduralLockBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });

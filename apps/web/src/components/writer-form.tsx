@@ -554,7 +554,7 @@ export function WriterForm({
             <span>
               Preserve instructions
               <span className="block text-xs text-[var(--muted)]">
-                Keep all steps and version-specific sections for how-to guides.
+                Keep step-by-step sections intact; rewrite the rest as a full article.
               </span>
             </span>
           </label>

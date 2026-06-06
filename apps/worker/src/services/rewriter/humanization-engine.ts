@@ -1,8 +1,11 @@
 import type { Db } from "mongodb";
 import {
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  isHybridContentFacts,
+  isInstructionPreserveMode,
   isProceduralContentFacts,
-  rewriterProceduralCompletenessIssues,
+  rewriterHybridQualityGatePassed,
+  rewriterInstructionPreserveCompletenessIssues,
   rewriterProceduralQualityGatePassed,
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
@@ -65,7 +68,7 @@ function mergeRetryIssues(
 }
 
 function factsExtracted(facts: ContentFacts): boolean {
-  if (isProceduralContentFacts(facts)) return true;
+  if (isHybridContentFacts(facts) || isProceduralContentFacts(facts)) return true;
   return facts.keyDetails.length > 0;
 }
 
@@ -75,14 +78,17 @@ function qualityGatePassed(
   genericity: GenericityAnalysis,
   critique: SelfCritiqueResult,
 ): boolean {
+  if (isHybridContentFacts(facts)) {
+    return rewriterHybridQualityGatePassed(facts, html, critique);
+  }
   if (isProceduralContentFacts(facts)) {
     return rewriterProceduralQualityGatePassed(facts, html, critique);
   }
   return rewriterQualityGatePassed(genericity, critique);
 }
 
-function snapshotScore(snapshot: AttemptSnapshot, procedural: boolean): number {
-  if (procedural) {
+function snapshotScore(snapshot: AttemptSnapshot, preserveMode: boolean): number {
+  if (preserveMode) {
     return snapshot.composite - snapshot.completenessIssueCount * 15;
   }
   return snapshot.composite;
@@ -100,7 +106,9 @@ export async function runHumanizationEngine(
   const facts = await extractContentFacts(factsInput, {
     preserveInstructions: opts.preserveInstructions,
   });
-  const procedural = isProceduralContentFacts(facts);
+  const hybrid = isHybridContentFacts(facts);
+  const proceduralOnly = isProceduralContentFacts(facts);
+  const preserveMode = isInstructionPreserveMode(facts);
   const ctx = resolveVoiceGenerationContext(opts.voice);
   const interpretation = await interpretBrand(facts, ctx);
   const examples = await retrieveRankedExamples(
@@ -132,12 +140,15 @@ export async function runHumanizationEngine(
       html,
       retryIssues,
       attempt: attempts,
-      skip: procedural,
+      skip: proceduralOnly,
+      proceduralLock: hybrid,
     });
 
     const genericity = await analyzeGenericity(html);
     const critique = await runSelfCritique(html, facts, ctx);
-    const completenessIssues = procedural ? rewriterProceduralCompletenessIssues(facts, html) : [];
+    const completenessIssues = preserveMode
+      ? rewriterInstructionPreserveCompletenessIssues(facts, html)
+      : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
@@ -147,10 +158,7 @@ export async function runHumanizationEngine(
       completenessIssueCount: completenessIssues.length,
     };
 
-    if (
-      !best ||
-      snapshotScore(snapshot, procedural) > snapshotScore(best, procedural)
-    ) {
+    if (!best || snapshotScore(snapshot, preserveMode) > snapshotScore(best, preserveMode)) {
       best = snapshot;
     }
 

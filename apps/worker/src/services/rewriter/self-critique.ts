@@ -1,5 +1,7 @@
 import {
+  isHybridContentFacts,
   isProceduralContentFacts,
+  rewriterInstructionPreserveCompletenessIssues,
   rewriterProceduralCompletenessIssues,
   selfCritiqueResultSchema,
   stripHtmlToPlainText,
@@ -21,12 +23,20 @@ export async function runSelfCritique(
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
-  const procedural = isProceduralContentFacts(facts);
-  const completenessIssues = procedural ? rewriterProceduralCompletenessIssues(facts, html) : [];
+  const hybrid = isHybridContentFacts(facts);
+  const proceduralOnly = isProceduralContentFacts(facts);
+  const deterministicIssues = hybrid
+    ? rewriterInstructionPreserveCompletenessIssues(facts, html)
+    : proceduralOnly
+      ? rewriterProceduralCompletenessIssues(facts, html)
+      : [];
 
-  const proceduralBlock = procedural
-    ? `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`
-    : "";
+  let preserveBlock = "";
+  if (hybrid) {
+    preserveBlock = `This is a hybrid article with both narrative editorial blocks and procedural how-to sections. Check that EVERY narrative section title and key points appear, and EVERY procedural section has all steps. Missing blocks or merged sections are failures.`;
+  } else if (proceduralOnly) {
+    preserveBlock = `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`;
+  }
 
   const raw = await completeJson<unknown>({
     system: `Critique whether this article sounds human-authored for the brand.
@@ -38,7 +48,7 @@ humanAuthenticity: reads like a real operator wrote it.
 brandConsistency: matches the stated persona/constraints.
 genericity: template/AI feel (high = bad).
 issues: short bullets for failures.
-${proceduralBlock}`,
+${preserveBlock}`,
     user: [
       personaBlock,
       "",
@@ -55,10 +65,11 @@ ${proceduralBlock}`,
   });
 
   const parsed = parseSelfCritiqueResult(raw);
+
   if (parsed) {
     return selfCritiqueResultSchema.parse({
       ...parsed,
-      issues: [...new Set([...completenessIssues, ...parsed.issues])].slice(0, 12),
+      issues: [...new Set([...deterministicIssues, ...parsed.issues])].slice(0, 12),
     });
   }
 
@@ -66,6 +77,6 @@ ${proceduralBlock}`,
     humanAuthenticity: 70,
     brandConsistency: 70,
     genericity: 40,
-    issues: completenessIssues.length ? completenessIssues : ["Critique unavailable"],
+    issues: deterministicIssues.length ? deterministicIssues : ["Critique unavailable"],
   });
 }

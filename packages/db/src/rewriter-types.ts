@@ -8,6 +8,13 @@ export const proceduralSectionSchema = z.object({
 
 export type ProceduralSection = z.infer<typeof proceduralSectionSchema>;
 
+export const narrativeSectionSchema = z.object({
+  title: z.string().trim().min(1),
+  points: z.array(z.string().trim().min(1)).min(1),
+});
+
+export type NarrativeSection = z.infer<typeof narrativeSectionSchema>;
+
 export const contentFactsSchema = z.object({
   offer: z.string().trim().optional(),
   depositAmount: z.string().trim().optional(),
@@ -15,7 +22,8 @@ export const contentFactsSchema = z.object({
   casino: z.string().trim().optional(),
   expiration: z.string().trim().optional(),
   sourceUrl: z.string().trim().optional(),
-  contentType: z.enum(["general", "procedural"]).default("general"),
+  contentType: z.enum(["general", "procedural", "hybrid"]).default("general"),
+  narrativeSections: z.array(narrativeSectionSchema).optional(),
   sections: z.array(proceduralSectionSchema).optional(),
   keyDetails: z.array(z.string().trim()).default([]),
 });
@@ -73,13 +81,13 @@ function normalizeForMatch(text: string): string {
     .trim();
 }
 
-function stepPresentInText(step: string, plain: string): boolean {
+function textPresentInPlain(text: string, plain: string): boolean {
   const normalizedPlain = normalizeForMatch(plain);
-  const normalizedStep = normalizeForMatch(step);
-  if (!normalizedStep) return true;
-  if (normalizedPlain.includes(normalizedStep)) return true;
+  const normalizedText = normalizeForMatch(text);
+  if (!normalizedText) return true;
+  if (normalizedPlain.includes(normalizedText)) return true;
 
-  const words = normalizedStep.split(" ").filter((w) => w.length > 2);
+  const words = normalizedText.split(" ").filter((w) => w.length > 2);
   if (words.length === 0) return true;
   const matched = words.filter((w) => normalizedPlain.includes(w)).length;
   return matched / words.length >= 0.6;
@@ -89,11 +97,26 @@ export function isProceduralContentFacts(facts: ContentFacts): boolean {
   return facts.contentType === "procedural" && (facts.sections?.length ?? 0) > 0;
 }
 
+export function isHybridContentFacts(facts: ContentFacts): boolean {
+  return (
+    facts.contentType === "hybrid" &&
+    (facts.narrativeSections?.length ?? 0) > 0 &&
+    (facts.sections?.length ?? 0) > 0
+  );
+}
+
+export function isInstructionPreserveMode(facts: ContentFacts): boolean {
+  return isHybridContentFacts(facts) || isProceduralContentFacts(facts);
+}
+
 export function rewriterProceduralCompletenessIssues(
   facts: ContentFacts,
   html: string,
 ): string[] {
-  if (!isProceduralContentFacts(facts) || !facts.sections) return [];
+  const hasProceduralSections =
+    (facts.contentType === "procedural" || facts.contentType === "hybrid") &&
+    (facts.sections?.length ?? 0) > 0;
+  if (!hasProceduralSections || !facts.sections) return [];
 
   const plain = stripHtmlToPlainText(html);
   const issues: string[] = [];
@@ -106,7 +129,7 @@ export function rewriterProceduralCompletenessIssues(
 
     let missingSteps = 0;
     for (const step of section.steps) {
-      if (!stepPresentInText(step, plain)) missingSteps++;
+      if (!textPresentInPlain(step, plain)) missingSteps++;
     }
     if (missingSteps > 0) {
       issues.push(
@@ -116,6 +139,45 @@ export function rewriterProceduralCompletenessIssues(
   }
 
   return issues;
+}
+
+export function rewriterNarrativeCompletenessIssues(
+  facts: ContentFacts,
+  html: string,
+): string[] {
+  if (!isHybridContentFacts(facts) || !facts.narrativeSections) return [];
+
+  const plain = stripHtmlToPlainText(html);
+  const issues: string[] = [];
+
+  for (const section of facts.narrativeSections) {
+    const titleNorm = normalizeForMatch(section.title);
+    if (titleNorm && !normalizeForMatch(plain).includes(titleNorm)) {
+      issues.push(`Missing narrative section: "${section.title}"`);
+    }
+
+    let missingPoints = 0;
+    for (const point of section.points) {
+      if (!textPresentInPlain(point, plain)) missingPoints++;
+    }
+    if (missingPoints > 0) {
+      issues.push(
+        `Narrative section "${section.title}" is missing ${missingPoints}/${section.points.length} key points`,
+      );
+    }
+  }
+
+  return issues;
+}
+
+export function rewriterInstructionPreserveCompletenessIssues(
+  facts: ContentFacts,
+  html: string,
+): string[] {
+  return [
+    ...rewriterProceduralCompletenessIssues(facts, html),
+    ...rewriterNarrativeCompletenessIssues(facts, html),
+  ];
 }
 
 export function rewriterQualityCompositeScore(critique: SelfCritiqueResult): number {
@@ -142,6 +204,18 @@ export function rewriterProceduralQualityGatePassed(
   critique: SelfCritiqueResult,
 ): boolean {
   const completenessIssues = rewriterProceduralCompletenessIssues(facts, html);
+  if (completenessIssues.length > 0) return false;
+  if (critique.humanAuthenticity < REWRITER_HUMAN_AUTHENTICITY_MIN) return false;
+  if (critique.brandConsistency < REWRITER_BRAND_CONSISTENCY_MIN) return false;
+  return true;
+}
+
+export function rewriterHybridQualityGatePassed(
+  facts: ContentFacts,
+  html: string,
+  critique: SelfCritiqueResult,
+): boolean {
+  const completenessIssues = rewriterInstructionPreserveCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;
   if (critique.humanAuthenticity < REWRITER_HUMAN_AUTHENTICITY_MIN) return false;
   if (critique.brandConsistency < REWRITER_BRAND_CONSISTENCY_MIN) return false;

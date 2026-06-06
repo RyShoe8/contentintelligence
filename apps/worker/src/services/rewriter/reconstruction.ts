@@ -1,6 +1,6 @@
 import {
   formatWriterLinksForPrompt,
-  isProceduralContentFacts,
+  isHybridContentFacts,
   rewriterBlacklistPromptBlock,
   type BrandInterpretation,
   type BrandMemory,
@@ -41,18 +41,41 @@ function fingerprintsBlock(memory?: BrandMemory): string {
   return parts.length ? `\nHuman fingerprints (use naturally when they fit):\n${parts.join("\n")}` : "";
 }
 
+function hasProceduralSections(facts: ContentFacts): boolean {
+  return (
+    (facts.contentType === "procedural" || facts.contentType === "hybrid") &&
+    (facts.sections?.length ?? 0) > 0
+  );
+}
+
 function proceduralRulesBlock(facts: ContentFacts): string {
-  if (!isProceduralContentFacts(facts)) return "";
+  if (!hasProceduralSections(facts)) return "";
   return `
 Procedural instructions (strict):
-- Render EVERY section as its own <h2> or <h3> using the section title.
+- Render EVERY procedural section as its own <h2> or <h3> using the section title.
 - Render EVERY step as an ordered <ol><li> list under its section. Preserve step order.
 - Do NOT merge version-specific sections into one generic flow.
 - Rephrase for brand voice without omitting steps, menu paths, or settings names.`;
 }
 
+function hybridRulesBlock(facts: ContentFacts): string {
+  if (!isHybridContentFacts(facts)) return "";
+  return `
+Hybrid article (full article, not a cheat sheet):
+- Include EVERY narrativeSections block as <h2> or <h3> plus <p> and/or <ul><li> rewritten in brand voice from points.
+- Include EVERY procedural sections block with full ordered steps (see procedural rules above).
+- Section order is flexible for readability, but do NOT omit any narrative or procedural block.
+- Do not add a standalone promo closing unless required links need placement; weave links into relevant narrative sections.
+- Do not add filler closings like "What are your thoughts?"`;
+}
+
+function formatNarrativeSectionsForPrompt(facts: ContentFacts): string {
+  if (!facts.narrativeSections?.length) return "";
+  return `\n\nNarrative sections (include ALL key points):\n${JSON.stringify(facts.narrativeSections, null, 2)}`;
+}
+
 function formatSectionsForPrompt(facts: ContentFacts): string {
-  if (!isProceduralContentFacts(facts) || !facts.sections?.length) return "";
+  if (!hasProceduralSections(facts) || !facts.sections?.length) return "";
   return `\n\nProcedural sections (include ALL steps):\n${JSON.stringify(facts.sections, null, 2)}`;
 }
 
@@ -101,11 +124,11 @@ Rules:
 - Do NOT rewrite any original draft text. You never saw the original wording.
 - Use ONLY extracted facts and brand interpretation below.
 - Include the brand's viewpoint and caveats where relevant.
-- Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <a href="...">). No markdown. No <html>/<body>.
+- Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <ol>, <a href="...">). No markdown. No <html>/<body>.
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${proceduralRulesBlock(opts.facts)}
+${rewriterBlacklistPromptBlock()}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
@@ -125,6 +148,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
   const userPrompt = [
     "Extracted facts (JSON):",
     JSON.stringify(opts.facts, null, 2),
+    formatNarrativeSectionsForPrompt(opts.facts),
     formatSectionsForPrompt(opts.facts),
     "",
     "Brand interpretation (JSON):",

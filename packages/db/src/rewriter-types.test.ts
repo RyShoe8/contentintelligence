@@ -6,9 +6,39 @@ import {
   rewriterQualityGatePassed,
   rewriterProceduralCompletenessIssues,
   rewriterProceduralQualityGatePassed,
+  rewriterNarrativeCompletenessIssues,
+  rewriterHybridQualityGatePassed,
   contentFactsSchema,
   brandInterpretationSchema,
 } from "./rewriter-types.js";
+
+const outlookHybridFacts = contentFactsSchema.parse({
+  contentType: "hybrid",
+  narrativeSections: [
+    {
+      title: "Why Your Outlook Signature Matters",
+      points: ["Reinforces brand", "Makes contact easy", "Creates professional impression"],
+    },
+    {
+      title: "Frequently Asked Questions",
+      points: [
+        "Can I have multiple signatures?",
+        "Can I use different signatures for replies?",
+      ],
+    },
+  ],
+  sections: [
+    {
+      title: "Outlook for Windows",
+      steps: ["Open File > Options", "Select Mail > Signatures", "Click OK"],
+    },
+    {
+      title: "Outlook on the Web",
+      steps: ["Open Settings", "Select Mail > Compose and reply", "Click Save"],
+    },
+  ],
+  keyDetails: ["Guide covers multiple Outlook versions"],
+});
 
 describe("contentFactsSchema", () => {
   it("parses optional promo fields and keyDetails", () => {
@@ -35,6 +65,12 @@ describe("contentFactsSchema", () => {
     assert.equal(parsed.contentType, "procedural");
     assert.equal(parsed.sections?.length, 1);
     assert.equal(parsed.sections?.[0]?.steps.length, 2);
+  });
+
+  it("parses hybrid narrative and procedural sections", () => {
+    assert.equal(outlookHybridFacts.contentType, "hybrid");
+    assert.equal(outlookHybridFacts.narrativeSections?.length, 2);
+    assert.equal(outlookHybridFacts.sections?.length, 2);
   });
 });
 
@@ -126,6 +162,26 @@ describe("rewriterProceduralCompletenessIssues", () => {
     const issues = rewriterProceduralCompletenessIssues(proceduralFacts, html);
     assert.equal(issues.length, 0);
   });
+
+  it("checks procedural sections on hybrid facts", () => {
+    const html = [
+      "<h2>Why Your Outlook Signature Matters</h2><p>Reinforces brand and makes contact easy.</p>",
+      "<h2>Outlook for Windows</h2><ol><li>Open File > Options</li><li>Select Mail > Signatures</li><li>Click OK</li></ol>",
+    ].join("");
+    const issues = rewriterProceduralCompletenessIssues(outlookHybridFacts, html);
+    assert.ok(issues.some((i) => i.includes("Outlook on the Web")));
+  });
+});
+
+describe("rewriterNarrativeCompletenessIssues", () => {
+  it("detects missing FAQ narrative section", () => {
+    const html = [
+      "<h2>Why Your Outlook Signature Matters</h2><p>Reinforces brand and makes contact easy for readers.</p>",
+      "<h2>Outlook for Windows</h2><ol><li>Open File > Options</li></ol>",
+    ].join("");
+    const issues = rewriterNarrativeCompletenessIssues(outlookHybridFacts, html);
+    assert.ok(issues.some((i) => i.includes("Frequently Asked Questions")));
+  });
 });
 
 describe("rewriterProceduralQualityGatePassed", () => {
@@ -139,6 +195,26 @@ describe("rewriterProceduralQualityGatePassed", () => {
       "<h2>Outlook 2016</h2><ol><li>Open File > Options > Mail</li></ol>";
     assert.equal(
       rewriterProceduralQualityGatePassed(facts, html, {
+        humanAuthenticity: 85,
+        brandConsistency: 82,
+        genericity: 75,
+        issues: [],
+      }),
+      true,
+    );
+  });
+});
+
+describe("rewriterHybridQualityGatePassed", () => {
+  it("passes when narrative, procedural, and brand scores are complete", () => {
+    const html = [
+      "<h2>Why Your Outlook Signature Matters</h2><p>Reinforces brand and makes contact easy for a professional impression.</p>",
+      "<h2>Frequently Asked Questions</h2><ul><li>Can I have multiple signatures?</li><li>Can I use different signatures for replies?</li></ul>",
+      "<h2>Outlook for Windows</h2><ol><li>Open File > Options</li><li>Select Mail > Signatures</li><li>Click OK</li></ol>",
+      "<h2>Outlook on the Web</h2><ol><li>Open Settings</li><li>Select Mail > Compose and reply</li><li>Click Save</li></ol>",
+    ].join("");
+    assert.equal(
+      rewriterHybridQualityGatePassed(outlookHybridFacts, html, {
         humanAuthenticity: 85,
         brandConsistency: 82,
         genericity: 75,

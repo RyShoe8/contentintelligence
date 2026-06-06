@@ -84,4 +84,41 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Procedural instructions \(strict\)/i);
     assert.match(prompt, /Do NOT merge version-specific sections/i);
   });
+
+  it("includes hybrid rules when facts are hybrid", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [
+          {
+            title: "Why Your Outlook Signature Matters",
+            points: ["Reinforces brand"],
+          },
+        ],
+        sections: [
+          {
+            title: "Outlook for Windows",
+            steps: ["Open File > Options"],
+          },
+        ],
+        keyDetails: [],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful guide",
+        qualityScore: 8,
+        bestFor: "Outlook users",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+    });
+
+    assert.match(prompt, /Hybrid article \(full article, not a cheat sheet\)/i);
+    assert.match(prompt, /Section order is flexible/i);
+    assert.match(prompt, /Procedural instructions \(strict\)/i);
+  });
 });

@@ -1,7 +1,9 @@
 import {
   contentFactsSchema,
+  narrativeSectionSchema,
   proceduralSectionSchema,
   type ContentFacts,
+  type NarrativeSection,
   type ProceduralSection,
 } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
@@ -9,6 +11,8 @@ import { completeJson } from "../llm/json-completion.js";
 export type ExtractContentFactsOpts = {
   preserveInstructions?: boolean;
 };
+
+const HYBRID_EXTRACT_MAX_TOKENS = 6000;
 
 export function parseContentFacts(raw: unknown): ContentFacts | null {
   const parsed = contentFactsSchema.safeParse(raw);
@@ -25,6 +29,25 @@ function parseProceduralSections(raw: unknown): ProceduralSection[] {
   return sections;
 }
 
+function parseNarrativeSections(raw: unknown): NarrativeSection[] {
+  if (!Array.isArray(raw)) return [];
+  const sections: NarrativeSection[] = [];
+  for (const item of raw) {
+    const parsed = narrativeSectionSchema.safeParse(item);
+    if (parsed.success) sections.push(parsed.data);
+  }
+  return sections;
+}
+
+function resolvePreserveContentType(
+  narrativeSections: NarrativeSection[],
+  proceduralSections: ProceduralSection[],
+): ContentFacts["contentType"] {
+  if (narrativeSections.length > 0 && proceduralSections.length > 0) return "hybrid";
+  if (proceduralSections.length > 0) return "procedural";
+  return "general";
+}
+
 export async function extractContentFacts(
   sourceText: string,
   opts: ExtractContentFactsOpts = {},
@@ -33,34 +56,43 @@ export async function extractContentFacts(
 
   if (opts.preserveInstructions) {
     const raw = await completeJson<unknown>({
-      system: `Extract structured procedural instructions from the input as JSON only.
+      system: `Extract structured content from a hybrid article as JSON only.
 Schema:
-{"contentType":"procedural","sections":[{"title":string,"steps":string[]}],"keyDetails":string[]}
+{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"sections":[{"title":string,"steps":string[]}],"keyDetails":string[]}
 Rules:
-- contentType must be "procedural".
-- sections: one object per version/platform/topic heading in the source (e.g. Outlook 2016, Outlook on the web).
-- steps: ordered list of actions for that section. Preserve menu paths (File > Options > Mail), button names, and settings verbatim where possible.
-- Do NOT merge sections. Do NOT collapse multiple versions into one generic flow.
-- Do NOT summarize steps into vague bullets.
-- keyDetails: optional 2–6 short summary bullets for context only.
+- narrativeSections: editorial blocks (intro themes, why it matters, checklists, HTML/troubleshooting, best practices, FAQ Q+A as points, closing). One object per major heading.
+- sections: procedural how-to blocks only. One object per version/platform/topic (e.g. Outlook for Windows, Outlook on the web).
+- steps: ordered actions with menu paths (File > Options > Mail), button names, and settings preserved verbatim where possible.
+- points: key ideas to cover in each narrative block (not verbatim copy).
+- Do NOT merge platforms into one procedural flow.
+- Do NOT drop editorial blocks because they are not steps.
+- Do NOT collapse FAQ into a single bullet.
+- keyDetails: 4–12 short topic summary bullets for the whole article.
 - Omit promotional tone.`,
       user: trimmed,
       temperature: 0.15,
-      maxTokens: 4096,
+      maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
     });
 
     const parsed = parseContentFacts(raw);
-    const sections = parseProceduralSections(
+    const proceduralSections = parseProceduralSections(
       raw && typeof raw === "object" && "sections" in raw
         ? (raw as { sections?: unknown }).sections
         : parsed?.sections,
     );
+    const narrativeSections = parseNarrativeSections(
+      raw && typeof raw === "object" && "narrativeSections" in raw
+        ? (raw as { narrativeSections?: unknown }).narrativeSections
+        : parsed?.narrativeSections,
+    );
 
-    if (sections.length > 0) {
+    if (proceduralSections.length > 0 || narrativeSections.length > 0) {
+      const contentType = resolvePreserveContentType(narrativeSections, proceduralSections);
       return contentFactsSchema.parse({
         ...parsed,
-        contentType: "procedural",
-        sections,
+        contentType,
+        narrativeSections: narrativeSections.length ? narrativeSections : undefined,
+        sections: proceduralSections.length ? proceduralSections : undefined,
         keyDetails: parsed?.keyDetails ?? [],
       });
     }
