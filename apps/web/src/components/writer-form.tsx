@@ -120,13 +120,16 @@ export function WriterForm({
   const [truncatedNotice, setTruncatedNotice] = useState(false);
   const [linksPresent, setLinksPresent] = useState<number | null>(null);
   const [linksRequested, setLinksRequested] = useState<number | null>(null);
+  const [linksCarriedFromSource, setLinksCarriedFromSource] = useState<number | null>(null);
+  const [linksAdded, setLinksAdded] = useState<number | null>(null);
+  const [linksNonRequestedInOutput, setLinksNonRequestedInOutput] = useState<number | null>(null);
   const [linksWovenNotice, setLinksWovenNotice] = useState<number | null>(null);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
   const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
   const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
   const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
-  const [rewriteDivergenceRetried, setRewriteDivergenceRetried] = useState(false);
+  const [rewriteDivergenceAttempts, setRewriteDivergenceAttempts] = useState<number | null>(null);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -158,12 +161,15 @@ export function WriterForm({
     setTruncatedNotice(false);
     setLinksPresent(null);
     setLinksRequested(null);
+    setLinksCarriedFromSource(null);
+    setLinksAdded(null);
+    setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
-    setRewriteDivergenceRetried(false);
+    setRewriteDivergenceAttempts(null);
     router.push("/writer");
   }, [router]);
 
@@ -228,12 +234,15 @@ export function WriterForm({
     setTruncatedNotice(false);
     setLinksPresent(null);
     setLinksRequested(null);
+    setLinksCarriedFromSource(null);
+    setLinksAdded(null);
+    setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
-    setRewriteDivergenceRetried(false);
+    setRewriteDivergenceAttempts(null);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -253,13 +262,16 @@ export function WriterForm({
         source_truncated?: boolean;
         links_requested?: number;
         links_present?: number;
+        links_carried_from_source?: number;
+        links_added?: number;
+        links_non_requested_in_output?: number;
         links_appended?: number;
         links_woven?: number;
         links_revised?: boolean;
         rewrite_divergence_score?: number;
         rewrite_divergence_min?: number;
         rewrite_divergence_below_min?: boolean;
-        rewrite_divergence_retried?: boolean;
+        rewrite_divergence_attempts?: number;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -269,6 +281,13 @@ export function WriterForm({
       if (data.source_truncated) setTruncatedNotice(true);
       if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
       if (typeof data.links_present === "number") setLinksPresent(data.links_present);
+      if (typeof data.links_carried_from_source === "number") {
+        setLinksCarriedFromSource(data.links_carried_from_source);
+      }
+      if (typeof data.links_added === "number") setLinksAdded(data.links_added);
+      if (typeof data.links_non_requested_in_output === "number") {
+        setLinksNonRequestedInOutput(data.links_non_requested_in_output);
+      }
       if (typeof data.links_woven === "number" && data.links_woven > 0) {
         setLinksWovenNotice(data.links_woven);
       }
@@ -284,8 +303,8 @@ export function WriterForm({
       if (data.rewrite_divergence_below_min === true) {
         setRewriteDivergenceBelowMin(true);
       }
-      if (data.rewrite_divergence_retried === true) {
-        setRewriteDivergenceRetried(true);
+      if (typeof data.rewrite_divergence_attempts === "number") {
+        setRewriteDivergenceAttempts(data.rewrite_divergence_attempts);
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
@@ -400,7 +419,7 @@ export function WriterForm({
 
       {!workerConfigured ? (
         <p className="ui-alert-error text-sm">
-          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable Writer.
+          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable ReWriter.
         </p>
       ) : null}
       {readyVoices.length === 0 ? (
@@ -492,34 +511,60 @@ export function WriterForm({
         </div>
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
         {linksRequested != null && linksRequested > 0 ? (
-          <p
-            className={cn(
-              "text-xs",
-              linksPresent != null && linksPresent < linksRequested
-                ? "text-amber-200/90"
-                : "text-[var(--muted)]",
-            )}
-          >
-            Links in article: {linksPresent ?? "—"}/{linksRequested}
-            {linksWovenNotice != null && linksWovenNotice > 0
-              ? ` (${linksWovenNotice} woven into body automatically)`
-              : ""}
-          </p>
+          <div className="space-y-1">
+            <p
+              className={cn(
+                "text-xs",
+                linksPresent != null && linksPresent < linksRequested
+                  ? "text-amber-200/90"
+                  : "text-[var(--muted)]",
+              )}
+            >
+              Requested links included: {linksPresent ?? "—"}/{linksRequested}
+              {linksCarriedFromSource != null && linksCarriedFromSource > 0
+                ? ` (${linksCarriedFromSource} ${
+                    linksCarriedFromSource === 1 ? "was" : "were"
+                  } already in your source article)`
+                : ""}
+              {linksWovenNotice != null && linksWovenNotice > 0
+                ? ` (${linksWovenNotice} woven into body automatically)`
+                : ""}
+            </p>
+            {linksAdded != null &&
+            linksCarriedFromSource != null &&
+            linksRequested > 0 &&
+            linksAdded < linksRequested &&
+            linksCarriedFromSource > 0 ? (
+              <p className="text-xs text-amber-200/90">
+                Only {linksAdded}/{linksRequested} newly included; {linksCarriedFromSource} carried
+                from source
+              </p>
+            ) : null}
+            {linksNonRequestedInOutput != null && linksNonRequestedInOutput > 0 ? (
+              <p className="text-xs text-[var(--muted)]">
+                Article also keeps {linksNonRequestedInOutput} other link
+                {linksNonRequestedInOutput === 1 ? "" : "s"} from the source
+              </p>
+            ) : null}
+          </div>
         ) : null}
         {rewriteDivergenceScore != null ? (
           <p className="text-xs text-[var(--muted)]">
             Difference from original: {rewriteDivergenceScore}%
           </p>
         ) : null}
-        {rewriteDivergenceRetried ? (
+        {rewriteDivergenceAttempts != null && rewriteDivergenceAttempts > 1 ? (
           <p className="text-xs text-[var(--muted)]">
-            Retried once for more difference from the original.
+            Retried {rewriteDivergenceAttempts - 1}{" "}
+            {rewriteDivergenceAttempts - 1 === 1 ? "time" : "times"} for more difference from the
+            original.
           </p>
         ) : null}
         {rewriteDivergenceBelowMin ? (
           <p className="text-xs text-amber-200/90">
             Rewrite was {rewriteDivergenceScore ?? "—"}% different; your minimum was{" "}
-            {rewriteDivergenceMin}%. Try Write again with a higher setting.
+            {rewriteDivergenceMin}%. Meeting the slider target is best-effort after retries, not
+            guaranteed for fact-heavy articles. Try Write again with a higher setting.
           </p>
         ) : null}
         {truncatedNotice ? (

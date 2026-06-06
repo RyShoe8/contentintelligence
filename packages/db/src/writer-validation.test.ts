@@ -13,8 +13,12 @@ import {
   writerLinksNeedRevision,
   writerLinksPresentCount,
   writerLinksShallowOrFabricated,
+  writerNonRequestedLinksInHtml,
+  writerRequestedLinksAdded,
+  writerRequestedLinksCarriedFromSource,
   writerRewriteDivergenceScore,
   writerRewriteInputSchema,
+  writerUrlInSourceText,
   WRITER_SOURCE_MIN_CHARS,
 } from "./writer-validation.js";
 
@@ -262,6 +266,51 @@ describe("writerLinksNeedRevision", () => {
     assert.equal(
       writerLinksNeedRevision(html, [{ url: "https://brand.example", label: "BrandX" }], source),
       true,
+    );
+  });
+});
+
+describe("writerUrlsInSourceText", () => {
+  it("finds plain https URLs and anchor hrefs in source", () => {
+    const source =
+      "Read more at https://example.com/page and <a href=\"https://other.org/path\">here</a>.";
+    assert.ok(writerUrlInSourceText(source, "https://example.com/page"));
+    assert.ok(writerUrlInSourceText(source, "https://other.org/path"));
+  });
+});
+
+describe("writerRequestedLinksCarriedFromSource", () => {
+  it("counts requested URLs already in source and present in output", () => {
+    const source = `Intro with https://already.example/deal and ${"x".repeat(80)}`;
+    const html = '<p>See <a href="https://already.example/deal">deal</a>.</p>';
+    const links = [
+      { url: "https://already.example/deal" },
+      { url: "https://new.example", label: "New" },
+    ];
+    assert.equal(writerRequestedLinksCarriedFromSource(source, html, links), 1);
+    assert.equal(writerRequestedLinksAdded(source, html, links), 0);
+  });
+
+  it("counts newly added requested links not in source", () => {
+    const source = `Plain article with no links. ${"x".repeat(80)}`;
+    const html =
+      '<p>See <a href="https://new.example">new</a> and <a href="https://already.example/deal">deal</a>.</p>';
+    const links = [
+      { url: "https://already.example/deal" },
+      { url: "https://new.example", label: "New" },
+    ];
+    assert.equal(writerRequestedLinksCarriedFromSource(source, html, links), 0);
+    assert.equal(writerRequestedLinksAdded(source, html, links), 2);
+  });
+});
+
+describe("writerNonRequestedLinksInHtml", () => {
+  it("counts anchors not in the requested link list", () => {
+    const html =
+      '<p><a href="https://source.example/old">old</a> and <a href="https://requested.example">req</a></p>';
+    assert.equal(
+      writerNonRequestedLinksInHtml(html, [{ url: "https://requested.example" }]),
+      1,
     );
   });
 });

@@ -86,7 +86,7 @@ export default async function WriterPage({
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Writer"
+        title="ReWriter"
         description="Rewrite articles in a voice persona, weave in your links, edit, and save. Saved articles guide future rewrites for that voice."
       />
 

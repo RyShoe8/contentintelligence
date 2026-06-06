@@ -111,6 +111,60 @@ export function writerLinksPresentCount(html: string, links: WriterLink[]): numb
   return links.filter((l) => writerLinkPresentInHtml(html, l.url)).length;
 }
 
+const SOURCE_HTTPS_URL_RE = /https:\/\/[^\s<>"')\]]+/gi;
+
+/** Extract https URLs from plain text and any anchor hrefs in pasted source. */
+export function writerUrlsInSourceText(sourceText: string): string[] {
+  const urls = new Set<string>();
+  for (const href of writerAnchorHrefsInHtml(sourceText)) {
+    if (href.startsWith("https://")) urls.add(href);
+  }
+  const re = new RegExp(SOURCE_HTTPS_URL_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sourceText)) !== null) {
+    const raw = m[0]?.replace(/[.,;:!?)]+$/, "");
+    if (raw?.startsWith("https://")) urls.add(raw);
+  }
+  return [...urls];
+}
+
+export function writerUrlInSourceText(sourceText: string, url: string): boolean {
+  if (!url.trim()) return false;
+  return writerUrlsInSourceText(sourceText).some((src) => hrefMatchesWriterUrl(src, url));
+}
+
+/** Count anchor hrefs in rewrite that match none of the requested URLs. */
+export function writerNonRequestedLinksInHtml(html: string, links: WriterLink[]): number {
+  let count = 0;
+  for (const href of writerAnchorHrefsInHtml(html)) {
+    if (!href.startsWith("https://")) continue;
+    if (!links.some((l) => hrefMatchesWriterUrl(href, l.url))) count++;
+  }
+  return count;
+}
+
+/** Requested URLs that were already in source and appear as anchors in output. */
+export function writerRequestedLinksCarriedFromSource(
+  sourceText: string,
+  html: string,
+  links: WriterLink[],
+): number {
+  return links.filter(
+    (l) => writerUrlInSourceText(sourceText, l.url) && writerLinkPresentInHtml(html, l.url),
+  ).length;
+}
+
+/** Requested URLs present in output that were not already in source. */
+export function writerRequestedLinksAdded(
+  sourceText: string,
+  html: string,
+  links: WriterLink[],
+): number {
+  const present = writerLinksPresentCount(html, links);
+  const carried = writerRequestedLinksCarriedFromSource(sourceText, html, links);
+  return Math.max(0, present - carried);
+}
+
 export function writerLinksMissingFromHtml(html: string, links: WriterLink[]): WriterLink[] {
   return links.filter((l) => !writerLinkPresentInHtml(html, l.url));
 }
@@ -249,6 +303,7 @@ export function stripHtmlToPlainText(html: string): string {
 
 const DIVERGENCE_MIN_WORD_LEN = 2;
 const DIVERGENCE_NGRAM_SIZE = 4;
+const DIVERGENCE_SHORT_SOURCE_MAX_WORDS = 400;
 
 function tokenizeForDivergence(text: string): Set<string> {
   const tokens = text
@@ -289,7 +344,7 @@ function jaccardDivergenceScore(a: Set<string>, b: Set<string>): number {
 }
 
 /**
- * 0 = nearly identical wording, 100 = very different (max of word + 4-gram Jaccard distance).
+ * 0 = nearly identical wording, 100 = very different (max of word + n-gram Jaccard distance).
  */
 export function writerRewriteDivergenceScore(sourceText: string, rewriteHtml: string): number {
   const sourcePlain = sourceText.trim();
@@ -298,11 +353,20 @@ export function writerRewriteDivergenceScore(sourceText: string, rewriteHtml: st
     tokenizeForDivergence(sourcePlain),
     tokenizeForDivergence(rewritePlain),
   );
-  const phraseScore = jaccardDivergenceScore(
+  const phrase4Score = jaccardDivergenceScore(
     ngramsForDivergence(sourcePlain, DIVERGENCE_NGRAM_SIZE),
     ngramsForDivergence(rewritePlain, DIVERGENCE_NGRAM_SIZE),
   );
-  return Math.max(wordScore, phraseScore);
+  const scores = [wordScore, phrase4Score];
+  if (countWords(stripHtmlToPlainText(sourcePlain)) < DIVERGENCE_SHORT_SOURCE_MAX_WORDS) {
+    scores.push(
+      jaccardDivergenceScore(
+        ngramsForDivergence(sourcePlain, 3),
+        ngramsForDivergence(rewritePlain, 3),
+      ),
+    );
+  }
+  return Math.max(...scores);
 }
 
 export function writerLinkParagraphForUrl(html: string, url: string): number | null {

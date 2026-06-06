@@ -18,7 +18,7 @@ const NAV_ITEMS = [
     label: "Voices",
     match: (p: string) => p === "/voices" || p.startsWith("/voices/"),
   },
-  { href: "/writer", label: "Writer", match: (p: string) => p === "/writer" || p.startsWith("/writer/") },
+  { href: "/writer", label: "ReWriter", match: (p: string) => p === "/writer" || p.startsWith("/writer/") },
 ] as const;
 
 export function ProductNav() {
