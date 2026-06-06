@@ -82,6 +82,9 @@ export async function GET(req: NextRequest) {
     const db = await getDb();
     await ensureIndexes(db);
     const existing = await getGmailOAuth(db, email);
+    if (existing?.refresh_token && !tokens.refresh_token) {
+      return redirectTo(req, returnPath, { gmail_error: "no_new_refresh_token" });
+    }
     const refreshToken = tokens.refresh_token ?? existing?.refresh_token;
     if (!refreshToken) {
       return redirectTo(req, returnPath, { gmail_error: "missing_refresh_token" });
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
       access_token: tokens.access_token ?? undefined,
       access_token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
       issuedNewRefreshToken: Boolean(tokens.refresh_token),
+      userReconnect: true,
     });
 
     if (sourceId && contentSignalId) {

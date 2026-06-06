@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ensureIndexes, getContentSignal, getGmailOAuth, getSource } from "@content-resourcer/db";
+import { ensureIndexes, getContentSignal, getGmailOAuth, getSource, formatGmailOAuthCallbackError } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
 import { GmailAuthExpiryStatus } from "@/components/gmail-auth-expiry-status";
@@ -78,7 +78,7 @@ export default async function SourceEditorPage({
       ) : null}
       {sp.gmail_error ? (
         <p className="ui-alert-error">
-          Gmail error: {sp.gmail_error}
+          Gmail error: {formatGmailOAuthCallbackError(sp.gmail_error)}
         </p>
       ) : null}
 
@@ -113,6 +113,7 @@ export default async function SourceEditorPage({
               updatedAt={oauth?.updated_at ?? null}
               lastIngestError={oauth?.last_ingest_error ?? null}
               reconnectHref={oauthStartUrl}
+              showTokenAge
             />
             <div className="mt-3">
               <GmailOAuthDiagnostics />

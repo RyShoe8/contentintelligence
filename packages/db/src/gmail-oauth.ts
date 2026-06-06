@@ -9,6 +9,24 @@ export const GMAIL_RECONNECT_EVERY_DAYS = 6;
 export const GMAIL_AUTH_EXPIRED_MESSAGE =
   "Gmail authorization expired — Re-connect to restore feed sync (Testing tokens last ~7 days).";
 
+export const GMAIL_NO_NEW_REFRESH_TOKEN_MESSAGE =
+  "Google did not issue a new token — revoke app access in your Google Account, then Re-connect Gmail.";
+
+export function formatGmailOAuthCallbackError(code: string): string {
+  if (code === "no_new_refresh_token") return GMAIL_NO_NEW_REFRESH_TOKEN_MESSAGE;
+  return code;
+}
+
+export function shouldResetGmailRefreshTokenIssuedAt(opts: {
+  issuedNewRefreshToken?: boolean;
+  userReconnect?: boolean;
+  hasExistingIssuedAt: boolean;
+}): boolean {
+  return Boolean(
+    opts.issuedNewRefreshToken || opts.userReconnect || !opts.hasExistingIssuedAt,
+  );
+}
+
 export type GmailOAuthExpiryFields = Pick<GmailOAuthDoc, "refresh_token_issued_at" | "updated_at">;
 
 export function gmailEffectiveIssuedAt(oauth: GmailOAuthExpiryFields): Date {

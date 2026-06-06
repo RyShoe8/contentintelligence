@@ -88,6 +88,9 @@ async function main(): Promise<void> {
     const db = await getDb();
     await ensureIndexes(db);
     const existing = await getGmailOAuth(db, email);
+    if (existing?.refresh_token && !tokens.refresh_token) {
+      return reply.code(400).send({ error: "no_new_refresh_token" });
+    }
     const refreshToken = tokens.refresh_token ?? existing?.refresh_token;
     if (!refreshToken) {
       return reply.code(400).send({ error: "missing_refresh_or_email" });
@@ -98,6 +101,7 @@ async function main(): Promise<void> {
       access_token: tokens.access_token ?? undefined,
       access_token_expiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
       issuedNewRefreshToken: Boolean(tokens.refresh_token),
+      userReconnect: true,
     });
     return { ok: true, email_address: email };
   });

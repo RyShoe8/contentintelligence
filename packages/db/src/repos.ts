@@ -1,6 +1,7 @@
 import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
+import { shouldResetGmailRefreshTokenIssuedAt } from "./gmail-oauth.js";
 import { migrateLegacyCollections } from "./migrate.js";
 import type {
   ContentSignal,
@@ -115,8 +116,32 @@ export async function touchContentSignalLastIngest(
   const now = new Date();
   await contentSignals(db).updateOne(
     { id: contentSignalId },
-    { $set: { last_ingest_completed_at: at, updated_at: now } },
+    {
+      $set: { last_ingest_completed_at: at, updated_at: now },
+      $unset: { last_ingest_error: "" },
+    },
   );
+}
+
+export async function recordContentSignalIngestAttempt(
+  db: Db,
+  contentSignalId: string,
+  data: { attemptedAt: Date; error: string | null },
+): Promise<void> {
+  const now = new Date();
+  const set: Record<string, unknown> = {
+    last_ingest_attempt_at: data.attemptedAt,
+    updated_at: now,
+  };
+  if (data.error === null) {
+    await contentSignals(db).updateOne(
+      { id: contentSignalId },
+      { $set: set, $unset: { last_ingest_error: "" } },
+    );
+    return;
+  }
+  set.last_ingest_error = data.error;
+  await contentSignals(db).updateOne({ id: contentSignalId }, { $set: set });
 }
 
 export async function listSourcesByContentSignal(db: Db, contentSignalId: string): Promise<Source[]> {
@@ -380,6 +405,8 @@ export async function saveGmailOAuth(
     access_token_expiry?: Date;
     /** When true, sets refresh_token_issued_at to now (new refresh token from Google). */
     issuedNewRefreshToken?: boolean;
+    /** When true, sets refresh_token_issued_at to now (user completed OAuth reconnect). */
+    userReconnect?: boolean;
   },
 ): Promise<void> {
   const now = new Date();
@@ -393,9 +420,13 @@ export async function saveGmailOAuth(
   if (data.access_token_expiry !== undefined) {
     set.access_token_expiry = data.access_token_expiry;
   }
-  if (data.issuedNewRefreshToken) {
-    set.refresh_token_issued_at = now;
-  } else if (!existing?.refresh_token_issued_at) {
+  if (
+    shouldResetGmailRefreshTokenIssuedAt({
+      issuedNewRefreshToken: data.issuedNewRefreshToken,
+      userReconnect: data.userReconnect,
+      hasExistingIssuedAt: Boolean(existing?.refresh_token_issued_at),
+    })
+  ) {
     set.refresh_token_issued_at = now;
   }
 

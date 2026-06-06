@@ -3,7 +3,9 @@ import { ensureIndexes, listContentSignals, listPosts, listSignalItems } from "@
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { FeedItemCard } from "@/components/feed-item-card";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
+import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
 import { connectMongo } from "@/lib/mongo";
+import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -88,6 +90,10 @@ export default async function FeedPage({
       })
     : [];
   const itemIdsInPosts = new Set(draftPosts.map((p) => p.signal_item_id));
+
+  const gmailOAuthSources = selectedId
+    ? await loadContentSignalGmailOAuth(db, selectedId)
+    : [];
 
   const filterQs = new URLSearchParams();
   if (selectedId) filterQs.set("content_signal_id", selectedId);
@@ -180,6 +186,7 @@ export default async function FeedPage({
                 Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to enable feed ingest.
               </p>
             ) : null}
+            <ContentSignalGmailAuthAlerts sources={gmailOAuthSources} />
             <p className="mt-2 text-xs text-[var(--muted)]">
               Clear feed removes ingested rows for this signal and resets the lookback cursor so the next
               feed run can pick up mail again after you change keywords, labels, or sources. Items older than

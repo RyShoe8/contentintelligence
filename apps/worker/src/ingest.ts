@@ -12,6 +12,7 @@ import {
   formatGmailIngestError,
   setGmailOAuthIngestError,
   touchContentSignalLastIngest,
+  recordContentSignalIngestAttempt,
 } from "@content-resourcer/db";
 import {
   createGmailClient,
@@ -63,6 +64,27 @@ export type IngestStats = {
 };
 
 const verbose = () => ingestVerbose();
+
+type SignalIngestAttempt = { errors: string[]; completed: boolean };
+
+function noteSignalIngestError(
+  attempts: Map<string, SignalIngestAttempt>,
+  contentSignalId: string,
+  error: string,
+): void {
+  const state = attempts.get(contentSignalId) ?? { errors: [], completed: false };
+  state.errors.push(error);
+  attempts.set(contentSignalId, state);
+}
+
+function noteSignalIngestCompleted(
+  attempts: Map<string, SignalIngestAttempt>,
+  contentSignalId: string,
+): void {
+  const state = attempts.get(contentSignalId) ?? { errors: [], completed: false };
+  state.completed = true;
+  attempts.set(contentSignalId, state);
+}
 
 function effectiveLookbackHours(
   configured: number,
@@ -118,6 +140,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
 
   const contentSignalCache = new Map<string, Awaited<ReturnType<typeof getContentSignal>>>();
   const purgedSignals = new Set<string>();
+  const ingestAttempts = new Map<string, SignalIngestAttempt>();
 
   for (const source of sourceList) {
     ingestLog("source_begin", {
@@ -151,6 +174,11 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         hint: "connect Gmail on the source editor",
       });
       console.warn(`[ingest] No email on source ${source.id}; connect Gmail first.`);
+      noteSignalIngestError(
+        ingestAttempts,
+        contentSignal.id,
+        "Connect Gmail on the source editor",
+      );
       continue;
     }
 
@@ -162,6 +190,11 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         hint: "check gmail_oauth collection for refresh_token",
       });
       console.warn(`[ingest] No OAuth token for ${email}; connect Gmail first.`);
+      noteSignalIngestError(
+        ingestAttempts,
+        contentSignal.id,
+        "Connect Gmail on the source editor",
+      );
       continue;
     }
 
@@ -178,6 +211,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         email_address: email,
         error: health.message,
       });
+      noteSignalIngestError(ingestAttempts, contentSignal.id, health.message);
       continue;
     }
 
@@ -190,6 +224,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       if (verbose() && e instanceof Error && e.stack) {
         console.error("[ingest] Gmail client stack", e.stack);
       }
+      noteSignalIngestError(ingestAttempts, contentSignal.id, msg);
       continue;
     }
 
@@ -225,6 +260,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         email_address: email,
         error: msg,
       });
+      noteSignalIngestError(ingestAttempts, contentSignal.id, msg);
       if (raw.includes("invalid_grant")) {
         console.warn(
           `[ingest] Gmail token rejected for ${email}. Re-connect Gmail on the source editor (Testing tokens last ~7 days).`,
@@ -387,6 +423,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
 
     try {
       await touchContentSignalLastIngest(db, contentSignal.id, new Date());
+      noteSignalIngestCompleted(ingestAttempts, contentSignal.id);
     } catch (e) {
       console.error("[ingest] touchContentSignalLastIngest failed", contentSignal.id, e);
     }
@@ -411,6 +448,18 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       } catch (e) {
         console.error("[ingest] purgeExpiredSignalItems failed", contentSignal.id, e);
       }
+    }
+  }
+
+  const attemptAt = new Date();
+  for (const [signalId, state] of ingestAttempts) {
+    try {
+      await recordContentSignalIngestAttempt(db, signalId, {
+        attemptedAt: attemptAt,
+        error: state.completed ? null : (state.errors[0] ?? "Ingest failed for all sources"),
+      });
+    } catch (e) {
+      console.error("[ingest] recordContentSignalIngestAttempt failed", signalId, e);
     }
   }
 

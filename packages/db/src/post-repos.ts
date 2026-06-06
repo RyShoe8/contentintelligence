@@ -270,3 +270,16 @@ export function isContentSignalIngestDue(signal: ContentSignal, now = new Date()
   const elapsedMs = now.getTime() - last.getTime();
   return elapsedMs >= interval * 60_000;
 }
+
+export function contentSignalIngestAttemptFailed(
+  signal: Pick<
+    ContentSignal,
+    "last_ingest_completed_at" | "last_ingest_attempt_at" | "last_ingest_error"
+  >,
+): boolean {
+  if (!signal.last_ingest_error || !signal.last_ingest_attempt_at) return false;
+  const attemptMs = signal.last_ingest_attempt_at.getTime();
+  if (!Number.isFinite(attemptMs)) return false;
+  const completedMs = signal.last_ingest_completed_at?.getTime() ?? 0;
+  return attemptMs > completedMs;
+}

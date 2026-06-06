@@ -17,7 +17,9 @@ import { EmailImageGallery } from "@/components/email-image-gallery";
 import { KeyPointsList } from "@/components/key-points-list";
 import { LocalDateTime } from "@/components/local-date-time";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
+import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
 import { connectMongo } from "@/lib/mongo";
+import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { formatDealRow } from "@/lib/deal-display";
 import { displayCasinoName } from "@/lib/email-from-display";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -82,6 +84,13 @@ export default async function PostsPage({
     orgId,
     posts.map((p) => p.signal_item_id),
   );
+
+  const gmailOAuthSources = selectedId
+    ? await loadContentSignalGmailOAuth(db, selectedId)
+    : [];
+  const primaryReconnectHref =
+    gmailOAuthSources.find((s) => s.connected)?.oauthStartUrl ??
+    gmailOAuthSources[0]?.oauthStartUrl;
 
   const errorMsg =
     sp.error === "missing_signal"
@@ -215,10 +224,21 @@ export default async function PostsPage({
                       ? selectedSignal.last_ingest_completed_at.toISOString()
                       : null
                   }
+                  lastIngestAttemptIso={
+                    selectedSignal.last_ingest_attempt_at
+                      ? selectedSignal.last_ingest_attempt_at.toISOString()
+                      : null
+                  }
+                  lastIngestError={selectedSignal.last_ingest_error ?? null}
                   intervalMinutes={selectedSignal.ingest_interval_minutes}
                   scheduleText={scheduleStatusText(selectedSignal.ingest_interval_minutes)}
+                  reconnectHref={primaryReconnectHref}
                 />
               </p>
+              <ContentSignalGmailAuthAlerts
+                sources={gmailOAuthSources}
+                className="md:col-span-2"
+              />
               <div className="md:col-span-2">
                 <button
                   type="submit"

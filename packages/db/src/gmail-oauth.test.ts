@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   GMAIL_REFRESH_TOKEN_TTL_DAYS,
+  formatGmailOAuthCallbackError,
   gmailDaysUntilRefreshExpiry,
   gmailRefreshExpirySeverity,
   isGmailRefreshTokenExpired,
+  shouldResetGmailRefreshTokenIssuedAt,
 } from "./gmail-oauth.js";
+import { contentSignalIngestAttemptFailed } from "./post-repos.js";
 
 describe("gmailDaysUntilRefreshExpiry", () => {
   it("returns full TTL when issued now", () => {
@@ -53,5 +56,56 @@ describe("gmailDaysUntilRefreshExpiry", () => {
     const updated = new Date("2026-05-26T12:00:00Z");
     const now = new Date("2026-05-27T12:00:00Z");
     assert.equal(gmailDaysUntilRefreshExpiry({ updated_at: updated }, now), 6);
+  });
+});
+
+describe("shouldResetGmailRefreshTokenIssuedAt", () => {
+  it("resets on user reconnect even without a new refresh token string", () => {
+    assert.equal(
+      shouldResetGmailRefreshTokenIssuedAt({
+        userReconnect: true,
+        hasExistingIssuedAt: true,
+      }),
+      true,
+    );
+  });
+
+  it("does not reset when reconnect flag is absent and issued_at exists", () => {
+    assert.equal(
+      shouldResetGmailRefreshTokenIssuedAt({
+        hasExistingIssuedAt: true,
+      }),
+      false,
+    );
+  });
+});
+
+describe("formatGmailOAuthCallbackError", () => {
+  it("maps no_new_refresh_token to a user-facing message", () => {
+    assert.match(formatGmailOAuthCallbackError("no_new_refresh_token"), /revoke app access/i);
+  });
+});
+
+describe("contentSignalIngestAttemptFailed", () => {
+  it("detects failed attempt after last successful sync", () => {
+    assert.equal(
+      contentSignalIngestAttemptFailed({
+        last_ingest_completed_at: new Date("2026-05-20T12:00:00Z"),
+        last_ingest_attempt_at: new Date("2026-05-27T12:00:00Z"),
+        last_ingest_error: "Gmail authorization expired",
+      }),
+      true,
+    );
+  });
+
+  it("returns false when last sync is newer than the attempt", () => {
+    assert.equal(
+      contentSignalIngestAttemptFailed({
+        last_ingest_completed_at: new Date("2026-05-27T13:00:00Z"),
+        last_ingest_attempt_at: new Date("2026-05-27T12:00:00Z"),
+        last_ingest_error: "Gmail authorization expired",
+      }),
+      false,
+    );
   });
 });

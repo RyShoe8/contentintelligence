@@ -98,6 +98,11 @@ export const contentSignalSchema = z.object({
     (val) => (val == null || val === "" ? undefined : val),
     z.coerce.date().optional(),
   ),
+  last_ingest_attempt_at: z.preprocess(
+    (val) => (val == null || val === "" ? undefined : val),
+    z.coerce.date().optional(),
+  ),
+  last_ingest_error: z.string().trim().optional(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
 });
