@@ -82,13 +82,33 @@ function writerLinkUrlVariants(url: string): string[] {
   return [...variants];
 }
 
-export function writerLinkPresentInHtml(html: string, url: string): boolean {
-  if (!url.trim()) return false;
-  const haystack = html;
+/** All href values from `<a>` tags in HTML. */
+export function writerAnchorHrefsInHtml(html: string): string[] {
+  const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const hrefs: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1]?.trim();
+    if (href) hrefs.push(href);
+  }
+  return hrefs;
+}
+
+function hrefMatchesWriterUrl(href: string, url: string): boolean {
+  const hrefVariants = new Set(writerLinkUrlVariants(href));
   for (const variant of writerLinkUrlVariants(url)) {
-    if (haystack.includes(variant)) return true;
+    if (hrefVariants.has(variant)) return true;
   }
   return false;
+}
+
+export function writerLinkPresentInHtml(html: string, url: string): boolean {
+  if (!url.trim()) return false;
+  return writerAnchorHrefsInHtml(html).some((href) => hrefMatchesWriterUrl(href, url));
+}
+
+export function writerLinksPresentCount(html: string, links: WriterLink[]): number {
+  return links.filter((l) => writerLinkPresentInHtml(html, l.url)).length;
 }
 
 export function writerLinksMissingFromHtml(html: string, links: WriterLink[]): WriterLink[] {
@@ -228,6 +248,7 @@ export function stripHtmlToPlainText(html: string): string {
 }
 
 const DIVERGENCE_MIN_WORD_LEN = 2;
+const DIVERGENCE_NGRAM_SIZE = 4;
 
 function tokenizeForDivergence(text: string): Set<string> {
   const tokens = text
@@ -238,23 +259,50 @@ function tokenizeForDivergence(text: string): Set<string> {
   return new Set(tokens);
 }
 
+function ngramsForDivergence(text: string, n: number): Set<string> {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const grams = new Set<string>();
+  if (tokens.length < n) {
+    if (tokens.length) grams.add(tokens.join(" "));
+    return grams;
+  }
+  for (let i = 0; i <= tokens.length - n; i++) {
+    grams.add(tokens.slice(i, i + n).join(" "));
+  }
+  return grams;
+}
+
+function jaccardDivergenceScore(a: Set<string>, b: Set<string>): number {
+  if (!a.size && !b.size) return 0;
+  if (!a.size || !b.size) return 100;
+  let intersection = 0;
+  for (const t of a) {
+    if (b.has(t)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  if (union === 0) return 0;
+  return Math.round(100 * (1 - intersection / union));
+}
+
 /**
- * 0 = nearly identical wording, 100 = very different (Jaccard distance on word sets).
+ * 0 = nearly identical wording, 100 = very different (max of word + 4-gram Jaccard distance).
  */
 export function writerRewriteDivergenceScore(sourceText: string, rewriteHtml: string): number {
-  const sourceTokens = tokenizeForDivergence(sourceText.trim());
-  const rewriteTokens = tokenizeForDivergence(stripHtmlToPlainText(rewriteHtml));
-  if (!sourceTokens.size && !rewriteTokens.size) return 0;
-  if (!sourceTokens.size || !rewriteTokens.size) return 100;
-
-  let intersection = 0;
-  for (const t of sourceTokens) {
-    if (rewriteTokens.has(t)) intersection++;
-  }
-  const union = sourceTokens.size + rewriteTokens.size - intersection;
-  if (union === 0) return 0;
-  const jaccardSimilarity = intersection / union;
-  return Math.round(100 * (1 - jaccardSimilarity));
+  const sourcePlain = sourceText.trim();
+  const rewritePlain = stripHtmlToPlainText(rewriteHtml);
+  const wordScore = jaccardDivergenceScore(
+    tokenizeForDivergence(sourcePlain),
+    tokenizeForDivergence(rewritePlain),
+  );
+  const phraseScore = jaccardDivergenceScore(
+    ngramsForDivergence(sourcePlain, DIVERGENCE_NGRAM_SIZE),
+    ngramsForDivergence(rewritePlain, DIVERGENCE_NGRAM_SIZE),
+  );
+  return Math.max(wordScore, phraseScore);
 }
 
 export function writerLinkParagraphForUrl(html: string, url: string): number | null {
@@ -279,16 +327,96 @@ function normalizedContains(haystack: string, needle: string): boolean {
 }
 
 function anchorWordsInParagraph(paragraphHtml: string, url: string): number {
-  const variants = new Set(writerLinkUrlVariants(url));
   const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(paragraphHtml)) !== null) {
     const href = m[1]?.trim();
-    if (href && variants.has(href)) {
+    if (href && hrefMatchesWriterUrl(href, url)) {
       return countWords(stripHtmlToPlainText(m[2] ?? ""));
     }
   }
   return 0;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const WEAVE_PARAGRAPH_FRACTIONS = [0.25, 0.5, 0.75, 0.33, 0.66];
+
+/**
+ * Deterministically weave missing links into body paragraphs as inline anchors.
+ */
+export function weaveMissingWriterLinksInBody(
+  html: string,
+  missingLinks: WriterLink[],
+): { html: string; woven: number } {
+  if (!missingLinks.length) return { html, woven: 0 };
+
+  const paragraphRe = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  const matches = [...html.matchAll(paragraphRe)];
+  const paragraphs = matches.map((m) => m[0]);
+  if (!paragraphs.length) return { html, woven: 0 };
+
+  let woven = 0;
+  for (let i = 0; i < missingLinks.length; i++) {
+    const link = missingLinks[i]!;
+    const frac = WEAVE_PARAGRAPH_FRACTIONS[i % WEAVE_PARAGRAPH_FRACTIONS.length]!;
+    const pIdx = Math.min(
+      paragraphs.length - 1,
+      Math.max(0, Math.floor(paragraphs.length * frac)),
+    );
+    const paragraph = paragraphs[pIdx] ?? "";
+    const href = escapeHtmlText(link.url);
+    const anchor = writerLinkAnchorText(link);
+    const anchorEsc = escapeHtmlText(anchor);
+    let updated = paragraph;
+
+    const plain = stripHtmlToPlainText(paragraph);
+    if (normalizedContains(plain, anchor) && !writerLinkPresentInHtml(paragraph, link.url)) {
+      const anchorRe = new RegExp(escapeRegex(anchor), "i");
+      updated = paragraph.replace(anchorRe, `<a href="${href}">${anchorEsc}</a>`);
+    }
+    if (updated === paragraph) {
+      updated = paragraph.replace(/<\/p>\s*$/i, ` See <a href="${href}">${anchorEsc}</a>.</p>`);
+    }
+    paragraphs[pIdx] = updated;
+    woven++;
+  }
+
+  let result = html;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const original = matches[i]![0];
+    const updated = paragraphs[i]!;
+    if (original !== updated) {
+      const start = matches[i]!.index!;
+      result = result.slice(0, start) + updated + result.slice(start + original.length);
+    }
+  }
+  return { html: result, woven };
+}
+
+/** Weave missing links into body; append Related links only when weave is impossible. */
+export function finalizeWriterLinksInHtml(
+  html: string,
+  links: WriterLink[],
+): { html: string; linksWoven: number; linksAppended: number } {
+  let out = html;
+  let missing = writerLinksMissingFromHtml(out, links);
+  let linksWoven = 0;
+  if (missing.length) {
+    const woven = weaveMissingWriterLinksInBody(out, missing);
+    out = woven.html;
+    linksWoven = woven.woven;
+    missing = writerLinksMissingFromHtml(out, links);
+  }
+  let linksAppended = 0;
+  if (missing.length) {
+    const before = out;
+    out = ensureWriterLinksInHtml(out, missing);
+    if (out !== before) linksAppended = missing.length;
+  }
+  return { html: out, linksWoven, linksAppended };
 }
 
 export function writerLinkAnchorText(link: WriterLink): string {

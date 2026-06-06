@@ -118,11 +118,15 @@ export function WriterForm({
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
+  const [linksPresent, setLinksPresent] = useState<number | null>(null);
+  const [linksRequested, setLinksRequested] = useState<number | null>(null);
+  const [linksWovenNotice, setLinksWovenNotice] = useState<number | null>(null);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
   const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
   const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
   const [rewriteDivergenceBelowMin, setRewriteDivergenceBelowMin] = useState(false);
+  const [rewriteDivergenceRetried, setRewriteDivergenceRetried] = useState(false);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterArticleListItem[]>();
@@ -152,10 +156,14 @@ export function WriterForm({
     setOutputHtml("");
     setWriteError(null);
     setTruncatedNotice(false);
+    setLinksPresent(null);
+    setLinksRequested(null);
+    setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
+    setRewriteDivergenceRetried(false);
     router.push("/writer");
   }, [router]);
 
@@ -218,10 +226,14 @@ export function WriterForm({
     setWriting(true);
     setWriteError(null);
     setTruncatedNotice(false);
+    setLinksPresent(null);
+    setLinksRequested(null);
+    setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
+    setRewriteDivergenceRetried(false);
     try {
       const r = await fetch("/api/worker/writer/rewrite", {
         method: "POST",
@@ -239,11 +251,15 @@ export function WriterForm({
         writer_article_id?: string;
         generated_html?: string;
         source_truncated?: boolean;
+        links_requested?: number;
+        links_present?: number;
         links_appended?: number;
+        links_woven?: number;
         links_revised?: boolean;
         rewrite_divergence_score?: number;
         rewrite_divergence_min?: number;
         rewrite_divergence_below_min?: boolean;
+        rewrite_divergence_retried?: boolean;
       };
       if (!r.ok) {
         setWriteError(data.error ?? "Rewrite failed");
@@ -251,6 +267,11 @@ export function WriterForm({
       }
       if (data.generated_html) setOutputHtml(data.generated_html);
       if (data.source_truncated) setTruncatedNotice(true);
+      if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
+      if (typeof data.links_present === "number") setLinksPresent(data.links_present);
+      if (typeof data.links_woven === "number" && data.links_woven > 0) {
+        setLinksWovenNotice(data.links_woven);
+      }
       if (typeof data.links_appended === "number" && data.links_appended > 0) {
         setLinksAppendedNotice(data.links_appended);
       }
@@ -262,6 +283,9 @@ export function WriterForm({
       }
       if (data.rewrite_divergence_below_min === true) {
         setRewriteDivergenceBelowMin(true);
+      }
+      if (data.rewrite_divergence_retried === true) {
+        setRewriteDivergenceRetried(true);
       }
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
@@ -459,7 +483,7 @@ export function WriterForm({
               className="w-full accent-[var(--primary)]"
             />
             <p className="text-xs text-[var(--muted)]">
-              0 = light edit, 100 = heavy rewrite (same facts).
+              0 = light edit, 100 = heavy rewrite. Score reflects wording and phrasing change, not new facts.
             </p>
           </div>
           <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
@@ -467,9 +491,29 @@ export function WriterForm({
           </Button>
         </div>
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
+        {linksRequested != null && linksRequested > 0 ? (
+          <p
+            className={cn(
+              "text-xs",
+              linksPresent != null && linksPresent < linksRequested
+                ? "text-amber-200/90"
+                : "text-[var(--muted)]",
+            )}
+          >
+            Links in article: {linksPresent ?? "—"}/{linksRequested}
+            {linksWovenNotice != null && linksWovenNotice > 0
+              ? ` (${linksWovenNotice} woven into body automatically)`
+              : ""}
+          </p>
+        ) : null}
         {rewriteDivergenceScore != null ? (
           <p className="text-xs text-[var(--muted)]">
             Difference from original: {rewriteDivergenceScore}%
+          </p>
+        ) : null}
+        {rewriteDivergenceRetried ? (
+          <p className="text-xs text-[var(--muted)]">
+            Retried once for more difference from the original.
           </p>
         ) : null}
         {rewriteDivergenceBelowMin ? (
@@ -490,8 +534,8 @@ export function WriterForm({
         ) : null}
         {linksAppendedNotice != null && linksAppendedNotice > 0 ? (
           <p className="text-xs text-amber-200/90">
-            {linksAppendedNotice} link{linksAppendedNotice === 1 ? " was" : "s were"} added
-            automatically at the end because the draft omitted them.
+            {linksAppendedNotice} link{linksAppendedNotice === 1 ? "" : "s"} added in a Related links
+            section at the end.
           </p>
         ) : null}
       </section>

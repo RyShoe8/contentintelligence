@@ -63,11 +63,14 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     html,
     sourceTruncated,
     linksRequested,
+    linksPresent,
     linksAppended,
+    linksWoven,
     linksRevised,
     rewriteDivergenceScore,
     rewriteDivergenceMin,
     rewriteDivergenceBelowMin,
+    rewriteDivergenceRetried,
   } = await generateArticleRewriteHtml({
     voice,
     sourceText: source_text,
@@ -91,10 +94,13 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     generated_html: html,
     source_truncated: sourceTruncated,
     links_requested: linksRequested,
+    links_present: linksPresent,
     links_appended: linksAppended,
+    links_woven: linksWoven,
     links_revised: linksRevised,
     rewrite_divergence_score: rewriteDivergenceScore,
     rewrite_divergence_min: rewriteDivergenceMin,
     rewrite_divergence_below_min: rewriteDivergenceBelowMin,
+    rewrite_divergence_retried: rewriteDivergenceRetried,
   };
 }

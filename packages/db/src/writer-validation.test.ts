@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ensureWriterLinksInHtml,
+  finalizeWriterLinksInHtml,
   parseWriterLinks,
   stripHtmlToPlainText,
+  weaveMissingWriterLinksInBody,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
   writerLinksClusteredAtEnd,
   writerLinksMissingFromHtml,
   writerLinksNeedRevision,
+  writerLinksPresentCount,
   writerLinksShallowOrFabricated,
   writerRewriteDivergenceScore,
   writerRewriteInputSchema,
@@ -41,6 +44,17 @@ describe("writerLinkPresentInHtml", () => {
     const html = '<p>See <a href="https://example.com/deal/">offer</a>.</p>';
     assert.equal(writerLinkPresentInHtml(html, "https://example.com/deal"), true);
     assert.equal(writerLinkPresentInHtml(html, "https://other.org"), false);
+  });
+
+  it("does not treat a shorter URL as present when only a longer href exists", () => {
+    const html = '<p><a href="https://site.com/features">features</a></p>';
+    assert.equal(writerLinkPresentInHtml(html, "https://site.com/features"), true);
+    assert.equal(writerLinkPresentInHtml(html, "https://site.com"), false);
+  });
+
+  it("does not match plain-text URLs without an anchor", () => {
+    const html = "<p>Visit https://example.com/deal for details.</p>";
+    assert.equal(writerLinkPresentInHtml(html, "https://example.com/deal"), false);
   });
 });
 
@@ -173,6 +187,15 @@ describe("writerRewriteDivergenceScore", () => {
     const score = writerRewriteDivergenceScore(source, html);
     assert.ok(score > 70, `expected high score, got ${score}`);
   });
+
+  it("scores higher on phrase change when vocabulary overlaps", () => {
+    const source =
+      "Content marketing helps teams publish articles that rank in search and convert readers into customers over time.";
+    const html =
+      "<p>Search ranking and reader conversion still matter for teams publishing articles through content marketing over time.</p>";
+    const score = writerRewriteDivergenceScore(source, html);
+    assert.ok(score > 25, `expected phrase divergence, got ${score}`);
+  });
 });
 
 describe("writerLinksShallowOrFabricated", () => {
@@ -200,6 +223,35 @@ describe("writerLinksShallowOrFabricated", () => {
       ]),
       false,
     );
+  });
+});
+
+describe("weaveMissingWriterLinksInBody", () => {
+  it("inserts missing links as inline anchors in body paragraphs", () => {
+    const html = "<p>Intro paragraph one.</p><p>Middle paragraph two.</p><p>Closing paragraph three.</p>";
+    const { html: out, woven } = weaveMissingWriterLinksInBody(html, [
+      { url: "https://missing.example", label: "Missing" },
+    ]);
+    assert.equal(woven, 1);
+    assert.equal(writerLinkPresentInHtml(out, "https://missing.example"), true);
+    assert.doesNotMatch(out, /Related links/i);
+  });
+});
+
+describe("finalizeWriterLinksInHtml", () => {
+  it("weaves before appending related links", () => {
+    const html = "<p>Only one <a href=\"https://one.example\">One</a>.</p><p>Second paragraph.</p>";
+    const { html: out, linksWoven, linksAppended } = finalizeWriterLinksInHtml(html, [
+      { url: "https://one.example" },
+      { url: "https://two.example", label: "Two" },
+    ]);
+    assert.equal(linksWoven, 1);
+    assert.equal(linksAppended, 0);
+    assert.equal(writerLinksPresentCount(out, [
+      { url: "https://one.example" },
+      { url: "https://two.example" },
+    ]), 2);
+    assert.doesNotMatch(out, /Related links/i);
   });
 });
 

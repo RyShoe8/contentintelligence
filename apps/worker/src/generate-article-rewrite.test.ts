@@ -77,7 +77,21 @@ describe("buildArticleRewritePrompts", () => {
 
     assert.match(systemPrompt, /Rewrite intensity/i);
     assert.match(systemPrompt, /Substantial rewrite/i);
+    assert.match(systemPrompt, /5\+ consecutive words/i);
     assert.match(userPrompt, /noticeably different/i);
     assert.match(userPrompt, /60%/);
+  });
+
+  it("uses substantial intensity at 50 percent minimum", () => {
+    const { systemPrompt } = buildArticleRewritePrompts({
+      voice: minimalVoice(),
+      sourceText: "A".repeat(200),
+      links: [],
+      examples: [],
+      rewriteDivergenceMin: 50,
+    });
+
+    assert.match(systemPrompt, /Substantial rewrite/i);
+    assert.doesNotMatch(systemPrompt, /Moderate rewrite/i);
   });
 });

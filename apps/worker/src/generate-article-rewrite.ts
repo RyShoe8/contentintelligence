@@ -1,11 +1,11 @@
 import {
-  ensureWriterLinksInHtml,
+  finalizeWriterLinksInHtml,
   formatWriterLinksForPrompt,
   type GenerationConstraints,
   type Voice,
   type WriterLink,
   writerLinksNeedRevision,
-  writerLinksMissingFromHtml,
+  writerLinksPresentCount,
   writerRewriteDivergenceScore,
 } from "@content-resourcer/db";
 import { writerArticleHtmlForLearning, type WriterArticle } from "@content-resourcer/db";
@@ -40,7 +40,7 @@ function rewriteIntensityBlock(min: number): string {
 Rewrite intensity (target ~${min}% difference from source wording):
 - Light polish: keep section order and most sentences; change voice and tone.`;
   }
-  if (min <= 50) {
+  if (min <= 49) {
     return `
 Rewrite intensity (target ~${min}% difference from source wording):
 - Moderate rewrite: rephrase paragraphs and adjust headings; keep the same facts.`;
@@ -48,15 +48,23 @@ Rewrite intensity (target ~${min}% difference from source wording):
   if (min <= 80) {
     return `
 Rewrite intensity (target ~${min}% difference from source wording):
-- Substantial rewrite: new structure and flow; fresh phrasing; same facts.`;
+- Substantial rewrite: new structure and flow; fresh phrasing throughout; same facts.`;
   }
   return `
 Rewrite intensity (target ~${min}% difference from source wording):
 - Heavy rewrite: new outline and fresh phrasing throughout; same facts.`;
 }
 
+function rewriteAntiCopyBlock(min: number): string {
+  if (min < 40) return "";
+  return `
+- Do not reuse any phrase of 5+ consecutive words from the source verbatim.`;
+}
+
 function rewriteTemperature(min: number): number {
-  return 0.35 + (Math.min(100, Math.max(0, min)) / 100) * 0.35;
+  const m = Math.min(100, Math.max(0, min));
+  if (m >= 50) return 0.55 + (m / 100) * 0.35;
+  return 0.35 + (m / 100) * 0.35;
 }
 
 export type ArticleRewriteExample = {
@@ -76,6 +84,13 @@ export type ArticleRewritePrompts = {
   systemPrompt: string;
   userPrompt: string;
   sourceTruncated: boolean;
+};
+
+type LinkPipelineResult = {
+  html: string;
+  linksRevised: boolean;
+  linksWoven: number;
+  linksAppended: number;
 };
 
 function styleRulesBlock(style: VoiceStylePromptOpts): string {
@@ -102,6 +117,7 @@ function buildConstraintArticleSystemPrompt(
   constraints: GenerationConstraints,
   style: VoiceStylePromptOpts,
   persona?: string,
+  divergenceMin = 0,
 ): string {
   const archetypeLine = constraints.archetype
     ? `- Embody archetype: ${constraints.archetype}`
@@ -117,7 +133,7 @@ Rules:
 - Output an HTML fragment only: use <p>, <h2>, <h3>, <ul>, <li>, and <a href="..."> for links.
 - Do NOT wrap in <html>, <head>, or <body>. Do NOT use markdown.
 - Do NOT add URLs that were not provided.
-- Respect taboos; avoid generic affiliate hype and fake urgency.
+- Respect taboos; avoid generic affiliate hype and fake urgency.${rewriteAntiCopyBlock(divergenceMin)}
 ${LINK_WEAVE_RULES}
 ${archetypeLine ?? ""}${styleRulesBlock(style)}${sharedIdentityBlock(constraints)}${personaBlock}
 
@@ -125,27 +141,31 @@ Brand generation constraints (JSON):
 ${formatConstraintsForPrompt(constraints)}`;
 }
 
-function buildPersonaArticleSystemPrompt(persona: string, style: VoiceStylePromptOpts): string {
+function buildPersonaArticleSystemPrompt(
+  persona: string,
+  style: VoiceStylePromptOpts,
+  divergenceMin = 0,
+): string {
   return `Rewrite the user's source article as a full blog article in HTML using the brand voice persona below.
 Rules:
 - Preserve factual claims from the source; do not invent statistics, quotes, or offers.
 - Match the persona's tone, vocabulary, and rhythm throughout.
 - Use clear structure with HTML headings and paragraphs where appropriate.
 - Output an HTML fragment only (<p>, <h2>, <h3>, lists, <a href="...">). No <html>/<body>. No markdown.
-- Do NOT add URLs that were not provided.
+- Do NOT add URLs that were not provided.${rewriteAntiCopyBlock(divergenceMin)}
 ${LINK_WEAVE_RULES}${styleRulesBlock(style)}
 
 Brand voice persona:
 ${persona.trim()}`;
 }
 
-function buildDefaultArticleSystemPrompt(style: VoiceStylePromptOpts): string {
+function buildDefaultArticleSystemPrompt(style: VoiceStylePromptOpts, divergenceMin = 0): string {
   return `Rewrite the user's source article as a polished blog article in HTML.
 Rules:
 - Preserve factual claims from the source.
 - Informative, engaging promotional/editorial tone.
 - HTML fragment only (<p>, <h2>, <h3>, <a href="...">). No markdown. No <html>/<body>.
-- Do not invent URLs.
+- Do not invent URLs.${rewriteAntiCopyBlock(divergenceMin)}
 ${LINK_WEAVE_RULES}${styleRulesBlock(style)}`;
 }
 
@@ -178,16 +198,17 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
     preferredPhrases: ctx.preferredPhrases,
   };
 
+  const divergenceMin = Math.min(100, Math.max(0, opts.rewriteDivergenceMin ?? 0));
+
   let systemPrompt: string;
   if (ctx.constraints) {
-    systemPrompt = buildConstraintArticleSystemPrompt(ctx.constraints, style, ctx.persona);
+    systemPrompt = buildConstraintArticleSystemPrompt(ctx.constraints, style, ctx.persona, divergenceMin);
   } else if (ctx.persona?.trim()) {
-    systemPrompt = buildPersonaArticleSystemPrompt(ctx.persona, style);
+    systemPrompt = buildPersonaArticleSystemPrompt(ctx.persona, style, divergenceMin);
   } else {
-    systemPrompt = buildDefaultArticleSystemPrompt(style);
+    systemPrompt = buildDefaultArticleSystemPrompt(style, divergenceMin);
   }
 
-  const divergenceMin = Math.min(100, Math.max(0, opts.rewriteDivergenceMin ?? 0));
   if (divergenceMin > 0) {
     systemPrompt += rewriteIntensityBlock(divergenceMin);
   }
@@ -228,15 +249,99 @@ export function buildArticleRewritePrompts(opts: BuildArticleRewritePromptsOpts)
   };
 }
 
+async function applyWriterLinkPipeline(
+  html: string,
+  opts: BuildArticleRewritePromptsOpts,
+): Promise<LinkPipelineResult> {
+  let out = html;
+  let linksRevised = false;
+  let linksWoven = 0;
+  let linksAppended = 0;
+
+  if (
+    opts.links.length > 0 &&
+    writerLinksNeedRevision(out, opts.links, opts.sourceText.trim())
+  ) {
+    out = await reviseWriterLinksInHtml({
+      html: out,
+      links: opts.links,
+      voice: opts.voice,
+      sourceText: opts.sourceText.trim(),
+    });
+    linksRevised = true;
+  }
+
+  const finalized = finalizeWriterLinksInHtml(out, opts.links);
+  out = finalized.html;
+  linksWoven += finalized.linksWoven;
+  linksAppended += finalized.linksAppended;
+
+  return { html: out, linksRevised, linksWoven, linksAppended };
+}
+
+async function expandArticleRewriteDivergence(opts: {
+  sourceText: string;
+  html: string;
+  links: WriterLink[];
+  targetMin: number;
+  currentScore: number;
+}): Promise<string> {
+  const maxChars = env.maxWriterInputChars;
+  let sourceExcerpt = opts.sourceText.trim();
+  if (sourceExcerpt.length > maxChars) {
+    sourceExcerpt = `${sourceExcerpt.slice(0, maxChars)}\n\n[Source truncated for length.]`;
+  }
+
+  const systemPrompt = `You rewrite an HTML article to be more distinct from the original source while preserving all facts.
+Rules:
+- Output an HTML fragment only (<p>, <h2>, <h3>, <a href="...">). No markdown. No <html>/<body>.
+- Use new sentence structures and varied vocabulary; do not reuse phrases of 5+ consecutive words from the source.
+- Keep every factual claim from the source.
+- Each listed URL must appear exactly once as an inline anchor in the body.${rewriteAntiCopyBlock(opts.targetMin)}
+${LINK_WEAVE_RULES}`;
+
+  const userPrompt = [
+    `The current rewrite scored ${opts.currentScore}% different from the source; target at least ${opts.targetMin}%.`,
+    "Rewrite with fresh phrasing and structure while keeping facts and all required links.",
+    "",
+    "Required links:",
+    formatWriterLinksForPrompt(opts.links),
+    "",
+    "Original source:",
+    sourceExcerpt,
+    "",
+    "Current HTML to improve:",
+    opts.html.trim(),
+  ].join("\n");
+
+  const client = new OpenAI({ apiKey: env.openaiApiKey });
+  const res = await client.chat.completions.create({
+    model: env.openaiModel,
+    max_tokens: env.maxTokensWriter,
+    temperature: rewriteTemperature(opts.targetMin),
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  });
+
+  const raw = res.choices[0]?.message?.content?.trim();
+  if (!raw) throw new Error("article_rewrite_expand_empty");
+  return raw;
+}
+
 export async function generateArticleRewriteHtml(opts: BuildArticleRewritePromptsOpts): Promise<{
   html: string;
   sourceTruncated: boolean;
   linksRequested: number;
+  linksPresent: number;
   linksAppended: number;
+  linksWoven: number;
   linksRevised: boolean;
   rewriteDivergenceScore: number;
   rewriteDivergenceMin: number;
   rewriteDivergenceBelowMin: boolean;
+  rewriteDivergenceRetried: boolean;
 }> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -262,26 +367,34 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   const raw = res.choices[0]?.message?.content?.trim();
   if (!raw) throw new Error("article_rewrite_empty");
 
-  let html = raw;
-  let linksRevised = false;
+  let pipeline = await applyWriterLinkPipeline(raw, opts);
+  let html = pipeline.html;
+  let rewriteDivergenceScore = writerRewriteDivergenceScore(opts.sourceText.trim(), html);
+  let rewriteDivergenceRetried = false;
 
-  if (
-    opts.links.length > 0 &&
-    writerLinksNeedRevision(raw, opts.links, opts.sourceText.trim())
-  ) {
-    html = await reviseWriterLinksInHtml({
-      html: raw,
-      links: opts.links,
-      voice: opts.voice,
+  if (divergenceMin > 0 && rewriteDivergenceScore < divergenceMin) {
+    const expanded = await expandArticleRewriteDivergence({
       sourceText: opts.sourceText.trim(),
+      html,
+      links: opts.links,
+      targetMin: divergenceMin,
+      currentScore: rewriteDivergenceScore,
     });
-    linksRevised = true;
+    const retryPipeline = await applyWriterLinkPipeline(expanded, opts);
+    const retryScore = writerRewriteDivergenceScore(opts.sourceText.trim(), retryPipeline.html);
+    rewriteDivergenceRetried = true;
+    if (retryScore > rewriteDivergenceScore) {
+      html = retryPipeline.html;
+      rewriteDivergenceScore = retryScore;
+      pipeline = {
+        html: retryPipeline.html,
+        linksRevised: pipeline.linksRevised || retryPipeline.linksRevised,
+        linksWoven: pipeline.linksWoven + retryPipeline.linksWoven,
+        linksAppended: pipeline.linksAppended + retryPipeline.linksAppended,
+      };
+    }
   }
 
-  const missingBeforeAppend = writerLinksMissingFromHtml(html, opts.links);
-  html = ensureWriterLinksInHtml(html, opts.links);
-
-  const rewriteDivergenceScore = writerRewriteDivergenceScore(opts.sourceText.trim(), html);
   const rewriteDivergenceBelowMin =
     divergenceMin > 0 && rewriteDivergenceScore < divergenceMin;
 
@@ -289,10 +402,13 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
     html,
     sourceTruncated,
     linksRequested: opts.links.length,
-    linksAppended: missingBeforeAppend.length,
-    linksRevised,
+    linksPresent: writerLinksPresentCount(html, opts.links),
+    linksAppended: pipeline.linksAppended,
+    linksWoven: pipeline.linksWoven,
+    linksRevised: pipeline.linksRevised,
     rewriteDivergenceScore,
     rewriteDivergenceMin: divergenceMin,
     rewriteDivergenceBelowMin,
+    rewriteDivergenceRetried,
   };
 }
