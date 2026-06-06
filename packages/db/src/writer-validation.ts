@@ -218,6 +218,43 @@ export function writerLinksClusteredAtEnd(html: string, links: WriterLink[]): bo
   return false;
 }
 
+const SPREAD_END_PARAGRAPH_FRACTION = 0.25;
+const SPREAD_MEAN_POSITION_FRACTION = 0.65;
+
+/** True when requested links are too concentrated toward the end of the article body. */
+export function writerLinksNeedSpread(html: string, links: WriterLink[]): boolean {
+  if (!links.length) return false;
+  if (writerLinksMissingFromHtml(html, links).length > 0) return false;
+
+  if (writerLinksClusteredAtEnd(html, links)) return true;
+
+  const paragraphs = writerHtmlParagraphs(html);
+  const pCount = paragraphs.length;
+  if (pCount < 2) return false;
+
+  const indices: number[] = [];
+  for (const link of links) {
+    const found = writerLinkParagraphIndices(html, link.url);
+    if (!found.length) return false;
+    indices.push(Math.min(...found));
+  }
+
+  if (links.length === 1 && pCount >= 3) {
+    const idx = indices[0]!;
+    const lastQuarterStart = Math.ceil(pCount * (1 - SPREAD_END_PARAGRAPH_FRACTION));
+    if (idx === pCount - 1 || idx >= lastQuarterStart) return true;
+  }
+
+  if (links.length >= 2 && pCount >= 4 && new Set(indices).size === 1) return true;
+
+  if (links.length >= 2 && pCount >= 2) {
+    const mean = indices.reduce((a, b) => a + b, 0) / indices.length;
+    if (mean > SPREAD_MEAN_POSITION_FRACTION * (pCount - 1)) return true;
+  }
+
+  return false;
+}
+
 /**
  * True when a link sits in a short promotional sentence or link-only micro-paragraph.
  */
@@ -276,9 +313,18 @@ export function writerLinksNeedRevision(
 
 export function formatWriterLinksForPrompt(links: WriterLink[]): string {
   if (!links.length) return "(none — do not add external links)";
+  const placementHints = [
+    "early body (first ~third)",
+    "middle body",
+    "later body (not closing paragraph)",
+    "upper-middle body",
+    "lower-middle body",
+  ];
   const lines = links.map((l, i) => {
     const label = l.label?.trim();
-    return `${i + 1}. URL: ${l.url}${label ? ` — suggested anchor: ${label}` : ""}`;
+    const placement =
+      links.length >= 2 ? ` — place in ${placementHints[i % placementHints.length]}` : "";
+    return `${i + 1}. URL: ${l.url}${label ? ` — suggested anchor: ${label}` : ""}${placement}`;
   });
   lines.push("Placement: distribute links across the article body, not clustered at the end.");
   return lines.join("\n");
@@ -407,6 +453,121 @@ function escapeRegex(value: string): string {
 }
 
 const WEAVE_PARAGRAPH_FRACTIONS = [0.25, 0.5, 0.75, 0.33, 0.66];
+const REDISTRIBUTE_END_CAP_FRACTION = 0.15;
+
+function writerLinkSpreadTargetIndex(linkIndex: number, linkCount: number, pCount: number): number {
+  const maxTarget = Math.max(0, pCount - Math.ceil(pCount * REDISTRIBUTE_END_CAP_FRACTION) - 1);
+  if (linkCount <= 1) {
+    return Math.min(maxTarget, Math.max(0, Math.floor(maxTarget / 2)));
+  }
+  const slot = Math.round((linkIndex * maxTarget) / Math.max(1, linkCount - 1));
+  return Math.min(maxTarget, Math.max(0, slot));
+}
+
+function extractWriterLinkAnchorFromParagraph(
+  paragraph: string,
+  url: string,
+): { anchorHtml: string; anchorText: string } | null {
+  const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(paragraph)) !== null) {
+    const href = m[1]?.trim();
+    if (href && hrefMatchesWriterUrl(href, url)) {
+      return {
+        anchorHtml: m[0] ?? "",
+        anchorText: stripHtmlToPlainText(m[2] ?? ""),
+      };
+    }
+  }
+  return null;
+}
+
+function linkParagraphIndexInArray(paragraphs: string[], url: string): number | null {
+  for (let i = 0; i < paragraphs.length; i++) {
+    if (writerLinkPresentInHtml(paragraphs[i] ?? "", url)) return i;
+  }
+  return null;
+}
+
+function insertWriterLinkIntoParagraph(
+  paragraph: string,
+  link: WriterLink,
+  preferredAnchorText?: string,
+): string {
+  if (writerLinkPresentInHtml(paragraph, link.url)) return paragraph;
+
+  const href = escapeHtmlText(link.url);
+  const anchor = preferredAnchorText?.trim() || writerLinkAnchorText(link);
+  const anchorEsc = escapeHtmlText(anchor);
+  const plain = stripHtmlToPlainText(paragraph);
+
+  if (normalizedContains(plain, anchor)) {
+    const anchorRe = new RegExp(escapeRegex(anchor), "i");
+    return paragraph.replace(anchorRe, `<a href="${href}">${anchorEsc}</a>`);
+  }
+
+  const periodSplit = paragraph.match(/^(<p\b[^>]*>[\s\S]*?)(\.\s+)([\s\S]*?<\/p>)$/i);
+  if (periodSplit) {
+    return `${periodSplit[1]} (<a href="${href}">${anchorEsc}</a>).${periodSplit[2]!.slice(1)}${periodSplit[3]}`;
+  }
+
+  return paragraph.replace(/<\/p>\s*$/i, ` (<a href="${href}">${anchorEsc}</a>).</p>`);
+}
+
+/**
+ * Move existing anchors from late paragraphs into evenly spaced body slots.
+ */
+export function redistributeWriterLinksInBody(
+  html: string,
+  links: WriterLink[],
+): { html: string; redistributed: number } {
+  if (!links.length) return { html, redistributed: 0 };
+
+  const paragraphRe = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  const matches = [...html.matchAll(paragraphRe)];
+  const paragraphs = matches.map((m) => m[0]);
+  const pCount = paragraphs.length;
+  if (pCount < 2) return { html, redistributed: 0 };
+
+  let redistributed = 0;
+
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i]!;
+    const targetIdx = writerLinkSpreadTargetIndex(i, links.length, pCount);
+    const currentIdx = linkParagraphIndexInArray(paragraphs, link.url);
+    if (currentIdx == null) continue;
+    if (Math.abs(currentIdx - targetIdx) <= 1) continue;
+
+    const extracted = extractWriterLinkAnchorFromParagraph(paragraphs[currentIdx] ?? "", link.url);
+    if (!extracted) continue;
+
+    let sourceParagraph = paragraphs[currentIdx] ?? "";
+    sourceParagraph = sourceParagraph.replace(extracted.anchorHtml, extracted.anchorText);
+    sourceParagraph = sourceParagraph.replace(/\s{2,}/g, " ");
+    paragraphs[currentIdx] = sourceParagraph;
+
+    if (currentIdx !== targetIdx) {
+      paragraphs[targetIdx] = insertWriterLinkIntoParagraph(
+        paragraphs[targetIdx] ?? "",
+        link,
+        extracted.anchorText,
+      );
+      redistributed++;
+    }
+  }
+
+  let result = html;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const original = matches[i]![0];
+    const updated = paragraphs[i]!;
+    if (original !== updated) {
+      const start = matches[i]!.index!;
+      result = result.slice(0, start) + updated + result.slice(start + original.length);
+    }
+  }
+
+  return { html: result, redistributed };
+}
 
 /**
  * Deterministically weave missing links into body paragraphs as inline anchors.
@@ -460,11 +621,11 @@ export function weaveMissingWriterLinksInBody(
   return { html: result, woven };
 }
 
-/** Weave missing links into body; append Related links only when weave is impossible. */
+/** Weave missing links into body; redistribute end-heavy links; append Related links when needed. */
 export function finalizeWriterLinksInHtml(
   html: string,
   links: WriterLink[],
-): { html: string; linksWoven: number; linksAppended: number } {
+): { html: string; linksWoven: number; linksAppended: number; linksRedistributed: number } {
   let out = html;
   let missing = writerLinksMissingFromHtml(out, links);
   let linksWoven = 0;
@@ -474,13 +635,28 @@ export function finalizeWriterLinksInHtml(
     linksWoven = woven.woven;
     missing = writerLinksMissingFromHtml(out, links);
   }
+
+  let linksRedistributed = 0;
+  if (writerLinksNeedSpread(out, links)) {
+    const redistributed = redistributeWriterLinksInBody(out, links);
+    out = redistributed.html;
+    linksRedistributed = redistributed.redistributed;
+    missing = writerLinksMissingFromHtml(out, links);
+    if (missing.length) {
+      const reWoven = weaveMissingWriterLinksInBody(out, missing);
+      out = reWoven.html;
+      linksWoven += reWoven.woven;
+      missing = writerLinksMissingFromHtml(out, links);
+    }
+  }
+
   let linksAppended = 0;
   if (missing.length) {
     const before = out;
     out = ensureWriterLinksInHtml(out, missing);
     if (out !== before) linksAppended = missing.length;
   }
-  return { html: out, linksWoven, linksAppended };
+  return { html: out, linksWoven, linksAppended, linksRedistributed };
 }
 
 export function writerLinkAnchorText(link: WriterLink): string {

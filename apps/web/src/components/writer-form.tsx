@@ -125,6 +125,7 @@ export function WriterForm({
   const [linksNonRequestedInOutput, setLinksNonRequestedInOutput] = useState<number | null>(null);
   const [linksWovenNotice, setLinksWovenNotice] = useState<number | null>(null);
   const [linksAppendedNotice, setLinksAppendedNotice] = useState<number | null>(null);
+  const [linksRedistributedNotice, setLinksRedistributedNotice] = useState<number | null>(null);
   const [linksRevisedNotice, setLinksRevisedNotice] = useState(false);
   const [rewriteDivergenceMin, setRewriteDivergenceMin] = useState(0);
   const [rewriteDivergenceScore, setRewriteDivergenceScore] = useState<number | null>(null);
@@ -166,6 +167,7 @@ export function WriterForm({
     setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
+    setLinksRedistributedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
@@ -239,6 +241,7 @@ export function WriterForm({
     setLinksNonRequestedInOutput(null);
     setLinksWovenNotice(null);
     setLinksAppendedNotice(null);
+    setLinksRedistributedNotice(null);
     setLinksRevisedNotice(false);
     setRewriteDivergenceScore(null);
     setRewriteDivergenceBelowMin(false);
@@ -267,6 +270,7 @@ export function WriterForm({
         links_non_requested_in_output?: number;
         links_appended?: number;
         links_woven?: number;
+        links_redistributed?: number;
         links_revised?: boolean;
         rewrite_divergence_score?: number;
         rewrite_divergence_min?: number;
@@ -293,6 +297,9 @@ export function WriterForm({
       }
       if (typeof data.links_appended === "number" && data.links_appended > 0) {
         setLinksAppendedNotice(data.links_appended);
+      }
+      if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
+        setLinksRedistributedNotice(data.links_redistributed);
       }
       if (data.links_revised === true) {
         setLinksRevisedNotice(true);
@@ -575,6 +582,12 @@ export function WriterForm({
         {linksRevisedNotice ? (
           <p className="text-xs text-amber-200/90">
             Links were reworked for more natural placement in the article.
+          </p>
+        ) : null}
+        {linksRedistributedNotice != null && linksRedistributedNotice > 0 ? (
+          <p className="text-xs text-[var(--muted)]">
+            {linksRedistributedNotice} link{linksRedistributedNotice === 1 ? "" : "s"} moved earlier
+            in the article for more natural placement.
           </p>
         ) : null}
         {linksAppendedNotice != null && linksAppendedNotice > 0 ? (

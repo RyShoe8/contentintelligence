@@ -4,12 +4,14 @@ import {
   ensureWriterLinksInHtml,
   finalizeWriterLinksInHtml,
   parseWriterLinks,
+  redistributeWriterLinksInBody,
   stripHtmlToPlainText,
   weaveMissingWriterLinksInBody,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
   writerLinksClusteredAtEnd,
   writerLinksMissingFromHtml,
+  writerLinksNeedSpread,
   writerLinksNeedRevision,
   writerLinksPresentCount,
   writerLinksShallowOrFabricated,
@@ -115,6 +117,100 @@ describe("writerLinksClusteredAtEnd", () => {
       ]),
       false,
     );
+  });
+});
+
+describe("writerLinksNeedSpread", () => {
+  it("returns true for a single link in the last paragraph", () => {
+    const html = [
+      "<p>Opening paragraph.</p>",
+      "<p>Middle paragraph.</p>",
+      "<p>Another middle paragraph.</p>",
+      '<p>Closing with <a href="https://only.example">Only</a>.</p>',
+    ].join("\n");
+    assert.equal(
+      writerLinksNeedSpread(html, [{ url: "https://only.example" }]),
+      true,
+    );
+  });
+
+  it("returns true when all links share one late paragraph", () => {
+    const html = [
+      "<p>One.</p>",
+      "<p>Two.</p>",
+      "<p>Three.</p>",
+      '<p>Four with <a href="https://a.example">A</a>, <a href="https://b.example">B</a>, and <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example" },
+      { url: "https://b.example" },
+      { url: "https://c.example" },
+    ];
+    assert.equal(writerLinksNeedSpread(html, links), true);
+  });
+
+  it("returns false when links are spread across the article", () => {
+    const html = [
+      '<p>Intro <a href="https://a.example">A</a>.</p>',
+      "<p>Middle body text.</p>",
+      '<p>Later <a href="https://b.example">B</a>.</p>',
+      '<p>End <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example" },
+      { url: "https://b.example" },
+      { url: "https://c.example" },
+    ];
+    assert.equal(writerLinksNeedSpread(html, links), false);
+  });
+});
+
+describe("redistributeWriterLinksInBody", () => {
+  it("spreads three links clustered in the last paragraph", () => {
+    const html = [
+      "<p>Opening paragraph one.</p>",
+      "<p>Second paragraph two.</p>",
+      "<p>Third paragraph three.</p>",
+      '<p>Fourth with <a href="https://a.example">A</a>, <a href="https://b.example">B</a>, and <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example", label: "A" },
+      { url: "https://b.example", label: "B" },
+      { url: "https://c.example", label: "C" },
+    ];
+    const { html: out, redistributed } = redistributeWriterLinksInBody(html, links);
+    assert.ok(redistributed >= 2);
+    assert.equal(writerLinksPresentCount(out, links), 3);
+    assert.equal(writerLinksNeedSpread(out, links), false);
+    assert.ok(writerLinkParagraphIndices(out, "https://a.example")[0]! < 3);
+    assert.ok(writerLinkParagraphIndices(out, "https://b.example")[0]! < 3);
+  });
+
+  it("moves a single last-paragraph link toward the middle", () => {
+    const html = [
+      "<p>Paragraph one.</p>",
+      "<p>Paragraph two.</p>",
+      "<p>Paragraph three.</p>",
+      "<p>Paragraph four.</p>",
+      '<p>Paragraph five with <a href="https://solo.example">Solo</a>.</p>',
+    ].join("\n");
+    const { html: out, redistributed } = redistributeWriterLinksInBody(html, [
+      { url: "https://solo.example", label: "Solo" },
+    ]);
+    assert.equal(redistributed, 1);
+    assert.ok(writerLinkParagraphIndices(out, "https://solo.example")[0]! <= 2);
+  });
+
+  it("leaves already-spread links unchanged", () => {
+    const html = [
+      '<p>Intro <a href="https://a.example">A</a>.</p>',
+      "<p>Middle body text.</p>",
+      '<p>Later <a href="https://b.example">B</a>.</p>',
+    ].join("\n");
+    const links = [{ url: "https://a.example" }, { url: "https://b.example" }];
+    const { html: out, redistributed } = redistributeWriterLinksInBody(html, links);
+    assert.equal(redistributed, 0);
+    assert.equal(out, html);
   });
 });
 
@@ -245,17 +341,35 @@ describe("weaveMissingWriterLinksInBody", () => {
 describe("finalizeWriterLinksInHtml", () => {
   it("weaves before appending related links", () => {
     const html = "<p>Only one <a href=\"https://one.example\">One</a>.</p><p>Second paragraph.</p>";
-    const { html: out, linksWoven, linksAppended } = finalizeWriterLinksInHtml(html, [
+    const { html: out, linksWoven, linksAppended, linksRedistributed } = finalizeWriterLinksInHtml(html, [
       { url: "https://one.example" },
       { url: "https://two.example", label: "Two" },
     ]);
     assert.equal(linksWoven, 1);
     assert.equal(linksAppended, 0);
+    assert.equal(linksRedistributed, 0);
     assert.equal(writerLinksPresentCount(out, [
       { url: "https://one.example" },
       { url: "https://two.example" },
     ]), 2);
     assert.doesNotMatch(out, /Related links/i);
+  });
+
+  it("redistributes links clustered at the end after weaving", () => {
+    const html = [
+      "<p>Opening paragraph one.</p>",
+      "<p>Second paragraph two.</p>",
+      "<p>Third paragraph three.</p>",
+      '<p>Fourth with <a href="https://a.example">A</a>, <a href="https://b.example">B</a>, and <a href="https://c.example">C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example", label: "A" },
+      { url: "https://b.example", label: "B" },
+      { url: "https://c.example", label: "C" },
+    ];
+    const { html: out, linksRedistributed } = finalizeWriterLinksInHtml(html, links);
+    assert.ok(linksRedistributed >= 2);
+    assert.equal(writerLinksNeedSpread(out, links), false);
   });
 });
 

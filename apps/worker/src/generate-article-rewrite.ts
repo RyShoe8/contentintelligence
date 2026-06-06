@@ -97,6 +97,7 @@ type LinkPipelineResult = {
   linksRevised: boolean;
   linksWoven: number;
   linksAppended: number;
+  linksRedistributed: number;
 };
 
 function styleRulesBlock(style: VoiceStylePromptOpts): string {
@@ -263,6 +264,7 @@ async function applyWriterLinkPipeline(
   let linksRevised = false;
   let linksWoven = 0;
   let linksAppended = 0;
+  let linksRedistributed = 0;
 
   if (
     opts.links.length > 0 &&
@@ -281,8 +283,9 @@ async function applyWriterLinkPipeline(
   out = finalized.html;
   linksWoven += finalized.linksWoven;
   linksAppended += finalized.linksAppended;
+  linksRedistributed += finalized.linksRedistributed;
 
-  return { html: out, linksRevised, linksWoven, linksAppended };
+  return { html: out, linksRevised, linksWoven, linksAppended, linksRedistributed };
 }
 
 async function expandArticleRewriteDivergence(opts: {
@@ -361,6 +364,7 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
   linksNonRequestedInOutput: number;
   linksAppended: number;
   linksWoven: number;
+  linksRedistributed: number;
   linksRevised: boolean;
   rewriteDivergenceScore: number;
   rewriteDivergenceMin: number;
@@ -441,6 +445,7 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
     linksNonRequestedInOutput: writerNonRequestedLinksInHtml(html, opts.links),
     linksAppended: pipeline.linksAppended,
     linksWoven: pipeline.linksWoven,
+    linksRedistributed: pipeline.linksRedistributed,
     linksRevised: pipeline.linksRevised,
     rewriteDivergenceScore,
     rewriteDivergenceMin: divergenceMin,
