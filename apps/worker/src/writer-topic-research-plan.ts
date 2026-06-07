@@ -1,0 +1,101 @@
+import { z } from "zod";
+import { env } from "./env.js";
+import { completeJson } from "./services/llm/json-completion.js";
+
+export type TopicResearchPlan = {
+  research_questions: string[];
+  angles: string[];
+  caveats_to_investigate: string[];
+  search_queries: string[];
+};
+
+export type PlanTopicResearchOpts = {
+  topic: string;
+  voiceKeywords?: string[];
+  hasUserReferences: boolean;
+  maxSearchQueries?: number;
+};
+
+const planSchema = z.object({
+  research_questions: z.array(z.string().trim().min(1)).min(3).max(8),
+  angles: z.array(z.string().trim().min(1)).max(8).default([]),
+  caveats_to_investigate: z.array(z.string().trim().min(1)).max(8).default([]),
+  search_queries: z.array(z.string().trim().min(1)).min(1).max(5),
+});
+
+export function buildTopicResearchPlanPrompts(opts: PlanTopicResearchOpts): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const topic = opts.topic.trim();
+  const keywords =
+    opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
+
+  const systemPrompt = `You plan editorial research for article writing.
+Output JSON only with keys: research_questions, angles, caveats_to_investigate, search_queries.
+Rules:
+- research_questions: 4-6 focused sub-questions that deeply investigate the topic (not generic).
+- angles: 2-4 distinct editorial angles or narratives to explore.
+- caveats_to_investigate: 2-4 limitations, counterpoints, or nuance to verify.
+- search_queries: 2-3 concise web search strings to find authoritative sources on the topic.
+- Questions must be about the TOPIC itself, not about summarizing URLs.
+- If the user may supply reference pages, plan what facts to extract — do not assume page content.`;
+
+  const userPrompt = [
+    `Topic: ${topic}`,
+    `Voice keywords (context): ${keywords}`,
+    opts.hasUserReferences
+      ? "The user will provide reference URLs; plan what to extract from them."
+      : "No user reference URLs; search queries should help discover sources.",
+  ].join("\n");
+
+  return { systemPrompt, userPrompt };
+}
+
+function fallbackPlan(topic: string): TopicResearchPlan {
+  const trimmed = topic.trim();
+  return {
+    research_questions: [
+      `What are the core facts and definitions needed to explain "${trimmed}"?`,
+      `What are the main approaches, methods, or frameworks related to "${trimmed}"?`,
+      `What common misconceptions or caveats apply to "${trimmed}"?`,
+      `What practical examples or use cases illustrate "${trimmed}"?`,
+    ],
+    angles: [`Overview and fundamentals of ${trimmed}`, `Practical implications of ${trimmed}`],
+    caveats_to_investigate: ["Verify claims against primary sources", "Note where evidence is uncertain"],
+    search_queries: [trimmed, `${trimmed} guide`, `${trimmed} research`],
+  };
+}
+
+export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<TopicResearchPlan> {
+  if (!env.openaiApiKey) {
+    throw new Error("openai_not_configured");
+  }
+
+  const { systemPrompt, userPrompt } = buildTopicResearchPlanPrompts(opts);
+  const raw = await completeJson<unknown>({
+    system: systemPrompt,
+    user: userPrompt,
+    maxTokens: env.maxTokensWriterResearchPlan,
+    temperature: 0.3,
+  });
+
+  if (!raw) {
+    return fallbackPlan(opts.topic);
+  }
+
+  const parsed = planSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fallbackPlan(opts.topic);
+  }
+
+  return {
+    research_questions: parsed.data.research_questions.slice(0, 6),
+    angles: parsed.data.angles,
+    caveats_to_investigate: parsed.data.caveats_to_investigate,
+    search_queries: parsed.data.search_queries.slice(
+      0,
+      opts.maxSearchQueries ?? env.writerWebSearchMaxQueries,
+    ),
+  };
+}

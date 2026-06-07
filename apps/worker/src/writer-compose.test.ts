@@ -32,7 +32,7 @@ describe("buildResearchBriefPrompts", () => {
   it("includes reference excerpts when corpus is provided", () => {
     const { userPrompt, hasReferences } = buildResearchBriefPrompts({
       topic: "Measuring content marketing ROI",
-      corpusSections: [{ url: "https://ref.example", text: "Benchmark stats from 2024." }],
+      corpusSections: [{ url: "https://ref.example", text: "Benchmark stats from 2024.", source: "user" }],
       voiceKeywords: ["content", "ROI"],
     });
     assert.equal(hasReferences, true);

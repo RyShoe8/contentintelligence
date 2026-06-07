@@ -9,6 +9,10 @@ import {
   WRITER_LINK_MAX,
   WRITER_REFERENCE_URL_MAX,
   WRITER_TOPIC_MIN_CHARS,
+  WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
+  WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
+  WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
+  WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
@@ -46,6 +50,7 @@ type Props = {
   articles: WriterComposeArticleListItem[];
   selectedArticle: WriterComposeArticleDetail | null;
   workerConfigured: boolean;
+  webSearchAvailable?: boolean;
 };
 
 const articlePaneClass =
@@ -108,6 +113,7 @@ export function WriterComposeForm({
   articles,
   selectedArticle,
   workerConfigured,
+  webSearchAvailable = false,
 }: Props) {
   const router = useRouter();
   const readyVoices = voices.filter((v) => v.ready);
@@ -147,6 +153,18 @@ export function WriterComposeForm({
   const [brandConsistencyScore, setBrandConsistencyScore] = useState<number | null>(null);
   const [genericityScore, setGenericityScore] = useState<number | null>(null);
   const [humanizationAttempts, setHumanizationAttempts] = useState<number | null>(null);
+  const [deepResearch, setDeepResearch] = useState(true);
+  const [webSearch, setWebSearch] = useState(true);
+  const [webSearchMaxQueries, setWebSearchMaxQueries] = useState(
+    WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
+  );
+  const [webSearchMaxResults, setWebSearchMaxResults] = useState(
+    WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
+  );
+  const [researchQuestions, setResearchQuestions] = useState<number | null>(null);
+  const [userReferencesFetched, setUserReferencesFetched] = useState<number | null>(null);
+  const [webReferencesFetched, setWebReferencesFetched] = useState<number | null>(null);
+  const [researchMode, setResearchMode] = useState<string | null>(null);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterComposeArticleListItem[]>();
@@ -190,6 +208,10 @@ export function WriterComposeForm({
     setBrandConsistencyScore(null);
     setGenericityScore(null);
     setHumanizationAttempts(null);
+    setResearchQuestions(null);
+    setUserReferencesFetched(null);
+    setWebReferencesFetched(null);
+    setResearchMode(null);
     router.push("/writer");
   }, [router]);
 
@@ -293,6 +315,10 @@ export function WriterComposeForm({
     setBrandConsistencyScore(null);
     setGenericityScore(null);
     setHumanizationAttempts(null);
+    setResearchQuestions(null);
+    setUserReferencesFetched(null);
+    setWebReferencesFetched(null);
+    setResearchMode(null);
 
     try {
       const r = await fetch("/api/worker/writer/compose", {
@@ -304,6 +330,14 @@ export function WriterComposeForm({
           reference_urls: referenceUrls,
           links,
           writer_article_id: articleId || undefined,
+          deep_research: deepResearch,
+          web_search: webSearch,
+          ...(webSearch
+            ? {
+                web_search_max_queries: webSearchMaxQueries,
+                web_search_max_results: webSearchMaxResults,
+              }
+            : {}),
         }),
       });
       const data = (await r.json().catch(() => ({}))) as {
@@ -313,6 +347,11 @@ export function WriterComposeForm({
         research_brief?: string;
         references_fetched?: number;
         references_failed?: string[];
+        user_references_fetched?: number;
+        web_references_fetched?: number;
+        web_search_urls?: string[];
+        research_questions?: number;
+        research_mode?: string;
         links_requested?: number;
         links_present?: number;
         links_added?: number;
@@ -336,6 +375,18 @@ export function WriterComposeForm({
       }
       if (Array.isArray(data.references_failed)) {
         setReferencesFailed(data.references_failed);
+      }
+      if (typeof data.research_questions === "number") {
+        setResearchQuestions(data.research_questions);
+      }
+      if (typeof data.user_references_fetched === "number") {
+        setUserReferencesFetched(data.user_references_fetched);
+      }
+      if (typeof data.web_references_fetched === "number") {
+        setWebReferencesFetched(data.web_references_fetched);
+      }
+      if (typeof data.research_mode === "string") {
+        setResearchMode(data.research_mode);
       }
       if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
       if (typeof data.links_present === "number") setLinksPresent(data.links_present);
@@ -583,15 +634,104 @@ export function WriterComposeForm({
           ))}
         </div>
 
+        <div className="flex flex-col gap-2 text-sm">
+          <label className="flex items-start gap-2 text-[var(--fg)]">
+            <input
+              type="checkbox"
+              checked={deepResearch}
+              onChange={(e) => setDeepResearch(e.target.checked)}
+              disabled={writing}
+              className="mt-1 accent-[var(--primary)]"
+            />
+            <span>
+              Deep topic research
+              <span className="block text-xs text-[var(--muted)]">
+                Plans sub-questions from your topic and builds a detailed research brief before
+                writing. Slower but more thorough.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-[var(--fg)]">
+            <input
+              type="checkbox"
+              checked={webSearch}
+              onChange={(e) => setWebSearch(e.target.checked)}
+              disabled={writing || !webSearchAvailable}
+              className="mt-1 accent-[var(--primary)]"
+            />
+            <span>
+              Search the web for this topic
+              <span className="block text-xs text-[var(--muted)]">
+                {webSearchAvailable
+                  ? "Discovers additional sources via Tavily (requires TAVILY_API_KEY on worker)."
+                  : "Requires TAVILY_API_KEY on the worker (optional)."}
+              </span>
+            </span>
+          </label>
+          {webSearch && webSearchAvailable ? (
+            <div className="ml-6 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[var(--muted)]">Max search queries</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT}
+                  value={webSearchMaxQueries}
+                  onChange={(e) =>
+                    setWebSearchMaxQueries(
+                      Math.min(
+                        WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
+                        Math.max(1, Number(e.target.value) || WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT),
+                      ),
+                    )
+                  }
+                  disabled={writing}
+                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[var(--muted)]">Max web sources to fetch</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT}
+                  value={webSearchMaxResults}
+                  onChange={(e) =>
+                    setWebSearchMaxResults(
+                      Math.min(
+                        WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
+                        Math.max(1, Number(e.target.value) || WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT),
+                      ),
+                    )
+                  }
+                  disabled={writing}
+                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+          ) : null}
+        </div>
+
         <div className="flex flex-wrap items-end gap-4">
           <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
-            {writing ? "Writing…" : "Write"}
+            {writing ? "Researching…" : "Write"}
           </Button>
         </div>
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
+        {researchMode != null || researchQuestions != null ? (
+          <p className="text-xs text-[var(--muted)]">
+            Research mode: {researchMode ?? "—"}
+            {researchQuestions != null && researchQuestions > 0
+              ? ` · ${researchQuestions} sub-questions`
+              : ""}
+          </p>
+        ) : null}
         {referencesFetched != null || referencesFailed.length > 0 ? (
           <p className="text-xs text-[var(--muted)]">
-            References fetched: {referencesFetched ?? 0}
+            Sources fetched: {referencesFetched ?? 0}
+            {userReferencesFetched != null || webReferencesFetched != null
+              ? ` (${userReferencesFetched ?? 0} reference, ${webReferencesFetched ?? 0} web)`
+              : ""}
             {referencesFailed.length > 0
               ? ` · ${referencesFailed.length} failed to load`
               : ""}

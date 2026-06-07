@@ -26,6 +26,10 @@ import {
   WRITER_SOURCE_MIN_CHARS,
   WRITER_TOPIC_MIN_CHARS,
   WRITER_REFERENCE_URL_MAX,
+  WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
+  WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
+  WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
+  WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
 } from "./writer-validation.js";
 
 describe("parseWriterLinks", () => {
@@ -266,6 +270,63 @@ describe("writerComposeInputSchema", () => {
     });
     assert.equal(parsed.success, true);
     assert.equal(parsed.data?.reference_urls.length, 2);
+    assert.equal(parsed.data?.deep_research, true);
+    assert.equal(parsed.data?.web_search, true);
+    assert.equal(parsed.data?.web_search_max_queries, WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT);
+    assert.equal(parsed.data?.web_search_max_results, WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT);
+  });
+
+  it("defaults deep_research and web_search to true", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.deep_research, true);
+    assert.equal(parsed.data?.web_search, true);
+  });
+
+  it("accepts explicit deep_research and web_search flags", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      deep_research: false,
+      web_search: false,
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.deep_research, false);
+    assert.equal(parsed.data?.web_search, false);
+  });
+
+  it("defaults web search limits when omitted", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.web_search_max_queries, WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT);
+    assert.equal(parsed.data?.web_search_max_results, WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT);
+  });
+
+  it("accepts explicit web search limits within bounds", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      web_search_max_queries: 7,
+      web_search_max_results: 10,
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.web_search_max_queries, 7);
+    assert.equal(parsed.data?.web_search_max_results, 10);
+  });
+
+  it("rejects web search limits above schema max", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      web_search_max_queries: WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT + 1,
+    });
+    assert.equal(parsed.success, false);
   });
 
   it("rejects non-https reference urls", () => {

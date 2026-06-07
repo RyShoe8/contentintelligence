@@ -7,6 +7,10 @@ export const WRITER_SOURCE_MAX_CHARS = 32_000;
 export const WRITER_TOPIC_MIN_CHARS = 10;
 export const WRITER_TOPIC_MAX_CHARS = 500;
 export const WRITER_LINK_LABEL_MAX = 80;
+export const WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT = 3;
+export const WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT = 5;
+export const WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT = 10;
+export const WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT = 15;
 
 const httpsUrl = z
   .string()
@@ -47,6 +51,20 @@ export const writerComposeInputSchema = z.object({
   reference_urls: z.array(httpsUrl).max(WRITER_REFERENCE_URL_MAX).default([]),
   links: z.array(writerLinkSchema).max(WRITER_LINK_MAX).default([]),
   writer_article_id: z.string().uuid().optional(),
+  deep_research: z.boolean().default(true),
+  web_search: z.boolean().default(true),
+  web_search_max_queries: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT)
+    .default(WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT),
+  web_search_max_results: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT)
+    .default(WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT),
 });
 
 export type WriterComposeInput = z.infer<typeof writerComposeInputSchema>;

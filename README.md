@@ -113,6 +113,11 @@ If you create the web service manually (not from [`render.yaml`](render.yaml)), 
 | `SIGNAL_SCHEDULE_CRON` | Per-signal schedule poll (default `* * * * *`) — ingests signals whose **Feed sync schedule** is due on the Posts page |
 | `INGEST_SECRET` | Optional; required header `x-ingest-secret` for ingest and posts API routes |
 | `MAX_TOKENS_SOCIAL_POST` | Max tokens for LLM social post copy (default `300`) |
+| `MAX_TOKENS_WRITER_RESEARCH_PLAN` | Max tokens for Writer compose topic research plan (default `800`) |
+| `MAX_TOKENS_WRITER_RESEARCH_SECTION` | Max tokens per deep-research section batch (default `1200`) |
+| `TAVILY_API_KEY` | Optional; enables Writer compose **Search the web** via [Tavily](https://docs.tavily.com/). Without it, web search is a no-op (deep multi-step research still works from topic + reference URLs). |
+| `WRITER_WEB_SEARCH_MAX_RESULTS` | Optional admin ceiling for web sources per Write (default `5`; authors set per-write limits on the Writer page) |
+| `WRITER_WEB_SEARCH_MAX_QUERIES` | Optional admin ceiling for Tavily queries per Write (default `3`; authors set per-write limits on the Writer page) |
 | `INGEST_LOG_VERBOSE` | Optional; set to `true` or `1` for per-message `[ingest]` JSON logs (noisy; unset in steady state) |
 | `PORT` | Default `8787` |
 

@@ -47,6 +47,7 @@ export default async function WriterPage({
   ]);
 
   const workerConfigured = !!process.env.WORKER_URL;
+  const webSearchAvailable = !!process.env.TAVILY_API_KEY;
   const selectedId = sp.article_id?.trim() ?? "";
   const selectedRaw = selectedId ? await getWriterArticle(db, selectedId, orgId) : null;
 
@@ -111,6 +112,7 @@ export default async function WriterPage({
         articles={articleList}
         selectedArticle={selectedArticle}
         workerConfigured={workerConfigured}
+        webSearchAvailable={webSearchAvailable}
       />
     </div>
   );

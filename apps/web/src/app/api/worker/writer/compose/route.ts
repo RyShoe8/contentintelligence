@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
     reference_urls: body.reference_urls ?? [],
     links: body.links ?? [],
     writer_article_id: body.writer_article_id,
+    deep_research: body.deep_research,
+    web_search: body.web_search,
+    web_search_max_queries: body.web_search_max_queries,
+    web_search_max_results: body.web_search_max_results,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";

@@ -15,6 +15,10 @@ export type WriterComposeBody = {
   reference_urls?: string[];
   links?: { url: string; label?: string }[];
   writer_article_id?: string;
+  deep_research?: boolean;
+  web_search?: boolean;
+  web_search_max_queries?: number;
+  web_search_max_results?: number;
 };
 
 export async function runWriterCompose(db: Db, body: WriterComposeBody) {
@@ -24,6 +28,10 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     reference_urls: body.reference_urls ?? [],
     links: body.links ?? [],
     writer_article_id: body.writer_article_id,
+    deep_research: body.deep_research,
+    web_search: body.web_search,
+    web_search_max_queries: body.web_search_max_queries,
+    web_search_max_results: body.web_search_max_results,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -36,7 +44,17 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     throw new Error("organization_id and created_by are required");
   }
 
-  const { voice_id, topic, reference_urls, links, writer_article_id } = parsed.data;
+  const {
+    voice_id,
+    topic,
+    reference_urls,
+    links,
+    writer_article_id,
+    deep_research,
+    web_search,
+    web_search_max_queries,
+    web_search_max_results,
+  } = parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
     throw new Error("voice_not_found");
@@ -57,6 +75,10 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     referenceUrls: reference_urls,
     links,
     writerArticleId: writer_article_id,
+    deepResearch: deep_research,
+    webSearch: web_search,
+    webSearchMaxQueries: web_search_max_queries,
+    webSearchMaxResults: web_search_max_results,
   });
 
   const article = await upsertWriterArticleDraft(db, {
@@ -78,6 +100,11 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     research_brief: result.researchBrief,
     references_fetched: result.referencesFetched,
     references_failed: result.referencesFailed,
+    user_references_fetched: result.userReferencesFetched,
+    web_references_fetched: result.webReferencesFetched,
+    web_search_urls: result.webSearchUrls,
+    research_questions: result.researchQuestions,
+    research_mode: result.researchMode,
     source_truncated: result.sourceTruncated,
     links_requested: result.linksRequested,
     links_present: result.linksPresent,
