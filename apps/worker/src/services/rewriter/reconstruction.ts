@@ -2,6 +2,7 @@ import {
   formatWriterLinksForPrompt,
   isHybridContentFacts,
   rewriterBlacklistPromptBlock,
+  writerArticleDepthGuidance,
   type BrandInterpretation,
   type BrandMemory,
   type ContentFacts,
@@ -100,6 +101,9 @@ export type ReconstructArticleOpts = {
   links: WriterLink[];
   retryIssues?: string[];
   attempt?: number;
+  articleDepth?: number;
+  subtopics?: string[];
+  exactLinkLabels?: boolean;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -118,6 +122,14 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
     ? `\nBrand constraints (JSON):\n${formatConstraintsForPrompt(opts.ctx.constraints)}`
     : "";
   const memory = opts.voice.brand_profile?.memory;
+  const depthBlock =
+    opts.articleDepth != null
+      ? `\nArticle length:\n${writerArticleDepthGuidance(opts.articleDepth).reconstructionPrompt}`
+      : "";
+  const subtopicsBlock =
+    opts.subtopics?.length
+      ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+      : "";
 
   return `Write a full blog article in HTML from structured facts and brand interpretation.
 Rules:
@@ -128,7 +140,7 @@ Rules:
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}
+${rewriterBlacklistPromptBlock()}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
@@ -137,7 +149,9 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
 
   const linkBlock =
     opts.links.length > 0
-      ? `\nLinks to weave in (required when listed):\n${formatWriterLinksForPrompt(opts.links)}\nEach URL exactly once, spread across the body.`
+      ? `\nLinks to weave in (required when listed):\n${formatWriterLinksForPrompt(opts.links, {
+          exactAnchorLabels: opts.exactLinkLabels,
+        })}\nEach URL exactly once, spread across the body.`
       : "";
 
   const retryBlock =

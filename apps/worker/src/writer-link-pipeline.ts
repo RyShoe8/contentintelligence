@@ -10,6 +10,7 @@ export type WriterLinkPipelineOpts = {
   sourceText: string;
   links: WriterLink[];
   voice: Voice;
+  exactAnchorLabels?: boolean;
 };
 
 export type LinkPipelineResult = {
@@ -39,6 +40,7 @@ export async function applyWriterLinkPipeline(
       links: opts.links,
       voice: opts.voice,
       sourceText: opts.sourceText.trim(),
+      exactAnchorLabels: opts.exactAnchorLabels,
     });
     linksRevised = true;
   }

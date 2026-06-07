@@ -9,6 +9,7 @@ export type ReviseWriterLinksOpts = {
   links: WriterLink[];
   voice: Voice;
   sourceText: string;
+  exactAnchorLabels?: boolean;
 };
 
 const REVISE_SYSTEM = `You revise an existing HTML article fragment to integrate external links naturally.
@@ -17,7 +18,8 @@ Rules:
 - Keep factual claims and overall structure; do not invent new offers, stats, or quotes.
 - Weave each required URL into paragraphs that already discuss related ideas in the current HTML or original source.
 - Spread links across the article body when there are multiple URLs.
-- Suggested anchor text is a hint only—prefer natural phrasing already in the article.
+- When required anchor text is listed, use that exact phrase as the link text inside the anchor tag.
+- Otherwise, suggested anchor text is a hint only—prefer natural phrasing already in the article.
 - Do NOT add sentences whose main purpose is to name a product/brand from the link list.
 - If the source does not discuss a brand/product, do NOT invent a pitch line; link an existing relevant phrase instead.
 - Do NOT add sentences whose only purpose is to hold a link; remove link-only promotional one-liners.
@@ -46,7 +48,9 @@ export async function reviseWriterLinksInHtml(opts: ReviseWriterLinksOpts): Prom
     "Redistribute links into sections that already match each URL topic; remove sentences added only to hold a link.",
     "",
     "Required links:",
-    formatWriterLinksForPrompt(opts.links),
+    formatWriterLinksForPrompt(opts.links, {
+      exactAnchorLabels: opts.exactAnchorLabels,
+    }),
     "",
     voiceHint,
     "",

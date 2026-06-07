@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ensureWriterLinksInHtml,
+  enforceWriterLinkAnchorLabels,
   finalizeWriterLinksInHtml,
   parseWriterLinks,
+  parseWriterSubtopics,
   redistributeWriterLinksInBody,
   stripHtmlToPlainText,
   weaveMissingWriterLinksInBody,
+  writerArticleDepthGuidance,
+  writerArticleDepthLabel,
+  writerLinkAnchorMatches,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
   writerLinksClusteredAtEnd,
@@ -23,9 +28,11 @@ import {
   writerComposeInputSchema,
   parseWriterReferenceUrls,
   writerUrlInSourceText,
+  WRITER_ARTICLE_DEPTH_DEFAULT,
   WRITER_SOURCE_MIN_CHARS,
   WRITER_TOPIC_MIN_CHARS,
   WRITER_REFERENCE_URL_MAX,
+  WRITER_SUBTOPIC_MAX,
   WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
   WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
   WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
@@ -337,6 +344,28 @@ describe("writerComposeInputSchema", () => {
     });
     assert.equal(parsed.success, false);
   });
+
+  it("defaults article_depth and subtopics", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.article_depth, WRITER_ARTICLE_DEPTH_DEFAULT);
+    assert.deepEqual(parsed.data?.subtopics, []);
+  });
+
+  it("accepts article_depth and subtopics within bounds", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      article_depth: 80,
+      subtopics: ["Pricing models", "Implementation timeline"],
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.article_depth, 80);
+    assert.equal(parsed.data?.subtopics.length, 2);
+  });
 });
 
 describe("parseWriterReferenceUrls", () => {
@@ -354,6 +383,82 @@ describe("parseWriterReferenceUrls", () => {
     const raw = Array.from({ length: 20 }, (_, i) => `https://site${i}.example`);
     const urls = parseWriterReferenceUrls(raw);
     assert.equal(urls.length, WRITER_REFERENCE_URL_MAX);
+  });
+});
+
+describe("parseWriterSubtopics", () => {
+  it("parses lines, dedupes case-insensitively, and caps at max", () => {
+    const topics = parseWriterSubtopics([
+      "Pricing models",
+      "pricing models",
+      "  Implementation timeline  ",
+      "ab",
+      "Fourth topic here",
+      "Fifth topic here",
+      "Sixth topic here",
+      "Seventh topic here",
+      "Eighth topic here",
+      "Ninth topic here",
+    ]);
+    assert.equal(topics.length, WRITER_SUBTOPIC_MAX);
+    assert.equal(topics[0], "Pricing models");
+    assert.equal(topics[1], "Implementation timeline");
+    assert.ok(!topics.some((t) => t.toLowerCase() === "ab"));
+  });
+
+  it("parses newline-separated string input", () => {
+    const topics = parseWriterSubtopics("First subtopic\nSecond subtopic");
+    assert.deepEqual(topics, ["First subtopic", "Second subtopic"]);
+  });
+});
+
+describe("writerArticleDepthGuidance", () => {
+  it("maps depth tiers to word targets", () => {
+    assert.equal(writerArticleDepthLabel(10), "Overview");
+    assert.equal(writerArticleDepthGuidance(10).minWords, 700);
+    assert.equal(writerArticleDepthLabel(40), "Standard");
+    assert.equal(writerArticleDepthGuidance(40).minWords, 1200);
+    assert.equal(writerArticleDepthLabel(60), "In-depth");
+    assert.equal(writerArticleDepthGuidance(60).minWords, 2000);
+    assert.equal(writerArticleDepthLabel(90), "Comprehensive");
+    assert.equal(writerArticleDepthGuidance(90).minWords, 3000);
+  });
+});
+
+describe("enforceWriterLinkAnchorLabels", () => {
+  it("replaces wrong anchor text with user label", () => {
+    const html = '<p>See <a href="https://example.com/page">wrong text</a>.</p>';
+    const out = enforceWriterLinkAnchorLabels(html, [
+      { url: "https://example.com/page", label: "Exact Label" },
+    ]);
+    assert.match(out, />Exact Label<\/a>/);
+    assert.doesNotMatch(out, /wrong text/);
+  });
+
+  it("escapes HTML in labels", () => {
+    const html = '<p><a href="https://example.com">old</a></p>';
+    const out = enforceWriterLinkAnchorLabels(html, [
+      { url: "https://example.com", label: "A & B <script>" },
+    ]);
+    assert.match(out, />A &amp; B &lt;script&gt;<\/a>/);
+  });
+});
+
+describe("writerLinkAnchorMatches", () => {
+  it("returns true when label matches case-insensitively", () => {
+    const html = '<p><a href="https://example.com">Exact Label</a></p>';
+    assert.equal(
+      writerLinkAnchorMatches(html, { url: "https://example.com", label: "exact label" }),
+      true,
+    );
+  });
+
+  it("returns false when anchor text differs", () => {
+    const html = '<p><a href="https://example.com">Wrong</a></p>';
+    assert.equal(
+      writerLinkAnchorMatches(html, { url: "https://example.com", label: "Expected" }),
+      false,
+    );
   });
 });
 
@@ -495,6 +600,24 @@ describe("finalizeWriterLinksInHtml", () => {
     const { html: out, linksRedistributed } = finalizeWriterLinksInHtml(html, links);
     assert.ok(linksRedistributed >= 2);
     assert.equal(writerLinksNeedSpread(out, links), false);
+  });
+
+  it("enforces user anchor labels after redistribution", () => {
+    const html = [
+      "<p>Opening paragraph one.</p>",
+      "<p>Second paragraph two.</p>",
+      "<p>Third paragraph three.</p>",
+      '<p>Fourth with <a href="https://a.example">wrong A</a>, <a href="https://b.example">wrong B</a>, and <a href="https://c.example">wrong C</a>.</p>',
+    ].join("\n");
+    const links = [
+      { url: "https://a.example", label: "Label A" },
+      { url: "https://b.example", label: "Label B" },
+      { url: "https://c.example", label: "Label C" },
+    ];
+    const { html: out } = finalizeWriterLinksInHtml(html, links);
+    assert.equal(writerLinkAnchorMatches(out, links[0]!), true);
+    assert.equal(writerLinkAnchorMatches(out, links[1]!), true);
+    assert.equal(writerLinkAnchorMatches(out, links[2]!), true);
   });
 });
 

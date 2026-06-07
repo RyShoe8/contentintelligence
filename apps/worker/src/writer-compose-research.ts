@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { writerArticleDepthGuidance } from "@content-resourcer/db";
 import { env } from "./env.js";
 import {
   formatReferenceCorpusForPrompt,
@@ -10,7 +11,14 @@ export type SynthesizeResearchBriefOpts = {
   topic: string;
   corpusSections: ReferenceCorpusSection[];
   voiceKeywords?: string[];
+  articleDepth?: number;
+  subtopics?: string[];
 };
+
+function subtopicsBlock(subtopics?: string[]): string {
+  if (!subtopics?.length) return "";
+  return `\nRequired subtopics to cover in the brief:\n${subtopics.map((s) => `- ${s}`).join("\n")}`;
+}
 
 export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
   systemPrompt: string;
@@ -22,6 +30,10 @@ export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
   const keywords =
     opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
+  const depth =
+    opts.articleDepth != null
+      ? writerArticleDepthGuidance(opts.articleDepth)
+      : writerArticleDepthGuidance(50);
 
   const systemPrompt = `You synthesize research briefs for editorial article writing.
 Rules:
@@ -29,12 +41,13 @@ Rules:
 - Structure with short labeled sections: Key facts, Angles to cover, Caveats, FAQ ideas (if relevant).
 - When reference excerpts are provided, treat them as primary evidence. Do not invent specific facts, stats, or quotes not supported by the references.
 - When no references are provided, use general knowledge but mark uncertain claims with phrasing like "may" or "often".
-- Write enough detail for a full article (roughly 400–1200 words of briefing content).
+- Write enough detail for a full article (${depth.researchBriefPrompt}).
 - Do not write the finished article; only the research brief.`;
 
   const userPrompt = [
     `Topic: ${topic}`,
     `Voice keywords (context): ${keywords}`,
+    subtopicsBlock(opts.subtopics),
     "",
     hasReferences
       ? "Reference excerpts (primary sources):"
@@ -77,6 +90,8 @@ export type RunDeepTopicResearchOpts = {
   plan: TopicResearchPlan;
   corpusSections: ReferenceCorpusSection[];
   voiceKeywords?: string[];
+  articleDepth?: number;
+  subtopics?: string[];
 };
 
 function chunkQuestions(questions: string[], size: number): string[][] {
@@ -93,6 +108,7 @@ export function buildDeepResearchSectionPrompts(opts: {
   corpusSections: ReferenceCorpusSection[];
   voiceKeywords?: string[];
   hasUserReferences: boolean;
+  subtopics?: string[];
 }): { systemPrompt: string; userPrompt: string } {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
   const keywords =
@@ -112,6 +128,7 @@ Rules:
     "",
     "Answer these research questions:",
     ...opts.questions.map((q, i) => `${i + 1}. ${q}`),
+    subtopicsBlock(opts.subtopics),
     "",
     opts.corpusSections.length
       ? "Source excerpts:"
@@ -127,21 +144,28 @@ export function buildDeepResearchConsolidationPrompts(opts: {
   plan: TopicResearchPlan;
   sectionNotes: string;
   voiceKeywords?: string[];
+  articleDepth?: number;
+  subtopics?: string[];
 }): { systemPrompt: string; userPrompt: string } {
   const keywords =
     opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
+  const depth =
+    opts.articleDepth != null
+      ? writerArticleDepthGuidance(opts.articleDepth)
+      : writerArticleDepthGuidance(50);
 
   const systemPrompt = `You consolidate editorial research notes into one deep research brief.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - Structure with labeled sections: Topic overview, Key facts, Angles to cover, Caveats and counterpoints, FAQ ideas, Open questions and weak evidence.
 - Preserve evidence-backed facts and source URL citations from the notes.
-- Target 800–2000 words of briefing content.
+- Target ${depth.researchBriefPrompt}.
 - Do not write the finished article; only the research brief.`;
 
   const userPrompt = [
     `Topic: ${opts.topic.trim()}`,
     `Voice keywords: ${keywords}`,
+    subtopicsBlock(opts.subtopics),
     "",
     "Planned angles:",
     ...opts.plan.angles.map((a) => `- ${a}`),
@@ -190,6 +214,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       corpusSections: opts.corpusSections,
       voiceKeywords: opts.voiceKeywords,
       hasUserReferences,
+      subtopics: opts.subtopics,
     });
     const notes = await callOpenAiText(
       systemPrompt,
@@ -205,6 +230,8 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       topic: opts.topic,
       corpusSections: opts.corpusSections,
       voiceKeywords: opts.voiceKeywords,
+      articleDepth: opts.articleDepth,
+      subtopics: opts.subtopics,
     });
   }
 
@@ -213,6 +240,8 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     plan: opts.plan,
     sectionNotes,
     voiceKeywords: opts.voiceKeywords,
+    articleDepth: opts.articleDepth,
+    subtopics: opts.subtopics,
   });
   const brief = await callOpenAiText(
     systemPrompt,

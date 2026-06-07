@@ -6,8 +6,12 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import {
   parseWriterLinks,
   parseWriterReferenceUrls,
+  parseWriterSubtopics,
+  writerArticleDepthLabel,
+  WRITER_ARTICLE_DEPTH_DEFAULT,
   WRITER_LINK_MAX,
   WRITER_REFERENCE_URL_MAX,
+  WRITER_SUBTOPIC_MAX,
   WRITER_TOPIC_MIN_CHARS,
   WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
   WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
@@ -165,6 +169,8 @@ export function WriterComposeForm({
   const [userReferencesFetched, setUserReferencesFetched] = useState<number | null>(null);
   const [webReferencesFetched, setWebReferencesFetched] = useState<number | null>(null);
   const [researchMode, setResearchMode] = useState<string | null>(null);
+  const [articleDepth, setArticleDepth] = useState(WRITER_ARTICLE_DEPTH_DEFAULT);
+  const [subtopicsText, setSubtopicsText] = useState("");
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterComposeArticleListItem[]>();
@@ -217,6 +223,8 @@ export function WriterComposeForm({
     setUserReferencesFetched(null);
     setWebReferencesFetched(null);
     setResearchMode(null);
+    setArticleDepth(WRITER_ARTICLE_DEPTH_DEFAULT);
+    setSubtopicsText("");
     router.push("/writer");
   }, [router]);
 
@@ -350,6 +358,8 @@ export function WriterComposeForm({
                 web_search_max_results: webSearchMaxResults,
               }
             : {}),
+          article_depth: articleDepth,
+          subtopics: parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
         }),
       });
       const data = (await r.json().catch(() => ({}))) as {
@@ -607,6 +617,46 @@ export function WriterComposeForm({
           />
         </label>
 
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[var(--muted)]">
+            Subtopics to cover (optional, one per line, up to {WRITER_SUBTOPIC_MAX})
+          </span>
+          <textarea
+            value={subtopicsText}
+            onChange={(e) => setSubtopicsText(e.target.value)}
+            rows={3}
+            placeholder={"Pricing models\nImplementation timeline\nCommon pitfalls"}
+            className="resize-y rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[var(--muted)]">Article depth</span>
+            <span className="text-xs font-medium text-[var(--muted)]">
+              {writerArticleDepthLabel(articleDepth)} ({articleDepth})
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={articleDepth}
+            onChange={(e) => setArticleDepth(Number(e.target.value))}
+            className="w-full accent-[var(--accent)]"
+          />
+          <div className="flex justify-between text-xs text-[var(--muted)]">
+            <span>Overview</span>
+            <span>Standard</span>
+            <span>In-depth</span>
+            <span>Comprehensive</span>
+          </div>
+          <span className="text-xs text-[var(--muted)]">
+            Controls research depth and target article length for this write.
+          </span>
+        </div>
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[var(--muted)]">
@@ -668,7 +718,7 @@ export function WriterComposeForm({
                 type="text"
                 value={row.label}
                 onChange={(e) => updateLinkRow(i, { label: e.target.value })}
-                placeholder="Anchor text (optional)"
+                placeholder="Anchor text (used exactly if set)"
                 className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
               />
               <button

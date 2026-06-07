@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
     web_search: body.web_search,
     web_search_max_queries: body.web_search_max_queries,
     web_search_max_results: body.web_search_max_results,
+    article_depth: body.article_depth,
+    subtopics: body.subtopics ?? [],
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";

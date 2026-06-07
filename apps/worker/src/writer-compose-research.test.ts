@@ -40,7 +40,7 @@ describe("buildDeepResearchConsolidationPrompts", () => {
       voiceKeywords: ["content"],
     });
 
-    assert.match(systemPrompt, /800–2000 words/);
+    assert.match(systemPrompt, /800–1,200 words of briefing content/);
     assert.match(userPrompt, /Practical ROI frameworks/);
     assert.match(userPrompt, /Attribution is hard/);
     assert.match(userPrompt, /Q1 notes with https:\/\/ref\.example citation/);
@@ -57,5 +57,19 @@ describe("buildResearchBriefPrompts with source labels", () => {
     });
     assert.equal(hasReferences, true);
     assert.match(userPrompt, /User reference 1: https:\/\/user\.example/);
+  });
+
+  it("includes article depth guidance and required subtopics", () => {
+    const { systemPrompt, userPrompt } = buildResearchBriefPrompts({
+      topic: "Topic here with enough context",
+      corpusSections: [],
+      articleDepth: 85,
+      subtopics: ["Pricing models", "ROI frameworks"],
+    });
+
+    assert.match(systemPrompt, /1,800–2,500 words of briefing content/);
+    assert.match(userPrompt, /Required subtopics to cover in the brief/);
+    assert.match(userPrompt, /Pricing models/);
+    assert.match(userPrompt, /ROI frameworks/);
   });
 });

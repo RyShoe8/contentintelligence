@@ -14,7 +14,36 @@ export type PlanTopicResearchOpts = {
   voiceKeywords?: string[];
   hasUserReferences: boolean;
   maxSearchQueries?: number;
+  userSubtopics?: string[];
 };
+
+const MAX_RESEARCH_QUESTIONS = 8;
+
+export function mergeUserSubtopicsIntoPlan(
+  plan: TopicResearchPlan,
+  userSubtopics: string[] = [],
+): TopicResearchPlan {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const raw of userSubtopics) {
+    const topic = raw.trim();
+    if (topic.length < 3) continue;
+    const key = topic.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(topic);
+  }
+
+  for (const q of plan.research_questions) {
+    const key = q.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(q.trim());
+  }
+
+  return { ...plan, research_questions: merged.slice(0, MAX_RESEARCH_QUESTIONS) };
+}
 
 const planSchema = z.object({
   research_questions: z.array(z.string().trim().min(1)).min(3).max(8),
@@ -47,7 +76,12 @@ Rules:
     opts.hasUserReferences
       ? "The user will provide reference URLs; plan what to extract from them."
       : "No user reference URLs; search queries should help discover sources.",
-  ].join("\n");
+    opts.userSubtopics?.length
+      ? `User-required subtopics (must be researched):\n${opts.userSubtopics.map((s) => `- ${s}`).join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return { systemPrompt, userPrompt };
 }
@@ -81,21 +115,24 @@ export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<To
   });
 
   if (!raw) {
-    return fallbackPlan(opts.topic);
+    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics);
   }
 
   const parsed = planSchema.safeParse(raw);
   if (!parsed.success) {
-    return fallbackPlan(opts.topic);
+    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics);
   }
 
-  return {
-    research_questions: parsed.data.research_questions.slice(0, 6),
-    angles: parsed.data.angles,
-    caveats_to_investigate: parsed.data.caveats_to_investigate,
-    search_queries: parsed.data.search_queries.slice(
-      0,
-      opts.maxSearchQueries ?? env.writerWebSearchMaxQueries,
-    ),
-  };
+  return mergeUserSubtopicsIntoPlan(
+    {
+      research_questions: parsed.data.research_questions.slice(0, 6),
+      angles: parsed.data.angles,
+      caveats_to_investigate: parsed.data.caveats_to_investigate,
+      search_queries: parsed.data.search_queries.slice(
+        0,
+        opts.maxSearchQueries ?? env.writerWebSearchMaxQueries,
+      ),
+    },
+    opts.userSubtopics,
+  );
 }

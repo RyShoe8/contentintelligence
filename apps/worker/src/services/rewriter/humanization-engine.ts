@@ -34,6 +34,9 @@ export type HumanizationEngineOpts = {
   links: WriterLink[];
   writerArticleId?: string;
   preserveInstructions?: boolean;
+  articleDepth?: number;
+  subtopics?: string[];
+  exactLinkLabels?: boolean;
 };
 
 export type HumanizationEngineResult = {
@@ -134,6 +137,9 @@ export async function runHumanizationEngine(
       links: opts.links,
       retryIssues,
       attempt: attempts,
+      articleDepth: opts.articleDepth,
+      subtopics: opts.subtopics,
+      exactLinkLabels: opts.exactLinkLabels,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,

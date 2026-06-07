@@ -11,6 +11,74 @@ export const WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT = 3;
 export const WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT = 5;
 export const WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT = 10;
 export const WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT = 15;
+export const WRITER_ARTICLE_DEPTH_DEFAULT = 50;
+export const WRITER_SUBTOPIC_MAX = 8;
+export const WRITER_SUBTOPIC_MIN_CHARS = 3;
+export const WRITER_SUBTOPIC_MAX_CHARS = 200;
+
+export type WriterArticleDepthGuidance = {
+  label: string;
+  minWords: number;
+  maxWords: number;
+  researchBriefMinWords: number;
+  researchBriefMaxWords: number;
+  reconstructionPrompt: string;
+  researchBriefPrompt: string;
+};
+
+export function writerArticleDepthGuidance(depth: number): WriterArticleDepthGuidance {
+  const d = Math.min(100, Math.max(0, Math.round(depth)));
+  if (d <= 25) {
+    return {
+      label: "Overview",
+      minWords: 700,
+      maxWords: 1000,
+      researchBriefMinWords: 400,
+      researchBriefMaxWords: 800,
+      researchBriefPrompt: "roughly 400–800 words of briefing content",
+      reconstructionPrompt:
+        "Write a concise overview article of about 700–1,000 words. Use 3–4 H2 sections. Cover essentials without filler.",
+    };
+  }
+  if (d <= 50) {
+    return {
+      label: "Standard",
+      minWords: 1200,
+      maxWords: 1800,
+      researchBriefMinWords: 800,
+      researchBriefMaxWords: 1200,
+      researchBriefPrompt: "roughly 800–1,200 words of briefing content",
+      reconstructionPrompt:
+        "Write a standard-length article of about 1,200–1,800 words. Use 4–6 H2 sections with substantive paragraphs under each.",
+    };
+  }
+  if (d <= 75) {
+    return {
+      label: "In-depth",
+      minWords: 2000,
+      maxWords: 2800,
+      researchBriefMinWords: 1200,
+      researchBriefMaxWords: 1800,
+      researchBriefPrompt: "roughly 1,200–1,800 words of briefing content",
+      reconstructionPrompt:
+        "Write an in-depth article of about 2,000–2,800 words. Use 5–8 H2 sections. Expand key points with examples, nuance, and practical detail.",
+    };
+  }
+  return {
+    label: "Comprehensive",
+    minWords: 3000,
+    maxWords: 4500,
+    researchBriefMinWords: 1800,
+    researchBriefMaxWords: 2500,
+    researchBriefPrompt: "roughly 1,800–2,500 words of briefing content",
+    reconstructionPrompt:
+      "Write a comprehensive, highly informative article of about 3,000–4,500 words. Use 6–10 H2 sections. Thoroughly develop each theme with evidence, examples, caveats, and actionable detail.",
+  };
+}
+
+export function writerArticleDepthLabel(depth: number): string {
+  return writerArticleDepthGuidance(depth).label;
+}
 
 const httpsUrl = z
   .string()
@@ -65,6 +133,11 @@ export const writerComposeInputSchema = z.object({
     .min(1)
     .max(WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT)
     .default(WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT),
+  article_depth: z.coerce.number().int().min(0).max(100).default(WRITER_ARTICLE_DEPTH_DEFAULT),
+  subtopics: z
+    .array(z.string().trim().min(WRITER_SUBTOPIC_MIN_CHARS).max(WRITER_SUBTOPIC_MAX_CHARS))
+    .max(WRITER_SUBTOPIC_MAX)
+    .default([]),
 });
 
 export type WriterComposeInput = z.infer<typeof writerComposeInputSchema>;
@@ -78,6 +151,26 @@ export function parseWriterReferenceUrls(raw: unknown): string[] {
     const parsed = httpsUrl.safeParse(url);
     if (parsed.success) out.push(parsed.data);
     if (out.length >= WRITER_REFERENCE_URL_MAX) break;
+  }
+  return out;
+}
+
+export function parseWriterSubtopics(raw: unknown): string[] {
+  const lines = Array.isArray(raw)
+    ? raw.map((item) => (typeof item === "string" ? item.trim() : String(item ?? "").trim()))
+    : typeof raw === "string"
+      ? raw.split(/\r?\n/).map((l) => l.trim())
+      : [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (line.length < WRITER_SUBTOPIC_MIN_CHARS) continue;
+    const clipped = line.slice(0, WRITER_SUBTOPIC_MAX_CHARS);
+    const key = clipped.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clipped);
+    if (out.length >= WRITER_SUBTOPIC_MAX) break;
   }
   return out;
 }
@@ -360,7 +453,10 @@ export function writerLinksNeedRevision(
   return false;
 }
 
-export function formatWriterLinksForPrompt(links: WriterLink[]): string {
+export function formatWriterLinksForPrompt(
+  links: WriterLink[],
+  opts?: { exactAnchorLabels?: boolean },
+): string {
   if (!links.length) return "(none — do not add external links)";
   const placementHints = [
     "early body (first ~third)",
@@ -371,11 +467,21 @@ export function formatWriterLinksForPrompt(links: WriterLink[]): string {
   ];
   const lines = links.map((l, i) => {
     const label = l.label?.trim();
+    const anchorPart = label
+      ? opts?.exactAnchorLabels
+        ? ` — required anchor text (use exactly): ${label}`
+        : ` — suggested anchor: ${label}`
+      : "";
     const placement =
       links.length >= 2 ? ` — place in ${placementHints[i % placementHints.length]}` : "";
-    return `${i + 1}. URL: ${l.url}${label ? ` — suggested anchor: ${label}` : ""}${placement}`;
+    return `${i + 1}. URL: ${l.url}${anchorPart}${placement}`;
   });
   lines.push("Placement: distribute links across the article body, not clustered at the end.");
+  if (opts?.exactAnchorLabels && links.some((l) => l.label?.trim())) {
+    lines.push(
+      "When required anchor text is listed, use that exact phrase as the link text inside the anchor tag.",
+    );
+  }
   return lines.join("\n");
 }
 
@@ -705,7 +811,43 @@ export function finalizeWriterLinksInHtml(
     out = ensureWriterLinksInHtml(out, missing);
     if (out !== before) linksAppended = missing.length;
   }
+  out = enforceWriterLinkAnchorLabels(out, links);
   return { html: out, linksWoven, linksAppended, linksRedistributed };
+}
+
+export function writerLinkAnchorMatches(html: string, link: WriterLink): boolean {
+  const label = link.label?.trim();
+  if (!label) return true;
+  if (!writerLinkPresentInHtml(html, link.url)) return false;
+
+  const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  const want = label.toLowerCase();
+  while ((m = re.exec(html)) !== null) {
+    const href = m[1]?.trim();
+    if (!href || !hrefMatchesWriterUrl(href, link.url)) continue;
+    const inner = stripHtmlToPlainText(m[2] ?? "").trim().toLowerCase();
+    if (inner === want) return true;
+  }
+  return false;
+}
+
+/** Replace anchor inner text with user-provided labels for matching URLs. */
+export function enforceWriterLinkAnchorLabels(html: string, links: WriterLink[]): string {
+  let out = html;
+  for (const link of links) {
+    const label = link.label?.trim();
+    if (!label) continue;
+
+    const re = /<a\b([^>]*?)href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
+    out = out.replace(re, (full, pre, href, post, _inner) => {
+      if (!hrefMatchesWriterUrl(String(href).trim(), link.url)) return full;
+      const hrefEsc = escapeHtmlText(String(href).trim());
+      const labelEsc = escapeHtmlText(label);
+      return `<a${pre}href="${hrefEsc}"${post}>${labelEsc}</a>`;
+    });
+  }
+  return out;
 }
 
 export function writerLinkAnchorText(link: WriterLink): string {

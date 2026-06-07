@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildTopicResearchPlanPrompts } from "./writer-topic-research-plan.js";
+import {
+  buildTopicResearchPlanPrompts,
+  mergeUserSubtopicsIntoPlan,
+} from "./writer-topic-research-plan.js";
 
 describe("buildTopicResearchPlanPrompts", () => {
   it("includes topic and sub-question planning instructions", () => {
@@ -26,5 +29,51 @@ describe("buildTopicResearchPlanPrompts", () => {
 
     assert.match(userPrompt, /No user reference URLs/);
     assert.match(userPrompt, /search queries should help discover sources/i);
+  });
+
+  it("includes user-required subtopics in plan prompts", () => {
+    const { userPrompt } = buildTopicResearchPlanPrompts({
+      topic: "Content marketing ROI",
+      hasUserReferences: true,
+      userSubtopics: ["Pricing models", "Attribution models"],
+    });
+
+    assert.match(userPrompt, /User-required subtopics/);
+    assert.match(userPrompt, /Pricing models/);
+    assert.match(userPrompt, /Attribution models/);
+  });
+});
+
+describe("mergeUserSubtopicsIntoPlan", () => {
+  it("prepends user subtopics and dedupes against plan questions", () => {
+    const merged = mergeUserSubtopicsIntoPlan(
+      {
+        research_questions: ["What metrics matter?", "pricing models"],
+        angles: [],
+        caveats_to_investigate: [],
+        search_queries: [],
+      },
+      ["Pricing models", "Implementation timeline"],
+    );
+
+    assert.deepEqual(merged.research_questions, [
+      "Pricing models",
+      "Implementation timeline",
+      "What metrics matter?",
+    ]);
+  });
+
+  it("caps merged research questions at eight", () => {
+    const merged = mergeUserSubtopicsIntoPlan(
+      {
+        research_questions: ["Question one", "Question two", "Question three", "Question four", "Question five", "Question six"],
+        angles: [],
+        caveats_to_investigate: [],
+        search_queries: [],
+      },
+      ["Subtopic one", "Subtopic two", "Subtopic three", "Subtopic four"],
+    );
+    assert.equal(merged.research_questions.length, 8);
+    assert.equal(merged.research_questions[0], "Subtopic one");
   });
 });
