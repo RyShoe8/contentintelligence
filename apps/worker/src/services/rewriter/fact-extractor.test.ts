@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseContentFacts } from "./fact-extractor.js";
+import { parseBriefSectionsByHeaders, parseContentFacts } from "./fact-extractor.js";
 
 describe("parseContentFacts", () => {
   it("parses valid LLM JSON", () => {
@@ -67,5 +67,26 @@ describe("parseContentFacts", () => {
     assert.equal(facts!.contentType, "hybrid");
     assert.equal(facts!.narrativeSections?.length, 2);
     assert.equal(facts!.sections?.length, 2);
+  });
+});
+
+describe("parseBriefSectionsByHeaders", () => {
+  it("parses labeled research brief sections into narrative blocks", () => {
+    const brief = [
+      "Topic Overview:",
+      "Tax on casino winnings is complex.",
+      "",
+      "Key Facts:",
+      "1. All winnings are taxable under federal law (source: https://example.com/tax)",
+      "- State rates vary",
+      "",
+      "FAQ ideas:",
+      "- How do I report winnings?",
+    ].join("\n");
+
+    const sections = parseBriefSectionsByHeaders(brief);
+    assert.ok(sections.length >= 2);
+    assert.equal(sections[0]?.title, "Topic Overview");
+    assert.match(sections[1]?.points.join(" "), /taxable under federal law/);
   });
 });

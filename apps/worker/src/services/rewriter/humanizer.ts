@@ -12,6 +12,8 @@ export type HumanizeArticleOpts = {
   attempt?: number;
   skip?: boolean;
   proceduralLock?: boolean;
+  composeMode?: boolean;
+  topic?: string;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
@@ -40,6 +42,11 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
 - You may polish narrative paragraphs and lists outside procedural step blocks.`
     : "";
 
+  const composeTopicBlock =
+    opts.composeMode && opts.topic?.trim()
+      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.`
+      : "";
+
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.
 Rules:
 - Output HTML fragment only. No markdown.
@@ -47,7 +54,7 @@ Rules:
 - Remove marketing clichés and affiliate spam tone.
 - Do not use:
 ${rewriterBlacklistPromptBlock()}
-- Keep every factual claim and every existing <a href> URL unchanged.${proceduralLockBlock}
+- Keep every factual claim and every existing <a href> URL unchanged.${proceduralLockBlock}${composeTopicBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });

@@ -72,8 +72,23 @@ describe("mergeUserSubtopicsIntoPlan", () => {
         search_queries: [],
       },
       ["Subtopic one", "Subtopic two", "Subtopic three", "Subtopic four"],
+      8,
     );
     assert.equal(merged.research_questions.length, 8);
     assert.equal(merged.research_questions[0], "Subtopic one");
+  });
+
+  it("allows up to twelve questions at comprehensive depth", () => {
+    const merged = mergeUserSubtopicsIntoPlan(
+      {
+        research_questions: Array.from({ length: 10 }, (_, i) => `Question ${i + 1}`),
+        angles: [],
+        caveats_to_investigate: [],
+        search_queries: [],
+      },
+      ["Subtopic one", "Subtopic two"],
+      12,
+    );
+    assert.equal(merged.research_questions.length, 12);
   });
 });

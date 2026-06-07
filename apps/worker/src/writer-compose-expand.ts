@@ -17,6 +17,7 @@ export async function expandArticleComposeDepth(opts: {
   minWords: number;
   maxWords: number;
   subtopics?: string[];
+  topic?: string;
 }): Promise<string> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -32,6 +33,10 @@ export async function expandArticleComposeDepth(opts: {
     ? `\nRequired subtopics (ensure each has a dedicated section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
     : "";
 
+  const topicBlock = opts.topic?.trim()
+    ? `\nArticle subject: ${opts.topic.trim()}. Expand topic depth (examples, jurisdiction nuance, FAQ answers) — not brand/community sections.`
+    : "";
+
   const systemPrompt = `You expand an HTML article to meet a target word count while preserving facts and links.
 Rules:
 - Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <ol>, <a href="...">). No markdown. No <html>/<body>.
@@ -39,7 +44,7 @@ Rules:
 - Add depth: new H2/H3 sections, examples, nuance, caveats, and practical detail drawn from the research brief.
 - Target ${opts.minWords}–${opts.maxWords} words total.
 - When required anchor text is listed for a link, use that exact phrase as the link text.
-- Do NOT add a "Related links" section.${subtopicsBlock}`;
+- Do NOT add a "Related links" section.${topicBlock}${subtopicsBlock}`;
 
   const userPrompt = [
     `Current word count is below target (${opts.minWords}–${opts.maxWords} words). Expand the article.`,

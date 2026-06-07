@@ -82,7 +82,7 @@ export async function searchWebForTopic(
         body: JSON.stringify({
           api_key: key,
           query,
-          search_depth: "basic",
+          search_depth: "advanced",
           max_results: maxResults,
           include_answer: false,
         }),

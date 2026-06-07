@@ -1,8 +1,8 @@
 import { convert } from "html-to-text";
 import { fetchSafeText } from "./safe-fetch.js";
 
-export const REFERENCE_CHARS_PER_URL = 12_000;
-export const REFERENCE_CORPUS_MAX_CHARS = 40_000;
+export const REFERENCE_CHARS_PER_URL = 16_000;
+export const REFERENCE_CORPUS_MAX_CHARS = 80_000;
 
 export type ReferenceCorpusSource = "user" | "web";
 

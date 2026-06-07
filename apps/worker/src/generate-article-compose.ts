@@ -3,6 +3,7 @@ import {
   type Voice,
   type WriterLink,
   writerArticleDepthGuidance,
+  writerComposeResearchConfig,
   writerLinksPresentCount,
   writerNonRequestedLinksInHtml,
   writerRequestedLinksAdded,
@@ -87,13 +88,15 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   });
 
   const needPlan = deepResearch || webSearchEnabled || subtopics.length > 0;
+  const researchConfig = writerComposeResearchConfig(articleDepth);
   const plan = needPlan
     ? await planTopicResearch({
         topic: opts.topic,
         voiceKeywords: opts.voice.keywords,
         hasUserReferences: opts.referenceUrls.length > 0,
-        maxSearchQueries: webSearchLimits.maxQueries,
+        maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
         userSubtopics: subtopics,
+        articleDepth,
       })
     : null;
 
@@ -141,6 +144,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     articleDepth,
     subtopics,
     exactLinkLabels: true,
+    composeMode: true,
+    topic: opts.topic,
   });
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
@@ -161,6 +166,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         minWords: depthGuidance.minWords,
         maxWords: depthGuidance.maxWords,
         subtopics,
+        topic: opts.topic,
       });
       pipeline = await applyWriterLinkPipeline(expanded, {
         sourceText: researchBrief,

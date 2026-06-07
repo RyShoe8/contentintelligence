@@ -73,3 +73,18 @@ describe("buildResearchBriefPrompts with source labels", () => {
     assert.match(userPrompt, /ROI frameworks/);
   });
 });
+
+describe("buildDeepResearchSectionPrompts citations", () => {
+  it("requires minimum inline citations at in-depth depth", () => {
+    const { systemPrompt } = buildDeepResearchSectionPrompts({
+      topic: "Tax implications of online casino winnings",
+      questions: ["What are federal reporting rules?"],
+      corpusSections: [{ url: "https://ref.example", text: "IRS rules.", source: "user" }],
+      hasUserReferences: true,
+      minCitationsPerSection: 2,
+    });
+
+    assert.match(systemPrompt, /at least 2 inline source URL citation/);
+    assert.match(systemPrompt, /Mark weak or uncertain claims explicitly/);
+  });
+});

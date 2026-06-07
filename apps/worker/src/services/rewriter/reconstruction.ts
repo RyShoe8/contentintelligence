@@ -80,7 +80,7 @@ function formatSectionsForPrompt(facts: ContentFacts): string {
   return `\n\nProcedural sections (include ALL steps):\n${JSON.stringify(facts.sections, null, 2)}`;
 }
 
-function formatExamplesForPrompt(examples: ArticleRewriteExample[]): string {
+function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?: boolean): string {
   if (!examples.length) return "";
   const blocks = examples.map((ex, i) => {
     const html =
@@ -89,8 +89,13 @@ function formatExamplesForPrompt(examples: ArticleRewriteExample[]): string {
         : ex.html;
     return `### Example ${i + 1}: ${ex.title}\n${html}`;
   });
-  return `\n\nBrand examples (match voice and rhythm, not content):\n${blocks.join("\n\n")}`;
+  const composeNote = composeMode
+    ? " Match rhythm and tone only — do not copy deal-post structure or community/meta framing."
+    : "";
+  return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }
+
+const COMPOSE_BRIEF_EXCERPT_CHARS = 6000;
 
 export type ReconstructArticleOpts = {
   voice: Voice;
@@ -104,6 +109,9 @@ export type ReconstructArticleOpts = {
   articleDepth?: number;
   subtopics?: string[];
   exactLinkLabels?: boolean;
+  composeMode?: boolean;
+  topic?: string;
+  researchBriefExcerpt?: string;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -131,16 +139,28 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
       : "";
 
+  const topic = opts.topic?.trim();
+  const composeTopicBlock =
+    opts.composeMode && topic
+      ? `\nArticle subject: ${topic}
+Write an authoritative editorial article ABOUT this topic. Apply brand voice to tone and phrasing only — do not make the brand, community, or content strategy the subject.
+Do not add sections about community engagement, creating content, or promoting the brand.`
+      : "";
+
+  const viewpointRule = opts.composeMode
+    ? "- Where facts support it, reflect the brand's editorial perspective in how points are framed — not by centering the brand name or community."
+    : "- Include the brand's viewpoint and caveats where relevant.";
+
   return `Write a full blog article in HTML from structured facts and brand interpretation.
 Rules:
 - Do NOT rewrite any original draft text. You never saw the original wording.
 - Use ONLY extracted facts and brand interpretation below.
-- Include the brand's viewpoint and caveats where relevant.
+${viewpointRule}
 - Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <ol>, <a href="...">). No markdown. No <html>/<body>.
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
@@ -159,7 +179,14 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
       ? `\nFix these issues from the prior attempt:\n${opts.retryIssues.map((i) => `- ${i}`).join("\n")}`
       : "";
 
+  const briefBlock =
+    opts.composeMode && opts.researchBriefExcerpt?.trim()
+      ? `\nResearch brief (primary evidence):\n${opts.researchBriefExcerpt.trim()}`
+      : "";
+
   const userPrompt = [
+    opts.composeMode && opts.topic?.trim() ? `Topic: ${opts.topic.trim()}` : "",
+    briefBlock,
     "Extracted facts (JSON):",
     JSON.stringify(opts.facts, null, 2),
     formatNarrativeSectionsForPrompt(opts.facts),
@@ -167,7 +194,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
     "",
     "Brand interpretation (JSON):",
     JSON.stringify(opts.interpretation, null, 2),
-    formatExamplesForPrompt(opts.examples),
+    formatExamplesForPrompt(opts.examples, opts.composeMode),
     linkBlock,
     retryBlock,
     "",

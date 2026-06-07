@@ -121,4 +121,33 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Section order is flexible/i);
     assert.match(prompt, /Procedural instructions \(strict\)/i);
   });
+
+  it("includes topic-first compose rules while keeping voice style lines", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx({ brandName: "Frugal Gambler", brandMentionLevel: 50 }),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [{ title: "Key facts", points: ["Winnings are taxable"] }],
+        keyDetails: ["Federal tax applies"],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Authoritative overview",
+        qualityScore: 8,
+        bestFor: "online gamblers",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+      composeMode: true,
+      topic: "Tax implications of online casino winnings",
+    });
+
+    assert.match(prompt, /Article subject: Tax implications of online casino winnings/);
+    assert.match(prompt, /do not make the brand, community, or content strategy the subject/i);
+    assert.match(prompt, /Mention "Frugal Gambler" at least once when it fits naturally/);
+    assert.doesNotMatch(prompt, /Include the brand's viewpoint and caveats where relevant/);
+  });
 });

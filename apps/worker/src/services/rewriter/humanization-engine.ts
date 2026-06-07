@@ -9,6 +9,7 @@ import {
   rewriterProceduralQualityGatePassed,
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
+  writerComposeTopicDriftIssues,
   type ContentFacts,
   type GenericityAnalysis,
   type SelfCritiqueResult,
@@ -26,6 +27,9 @@ import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import type { ArticleRewriteExample } from "./types.js";
 
+const COMPOSE_BRIEF_EXCERPT_CHARS = 6000;
+const COMPOSE_MAX_EXAMPLES = 2;
+
 export type HumanizationEngineOpts = {
   db: Db;
   voice: Voice;
@@ -37,6 +41,8 @@ export type HumanizationEngineOpts = {
   articleDepth?: number;
   subtopics?: string[];
   exactLinkLabels?: boolean;
+  composeMode?: boolean;
+  topic?: string;
 };
 
 export type HumanizationEngineResult = {
@@ -80,7 +86,11 @@ function qualityGatePassed(
   html: string,
   genericity: GenericityAnalysis,
   critique: SelfCritiqueResult,
+  composeMode: boolean,
 ): boolean {
+  if (composeMode && isHybridContentFacts(facts)) {
+    return rewriterHybridQualityGatePassed(facts, html, critique);
+  }
   if (isHybridContentFacts(facts)) {
     return rewriterHybridQualityGatePassed(facts, html, critique);
   }
@@ -100,6 +110,7 @@ function snapshotScore(snapshot: AttemptSnapshot, preserveMode: boolean): number
 export async function runHumanizationEngine(
   opts: HumanizationEngineOpts,
 ): Promise<HumanizationEngineResult> {
+  const composeMode = opts.composeMode === true;
   const sourceTrimmed = opts.sourceText.trim();
   const sourceTruncated = sourceTrimmed.length > env.maxWriterInputChars;
   const factsInput = sourceTruncated
@@ -108,19 +119,28 @@ export async function runHumanizationEngine(
 
   const facts = await extractContentFacts(factsInput, {
     preserveInstructions: opts.preserveInstructions,
+    composeMode,
   });
   const hybrid = isHybridContentFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
-  const preserveMode = isInstructionPreserveMode(facts);
+  const preserveMode = isInstructionPreserveMode(facts) || (composeMode && hybrid);
   const ctx = resolveVoiceGenerationContext(opts.voice);
-  const interpretation = await interpretBrand(facts, ctx);
-  const examples = await retrieveRankedExamples(
+  const interpretation = await interpretBrand(facts, ctx, {
+    composeMode,
+    topic: opts.topic,
+  });
+  const allExamples = await retrieveRankedExamples(
     opts.db,
     opts.organizationId,
     opts.voice,
     facts,
     opts.writerArticleId,
   );
+  const examples = composeMode ? allExamples.slice(0, COMPOSE_MAX_EXAMPLES) : allExamples;
+
+  const researchBriefExcerpt = composeMode
+    ? factsInput.slice(0, COMPOSE_BRIEF_EXCERPT_CHARS)
+    : undefined;
 
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
@@ -140,6 +160,9 @@ export async function runHumanizationEngine(
       articleDepth: opts.articleDepth,
       subtopics: opts.subtopics,
       exactLinkLabels: opts.exactLinkLabels,
+      composeMode,
+      topic: opts.topic,
+      researchBriefExcerpt,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -148,27 +171,39 @@ export async function runHumanizationEngine(
       attempt: attempts,
       skip: proceduralOnly,
       proceduralLock: hybrid,
+      composeMode,
+      topic: opts.topic,
     });
 
     const genericity = await analyzeGenericity(html);
-    const critique = await runSelfCritique(html, facts, ctx);
+    const critique = await runSelfCritique(html, facts, ctx, {
+      composeMode,
+      topic: opts.topic,
+    });
     const completenessIssues = preserveMode
       ? rewriterInstructionPreserveCompletenessIssues(facts, html)
       : [];
+    const topicDriftIssues =
+      composeMode && opts.topic
+        ? writerComposeTopicDriftIssues(html, opts.topic, ctx.brandName)
+        : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
       genericity,
       critique,
       composite,
-      completenessIssueCount: completenessIssues.length,
+      completenessIssueCount: completenessIssues.length + topicDriftIssues.length,
     };
 
     if (!best || snapshotScore(snapshot, preserveMode) > snapshotScore(best, preserveMode)) {
       best = snapshot;
     }
 
-    if (qualityGatePassed(facts, html, genericity, critique)) {
+    const gateOk = qualityGatePassed(facts, html, genericity, critique, composeMode);
+    const noDrift = topicDriftIssues.length === 0;
+
+    if (gateOk && noDrift) {
       return {
         html: snapshot.html,
         sourceTruncated,
@@ -182,7 +217,10 @@ export async function runHumanizationEngine(
       };
     }
 
-    retryIssues = mergeRetryIssues(genericity, critique, completenessIssues);
+    retryIssues = mergeRetryIssues(genericity, critique, [
+      ...completenessIssues,
+      ...topicDriftIssues,
+    ]);
   }
 
   const final = best!;

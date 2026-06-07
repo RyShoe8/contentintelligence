@@ -11,6 +11,8 @@ import {
   weaveMissingWriterLinksInBody,
   writerArticleDepthGuidance,
   writerArticleDepthLabel,
+  writerComposeResearchConfig,
+  writerComposeTopicDriftIssues,
   writerLinkAnchorMatches,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
@@ -422,6 +424,50 @@ describe("writerArticleDepthGuidance", () => {
     assert.equal(writerArticleDepthGuidance(60).minWords, 2000);
     assert.equal(writerArticleDepthLabel(90), "Comprehensive");
     assert.equal(writerArticleDepthGuidance(90).minWords, 3000);
+  });
+});
+
+describe("writerComposeResearchConfig", () => {
+  it("scales research intensity with article depth", () => {
+    assert.equal(writerComposeResearchConfig(20).maxResearchQuestions, 6);
+    assert.equal(writerComposeResearchConfig(20).sectionBatchSize, 2);
+    assert.equal(writerComposeResearchConfig(40).maxResearchQuestions, 8);
+    assert.equal(writerComposeResearchConfig(60).maxResearchQuestions, 10);
+    assert.equal(writerComposeResearchConfig(60).sectionBatchSize, 1);
+    assert.equal(writerComposeResearchConfig(90).maxResearchQuestions, 12);
+    assert.equal(writerComposeResearchConfig(90).gapFillPass, true);
+    assert.equal(writerComposeResearchConfig(90).minCitationsPerSection, 3);
+  });
+});
+
+describe("writerComposeTopicDriftIssues", () => {
+  it("flags brand-as-subject and meta community framing", () => {
+    const html = `
+      <p>The Frugal Gambler community loves discussing taxes.</p>
+      <p>Frugal Gambler encourages community engagement and creating engaging content.</p>
+      <p>Fostering community around tax topics helps everyone.</p>
+    `;
+    const issues = writerComposeTopicDriftIssues(
+      html,
+      "Tax implications of online casino winnings",
+      "Frugal Gambler",
+    );
+    assert.ok(issues.some((i) => /community/i.test(i)));
+    assert.ok(issues.some((i) => /meta|community framing/i.test(i)));
+  });
+
+  it("returns no issues for topic-focused copy", () => {
+    const html = `
+      <h2>Reporting requirements</h2>
+      <p>Online casino winnings are taxable income under federal law and must be reported to the IRS.</p>
+      <p>State tax rates on gambling winnings vary by jurisdiction.</p>
+    `;
+    const issues = writerComposeTopicDriftIssues(
+      html,
+      "Tax implications of online casino winnings",
+      "Frugal Gambler",
+    );
+    assert.equal(issues.length, 0);
   });
 });
 

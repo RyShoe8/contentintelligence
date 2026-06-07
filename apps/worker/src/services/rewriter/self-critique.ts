@@ -20,6 +20,7 @@ export async function runSelfCritique(
   html: string,
   facts: ContentFacts,
   ctx: VoiceGenerationContext,
+  opts: { composeMode?: boolean; topic?: string } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
@@ -38,6 +39,12 @@ export async function runSelfCritique(
     preserveBlock = `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`;
   }
 
+  const topic = opts.topic?.trim();
+  const composeBlock =
+    opts.composeMode && topic
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Brand voice should affect tone only.`
+      : "";
+
   const raw = await completeJson<unknown>({
     system: `Critique whether this article sounds human-authored for the brand.
 Reply JSON only:
@@ -48,8 +55,9 @@ humanAuthenticity: reads like a real operator wrote it.
 brandConsistency: matches the stated persona/constraints.
 genericity: template/AI feel (high = bad).
 issues: short bullets for failures.
-${preserveBlock}`,
+${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
     user: [
+      topic ? `Article topic: ${topic}` : "",
       personaBlock,
       "",
       "Facts the article should reflect (JSON):",

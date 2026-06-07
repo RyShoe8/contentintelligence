@@ -15,6 +15,7 @@ export function parseBrandInterpretation(raw: unknown): BrandInterpretation | nu
 export async function interpretBrand(
   facts: ContentFacts,
   ctx: VoiceGenerationContext,
+  opts: { composeMode?: boolean; topic?: string } = {},
 ): Promise<BrandInterpretation> {
   const personaBlock = ctx.persona?.trim()
     ? `Brand persona:\n${ctx.persona.trim()}`
@@ -23,8 +24,18 @@ export async function interpretBrand(
     ? `Brand constraints (JSON):\n${formatConstraintsForPrompt(ctx.constraints)}`
     : "";
 
-  const raw = await completeJson<unknown>({
-    system: `You are a brand editor forming an opinion about content facts — not writing copy.
+  const topic = opts.topic?.trim();
+  const systemPrompt = opts.composeMode
+    ? `You are an editorial strategist forming a neutral lens for an article about a topic — not writing copy.
+Reply with JSON only:
+{"assessment": string,"qualityScore": number,"bestFor": string,"risks": string[],"caveats": string[],"opportunities": string[]}
+Rules:
+- assessment: editorial framing for an authoritative article about the topic (audience, nuance, caveats).
+- qualityScore: 0–10 integer.
+- bestFor: who needs this information.
+- risks/caveats/opportunities: short neutral bullets grounded in the facts.
+- Do NOT write marketing copy, community engagement advice, or brand-as-subject framing.`
+    : `You are a brand editor forming an opinion about content facts — not writing copy.
 Reply with JSON only:
 {"assessment": string,"qualityScore": number,"bestFor": string,"risks": string[],"caveats": string[],"opportunities": string[]}
 Rules:
@@ -32,8 +43,12 @@ Rules:
 - qualityScore: 0–10 integer.
 - bestFor: who this is actually for.
 - risks/caveats/opportunities: short neutral bullets.
-- Do NOT write marketing copy or headlines.`,
+- Do NOT write marketing copy or headlines.`;
+
+  const raw = await completeJson<unknown>({
+    system: systemPrompt,
     user: [
+      topic ? `Article topic: ${topic}` : "",
       personaBlock,
       constraintsBlock,
       "",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { writerComposeResearchConfig } from "@content-resourcer/db";
 import { env } from "./env.js";
 import { completeJson } from "./services/llm/json-completion.js";
 
@@ -15,13 +16,13 @@ export type PlanTopicResearchOpts = {
   hasUserReferences: boolean;
   maxSearchQueries?: number;
   userSubtopics?: string[];
+  articleDepth?: number;
 };
-
-const MAX_RESEARCH_QUESTIONS = 8;
 
 export function mergeUserSubtopicsIntoPlan(
   plan: TopicResearchPlan,
   userSubtopics: string[] = [],
+  maxQuestions = 8,
 ): TopicResearchPlan {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -42,11 +43,11 @@ export function mergeUserSubtopicsIntoPlan(
     merged.push(q.trim());
   }
 
-  return { ...plan, research_questions: merged.slice(0, MAX_RESEARCH_QUESTIONS) };
+  return { ...plan, research_questions: merged.slice(0, maxQuestions) };
 }
 
 const planSchema = z.object({
-  research_questions: z.array(z.string().trim().min(1)).min(3).max(8),
+  research_questions: z.array(z.string().trim().min(1)).min(3).max(12),
   angles: z.array(z.string().trim().min(1)).max(8).default([]),
   caveats_to_investigate: z.array(z.string().trim().min(1)).max(8).default([]),
   search_queries: z.array(z.string().trim().min(1)).min(1).max(5),
@@ -59,6 +60,11 @@ export function buildTopicResearchPlanPrompts(opts: PlanTopicResearchOpts): {
   const topic = opts.topic.trim();
   const keywords =
     opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
+  const researchConfig = writerComposeResearchConfig(opts.articleDepth ?? 50);
+  const searchQueryRule =
+    researchConfig.maxSearchQueries >= 5
+      ? "- search_queries: 3-5 concise web search strings to find authoritative sources on the topic."
+      : "- search_queries: 2-3 concise web search strings to find authoritative sources on the topic.";
 
   const systemPrompt = `You plan editorial research for article writing.
 Output JSON only with keys: research_questions, angles, caveats_to_investigate, search_queries.
@@ -66,7 +72,7 @@ Rules:
 - research_questions: 4-6 focused sub-questions that deeply investigate the topic (not generic).
 - angles: 2-4 distinct editorial angles or narratives to explore.
 - caveats_to_investigate: 2-4 limitations, counterpoints, or nuance to verify.
-- search_queries: 2-3 concise web search strings to find authoritative sources on the topic.
+${searchQueryRule}
 - Questions must be about the TOPIC itself, not about summarizing URLs.
 - If the user may supply reference pages, plan what facts to extract — do not assume page content.`;
 
@@ -106,6 +112,9 @@ export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<To
     throw new Error("openai_not_configured");
   }
 
+  const researchConfig = writerComposeResearchConfig(opts.articleDepth ?? 50);
+  const maxQuestions = researchConfig.maxResearchQuestions;
+
   const { systemPrompt, userPrompt } = buildTopicResearchPlanPrompts(opts);
   const raw = await completeJson<unknown>({
     system: systemPrompt,
@@ -115,24 +124,26 @@ export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<To
   });
 
   if (!raw) {
-    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics);
+    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics, maxQuestions);
   }
 
   const parsed = planSchema.safeParse(raw);
   if (!parsed.success) {
-    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics);
+    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics, maxQuestions);
   }
 
+  const llmQuestionCap = Math.min(6, maxQuestions);
   return mergeUserSubtopicsIntoPlan(
     {
-      research_questions: parsed.data.research_questions.slice(0, 6),
+      research_questions: parsed.data.research_questions.slice(0, llmQuestionCap),
       angles: parsed.data.angles,
       caveats_to_investigate: parsed.data.caveats_to_investigate,
       search_queries: parsed.data.search_queries.slice(
         0,
-        opts.maxSearchQueries ?? env.writerWebSearchMaxQueries,
+        opts.maxSearchQueries ?? researchConfig.maxSearchQueries,
       ),
     },
     opts.userSubtopics,
+    maxQuestions,
   );
 }

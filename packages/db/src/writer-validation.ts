@@ -80,6 +80,110 @@ export function writerArticleDepthLabel(depth: number): string {
   return writerArticleDepthGuidance(depth).label;
 }
 
+export type WriterComposeResearchConfig = {
+  maxResearchQuestions: number;
+  sectionBatchSize: number;
+  minCitationsPerSection: number;
+  maxSearchQueries: number;
+  gapFillPass: boolean;
+};
+
+export function writerComposeResearchConfig(articleDepth: number): WriterComposeResearchConfig {
+  const d = Math.min(100, Math.max(0, Math.round(articleDepth)));
+  if (d <= 25) {
+    return {
+      maxResearchQuestions: 6,
+      sectionBatchSize: 2,
+      minCitationsPerSection: 1,
+      maxSearchQueries: 3,
+      gapFillPass: false,
+    };
+  }
+  if (d <= 50) {
+    return {
+      maxResearchQuestions: 8,
+      sectionBatchSize: 2,
+      minCitationsPerSection: 2,
+      maxSearchQueries: 4,
+      gapFillPass: false,
+    };
+  }
+  if (d <= 75) {
+    return {
+      maxResearchQuestions: 10,
+      sectionBatchSize: 1,
+      minCitationsPerSection: 2,
+      maxSearchQueries: 5,
+      gapFillPass: false,
+    };
+  }
+  return {
+    maxResearchQuestions: 12,
+    sectionBatchSize: 1,
+    minCitationsPerSection: 3,
+    maxSearchQueries: 5,
+    gapFillPass: true,
+  };
+}
+
+const COMPOSE_TOPIC_DRIFT_META_PHRASES = [
+  "creating engaging content",
+  "fostering community",
+  "community engagement",
+  "content strategy",
+  "encouraging community",
+  "promoting the brand",
+  "our community",
+  "the community",
+] as const;
+
+function countTermMatches(text: string, pattern: RegExp): number {
+  const matches = text.match(pattern);
+  return matches?.length ?? 0;
+}
+
+/** Deterministic flags when compose article centers brand/community over the topic. */
+export function writerComposeTopicDriftIssues(
+  html: string,
+  topic: string,
+  brandName?: string,
+): string[] {
+  const plain = stripHtmlToPlainText(html).toLowerCase();
+  const issues: string[] = [];
+  const topicWords = topic
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length > 3);
+  const topicHits = topicWords.reduce(
+    (sum, word) => sum + countTermMatches(plain, new RegExp(`\\b${word}\\b`, "g")),
+    0,
+  );
+
+  const brand = brandName?.trim();
+  const brandHits = brand
+    ? countTermMatches(plain, new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"))
+    : 0;
+
+  for (const phrase of COMPOSE_TOPIC_DRIFT_META_PHRASES) {
+    if (plain.includes(phrase)) {
+      issues.push(`Article contains meta/community framing ("${phrase}") instead of topic coverage`);
+    }
+  }
+
+  if (brand && brandHits >= 3 && brandHits > topicHits / 2) {
+    issues.push(
+      `Article mentions "${brand}" too often relative to the topic — keep the brand as voice, not the subject`,
+    );
+  }
+
+  const communityHits = countTermMatches(plain, /\bcommunity\b/g);
+  if (communityHits >= 3 && communityHits > Math.max(2, topicHits / 4)) {
+    issues.push("Article focuses on community rather than the topic");
+  }
+
+  return [...new Set(issues)].slice(0, 6);
+}
+
 const httpsUrl = z
   .string()
   .trim()

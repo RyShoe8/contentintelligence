@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { writerArticleDepthGuidance } from "@content-resourcer/db";
+import { writerArticleDepthGuidance, writerComposeResearchConfig } from "@content-resourcer/db";
 import { env } from "./env.js";
 import {
   formatReferenceCorpusForPrompt,
@@ -109,16 +109,20 @@ export function buildDeepResearchSectionPrompts(opts: {
   voiceKeywords?: string[];
   hasUserReferences: boolean;
   subtopics?: string[];
+  minCitationsPerSection?: number;
 }): { systemPrompt: string; userPrompt: string } {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
   const keywords =
     opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
+  const minCitations = opts.minCitationsPerSection ?? 1;
 
   const systemPrompt = `You answer editorial research sub-questions using provided source excerpts.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - For each question, write a heading with the question text, then bullet notes.
+- Include at least ${minCitations} inline source URL citation(s) per question when sources support the answer.
 - Cite the source URL when a fact comes from a reference excerpt.
+- Mark weak or uncertain claims explicitly (e.g. "uncertain — not found in sources").
 - If a question cannot be answered from sources, write "Not found in sources" and optionally add cautious general context (may/often) only when no user references exist.
 - Do not invent specific stats or quotes unsupported by sources.`;
 
@@ -198,13 +202,46 @@ async function callOpenAiText(
   return res.choices[0]?.message?.content?.trim() ?? "";
 }
 
+function buildGapFillPrompts(opts: {
+  topic: string;
+  plan: TopicResearchPlan;
+  sectionNotes: string;
+  corpusSections: ReferenceCorpusSection[];
+}): { systemPrompt: string; userPrompt: string } {
+  const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
+  return {
+    systemPrompt: `You fill gaps in editorial research using only provided source excerpts.
+Rules:
+- Output plain text only (no markdown fences, no HTML).
+- Address caveats and open questions from the plan using corpus evidence only.
+- Cite source URLs for every factual claim; mark uncertain items explicitly.
+- Do not invent stats or quotes.`,
+    userPrompt: [
+      `Topic: ${opts.topic.trim()}`,
+      "",
+      "Caveats to investigate:",
+      ...opts.plan.caveats_to_investigate.map((c) => `- ${c}`),
+      "",
+      "Existing research notes:",
+      opts.sectionNotes.slice(0, 12000),
+      "",
+      "Source excerpts:",
+      corpusBlock,
+    ].join("\n"),
+  };
+}
+
 export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Promise<string> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
   }
 
+  const researchConfig = writerComposeResearchConfig(opts.articleDepth ?? 50);
   const hasUserReferences = opts.corpusSections.some((s) => s.source === "user");
-  const questionChunks = chunkQuestions(opts.plan.research_questions, 2);
+  const questionChunks = chunkQuestions(
+    opts.plan.research_questions,
+    researchConfig.sectionBatchSize,
+  );
   const sectionParts: string[] = [];
 
   for (const questions of questionChunks) {
@@ -215,6 +252,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       voiceKeywords: opts.voiceKeywords,
       hasUserReferences,
       subtopics: opts.subtopics,
+      minCitationsPerSection: researchConfig.minCitationsPerSection,
     });
     const notes = await callOpenAiText(
       systemPrompt,
@@ -243,11 +281,28 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     articleDepth: opts.articleDepth,
     subtopics: opts.subtopics,
   });
-  const brief = await callOpenAiText(
+  let brief = await callOpenAiText(
     systemPrompt,
     userPrompt,
     env.maxTokensWriter,
   );
+
+  if (researchConfig.gapFillPass && opts.plan.caveats_to_investigate.length > 0) {
+    const gap = buildGapFillPrompts({
+      topic: opts.topic,
+      plan: opts.plan,
+      sectionNotes,
+      corpusSections: opts.corpusSections,
+    });
+    const gapNotes = await callOpenAiText(
+      gap.systemPrompt,
+      gap.userPrompt,
+      env.maxTokensWriterResearchSection,
+    );
+    if (gapNotes.trim()) {
+      brief = `${brief.trim()}\n\nAdditional gap-fill research:\n${gapNotes.trim()}`;
+    }
+  }
 
   if (!brief || brief.length < 100) {
     throw new Error("research_brief_empty");
