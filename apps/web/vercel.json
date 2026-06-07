@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/ingest-due",
-      "schedule": "0 14 * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }

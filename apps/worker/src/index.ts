@@ -247,6 +247,12 @@ async function main(): Promise<void> {
       return reply.code(401).send({ error: "unauthorized" });
     }
     const result = await runScheduleTick();
+    ingestLog("signal_schedule_tick", {
+      due_count: result.due_count,
+      started: result.started,
+      content_signal_id: result.content_signal_id,
+      skipped: result.skipped ?? null,
+    });
     if (result.skipped === "ingest_already_running") {
       return reply.code(409).send({
         error: "ingest_already_running",

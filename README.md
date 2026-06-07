@@ -130,9 +130,13 @@ Per-signal schedules are stored in Mongo (`ingest_interval_minutes`). The worker
 
 On **Render Free**, the worker spins down after ~15 minutes idle; internal cron stops until HTTP wakes the service. **Manual Sync/Refresh works** because it calls the worker; **automatic sync does not** unless something hits the worker on a schedule.
 
-#### Vercel Hobby + Render Free (recommended setup)
+#### Vercel Hobby + Render Free
 
-**Vercel Hobby cannot run built-in cron more than once per day.** The `*/15` schedule in [`vercel.json`](apps/web/vercel.json) is a once-daily backup only (`0 14 * * *` UTC). For hourly (or more frequent) feed sync, use a **free external scheduler** to call your app API:
+**Vercel Hobby cannot run built-in cron more than once per day.** For hourly (or more frequent) feed sync on Hobby, use a **free external scheduler** to call your app API (see steps below). The built-in cron in [`vercel.json`](apps/web/vercel.json) is a once-daily fallback only if you stay on Hobby.
+
+#### Vercel Pro + Render Free (recommended setup)
+
+**Vercel Pro** runs built-in cron every **15 minutes** (`*/15 * * * *` in [`vercel.json`](apps/web/vercel.json)) as a platform backup. You should still use external cron or a worker keep-alive ping on Render Free so cold starts do not delay ticks.
 
 1. On **Vercel (Production)**, set `CRON_SECRET`, `WORKER_URL`, and `INGEST_SECRET` (same value as on the Render worker if ingest routes require it).
 2. At [cron-job.org](https://cron-job.org) (or similar), create a job:
@@ -142,13 +146,13 @@ On **Render Free**, the worker spins down after ~15 minutes idle; internal cron 
    - **Header:** `Authorization: Bearer <CRON_SECRET>` (must match Vercel exactly)
    - Use the longest timeout your provider allows (30s on cron-job.org free tier).
 3. **Optional but recommended:** a second job every **10–14 minutes** that GETs `https://<worker>.onrender.com/health` so Render stays awake and schedule ticks are less likely to time out during cold start.
-4. After ~20 minutes, check **cron-job.org** execution history (HTTP 200) and **Render logs** for `signal_schedule_start` or `ingest_request` with `source: "schedule"`.
+4. After ~20 minutes, check **cron-job.org** execution history (HTTP 200) and **Render logs** for `signal_schedule_tick`, `signal_schedule_start`, or `ingest_request` with `source: "schedule"`.
 
-The cron route wakes the worker (`GET /health` with retries), then `POST /schedule/tick` for the oldest due content signal (feed ingest + post sync for that signal).
+The cron route calls `POST /schedule/tick` on the worker (with retry on cold start) for the oldest due content signal (feed ingest + post sync for that signal).
 
-#### Vercel Pro
+#### Vercel Pro only (no external cron)
 
-You may use Vercel built-in cron at `*/15 * * * *` in `vercel.json` instead of (or in addition to) external cron. Same env vars apply.
+You may rely on Vercel built-in cron at `*/15 * * * *` in `vercel.json` instead of external cron, but Render Free cold starts are still easier with a worker `/health` keep-alive job.
 
 #### Alternatives
 
@@ -200,7 +204,7 @@ If your Google OAuth app stays in **Testing** (no Production verification for `g
 
 - **`invalid_grant` in Render logs:** Gmail refresh token is revoked, expired (~7 days in Testing mode), or was issued by a different OAuth client than Render’s `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`. On the **source editor**, check OAuth alignment (Vercel vs Render client ID suffix), fix env vars if mismatched, then **Re-connect Gmail**.
 - **Sync says success but feed is empty:** Check sync result counts; widen signal lookback or confirm Gmail has mail matching labels/filters in the lookback window.
-- **Posts shows “Due now” but nothing syncs for hours:** Scheduled ingest did not run. On **Vercel Hobby**, use **cron-job.org** (see Feed sync schedule above). Confirm `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel. In cron-job.org history, a **200 on `/login?next=/api/cron/ingest-due`** means auth middleware blocked the cron (fixed by exempting `/api/cron/*` from session auth); a successful tick stays on `/api/cron/ingest-due` and returns JSON (`accepted`, `due_count`, etc.). Check for **401** (wrong secret), **502** (bad `WORKER_URL` or cold start timeout), and Render logs for `signal_schedule_start`. Add a worker `/health` keep-alive ping if ticks time out.
+- **Posts shows “Due now” but nothing syncs for hours:** Scheduled ingest did not run. Confirm `CRON_SECRET`, `WORKER_URL`, and matching `INGEST_SECRET` on Vercel. On **Vercel Pro**, built-in cron hits `/api/cron/ingest-due` every 15 minutes; on **Hobby**, use **cron-job.org** (see Feed sync schedule above). In cron-job.org history, a **200 on `/login?next=/api/cron/ingest-due`** means auth middleware blocked the cron; a successful tick returns JSON (`accepted`, `due_count`, `tick_attempts`, etc.). Check for **401** (wrong secret), **502** (cold start timeout — add a worker `/health` keep-alive ping), and Render logs for `signal_schedule_tick` / `signal_schedule_start`.
 - **Deal link shows `w3.org/1999/xhtml`:** Re-sync the feed after deploy so `original_url` is recomputed. New ingests filter namespace and asset URLs; the UI also hides known junk links on old rows until re-synced.
 - **Key Points missing on Feed or Posts:** Run **Sync feed** (or **Refresh posts**) after deploy so existing `signal_items` rows get `key_points` populated. The Feed detail page shows a hint until a full ingest refreshes the item.
 
