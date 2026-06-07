@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
   parseWriterReferenceUrls,
@@ -182,6 +182,11 @@ export function WriterComposeForm({
     [voices],
   );
 
+  const sortedReadyVoices = useMemo(
+    () => [...readyVoices].sort((a, b) => a.name.localeCompare(b.name)),
+    [readyVoices],
+  );
+
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
   const showOutputColumn = Boolean(outputHtml.trim() || articleId);
@@ -235,6 +240,13 @@ export function WriterComposeForm({
     setVoiceId(id);
     setExpandedVoiceIds((prev) => new Set(prev).add(id));
   }, []);
+
+  useEffect(() => {
+    if (readyVoices.length === 0) return;
+    if (!readyVoices.some((v) => v.id === voiceId)) {
+      selectVoice(readyVoices[0]!.id);
+    }
+  }, [readyVoices, voiceId, selectVoice]);
 
   function updateLinkRow(index: number, patch: Partial<LinkRow>) {
     setLinkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -429,7 +441,7 @@ export function WriterComposeForm({
     <div className="space-y-6">
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">Voices</h2>
+          <h2 className="text-sm font-medium text-[var(--fg)]">Articles by voice</h2>
           <button
             type="button"
             onClick={resetComposer}
@@ -548,6 +560,42 @@ export function WriterComposeForm({
       ) : null}
 
       <section className="ui-card space-y-4 p-6">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[var(--muted)]">Voice</span>
+          <select
+            value={
+              sortedReadyVoices.some((v) => v.id === voiceId)
+                ? voiceId
+                : (sortedReadyVoices[0]?.id ?? "")
+            }
+            onChange={(e) => selectVoice(e.target.value)}
+            disabled={writing || sortedReadyVoices.length === 0}
+            className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          >
+            {sortedReadyVoices.length === 0 ? (
+              <option value="">No ready voices</option>
+            ) : (
+              sortedReadyVoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))
+            )}
+          </select>
+          <span className="text-xs text-[var(--muted)]">
+            Persona and style used when you Write.
+            {sortedReadyVoices.length === 0 ? (
+              <>
+                {" "}
+                <Link href="/voices" className="text-[var(--primary)] hover:underline">
+                  Generate a persona on Voices
+                </Link>
+                .
+              </>
+            ) : null}
+          </span>
+        </label>
+
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-[var(--muted)]">Topic</span>
           <textarea
