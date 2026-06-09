@@ -15,7 +15,6 @@ describe("buildDeepResearchSectionPrompts", () => {
         { url: "https://ref.example", text: "Benchmark stats.", source: "user" },
         { url: "https://web.example", text: "Industry report.", source: "web" },
       ],
-      voiceKeywords: ["ROI"],
       hasUserReferences: true,
     });
 
@@ -37,7 +36,6 @@ describe("buildDeepResearchConsolidationPrompts", () => {
         search_queries: ["content ROI"],
       },
       sectionNotes: "Q1 notes with https://ref.example citation.",
-      voiceKeywords: ["content"],
     });
 
     assert.match(systemPrompt, /800–1,200 words of briefing content/);

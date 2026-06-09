@@ -26,15 +26,16 @@ export async function interpretBrand(
 
   const topic = opts.topic?.trim();
   const systemPrompt = opts.composeMode
-    ? `You are an editorial strategist forming a neutral lens for an article about a topic — not writing copy.
+    ? `You are a brand editor forming a lens for an article about a topic — not writing copy.
 Reply with JSON only:
 {"assessment": string,"qualityScore": number,"bestFor": string,"risks": string[],"caveats": string[],"opportunities": string[]}
 Rules:
-- assessment: editorial framing for an authoritative article about the topic (audience, nuance, caveats).
+- assessment: how this brand would frame and judge the topic (use persona and constraints — perspective, caveats, opinions).
 - qualityScore: 0–10 integer.
-- bestFor: who needs this information.
-- risks/caveats/opportunities: short neutral bullets grounded in the facts.
-- Do NOT write marketing copy, community engagement advice, or brand-as-subject framing.`
+- bestFor: who needs this information from this brand's point of view.
+- risks/caveats/opportunities: short bullets grounded in the facts and brand stance.
+- The topic stays the article subject — do not center community, content strategy, or brand-as-subject meta.
+- Do NOT write marketing copy or headlines.`
     : `You are a brand editor forming an opinion about content facts — not writing copy.
 Reply with JSON only:
 {"assessment": string,"qualityScore": number,"bestFor": string,"risks": string[],"caveats": string[],"opportunities": string[]}

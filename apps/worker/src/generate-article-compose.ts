@@ -119,7 +119,6 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     const plan = needPlan
       ? await planTopicResearch({
           topic: opts.topic,
-          voiceKeywords: opts.voice.keywords,
           hasUserReferences: opts.referenceUrls.length > 0,
           maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
           userSubtopics: subtopics,
@@ -146,7 +145,6 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
             topic: opts.topic,
             plan,
             corpusSections: corpus.sections,
-            voiceKeywords: opts.voice.keywords,
             articleDepth,
             subtopics,
             includeFaq,
@@ -154,7 +152,6 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         : await synthesizeResearchBrief({
             topic: opts.topic,
             corpusSections: corpus.sections,
-            voiceKeywords: opts.voice.keywords,
             articleDepth,
             subtopics,
             includeFaq,

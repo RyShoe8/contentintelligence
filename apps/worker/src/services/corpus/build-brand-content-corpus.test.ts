@@ -29,7 +29,6 @@ describe("buildBrandContentCorpus helpers", () => {
       rss_feed_url: "",
       social_links: [],
       keywords: ["urgent"],
-      content_signal_ids: ["00000000-0000-4000-8000-000000000001"],
     } as const;
     const chunks: WeightedChunk[] = [
       { type: "socialPosts", weight: 1, label: "x", text: "hello" },
@@ -37,5 +36,24 @@ describe("buildBrandContentCorpus helpers", () => {
     const a = computeCorpusHash(chunks, voice as never);
     const b = computeCorpusHash(chunks, voice as never);
     assert.equal(a, b);
+  });
+
+  it("does not include content_signal_ids in corpus hash", () => {
+    const chunks: WeightedChunk[] = [
+      { type: "landingPages", weight: 0.4, label: "site", text: "copy" },
+    ];
+    const baseVoice = {
+      website_url: "https://example.com",
+      rss_feed_url: "",
+      social_links: [],
+      keywords: ["playful"],
+    };
+    const withSignals = {
+      ...baseVoice,
+      content_signal_ids: ["00000000-0000-4000-8000-000000000001"],
+    };
+    const hashA = computeCorpusHash(chunks, baseVoice as never);
+    const hashB = computeCorpusHash(chunks, withSignals as never);
+    assert.equal(hashA, hashB);
   });
 });

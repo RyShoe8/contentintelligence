@@ -751,7 +751,7 @@ export function WriterComposeForm({
             )}
           </select>
           <span className="text-xs text-[var(--muted)]">
-            Persona and style used when you Write.
+            Persona and style applied when you Write — after research completes.
             {sortedReadyVoices.length === 0 ? (
               <>
                 {" "}
@@ -786,6 +786,9 @@ export function WriterComposeForm({
             placeholder={"Pricing models\nImplementation timeline\nCommon pitfalls"}
             className="resize-y rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
           />
+          <span className="text-xs text-[var(--muted)]">
+            Research scoping only — what to investigate. Separate from voice keywords on the Voices page.
+          </span>
         </label>
 
         <div className="flex flex-col gap-2 text-sm">

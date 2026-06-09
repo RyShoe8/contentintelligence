@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Db } from "mongodb";
-import { listPostsForVoice, type Post, type Voice } from "@content-resourcer/db";
+import type { Voice } from "@content-resourcer/db";
 import { convert } from "html-to-text";
 import { XMLParser } from "fast-xml-parser";
 import { fetchSafeText } from "../../safe-fetch.js";
@@ -109,28 +109,12 @@ function extractReplyLikeBlocks(html: string): string[] {
   return replies.slice(0, 5);
 }
 
-function chunkFromPosts(posts: Post[]): WeightedChunk[] {
-  const chunks: WeightedChunk[] = [];
-  for (const post of posts) {
-    const text = capText(post.social_copy, 2000);
-    if (!text) continue;
-    chunks.push({
-      type: "generatedPosts",
-      weight: DEFAULT_SOURCE_WEIGHTS.generatedPosts,
-      label: `Post: ${post.title}`,
-      text,
-    });
-  }
-  return chunks;
-}
-
 export function computeCorpusHash(chunks: WeightedChunk[], voice: Voice): string {
   const parts = [
     voice.website_url,
     voice.rss_feed_url,
     ...voice.social_links.map((l) => l.url),
     ...voice.keywords,
-    ...voice.content_signal_ids,
     ...chunks.map((c) => `${c.type}:${c.label}:${c.text.length}`),
   ];
   return createHash("sha256").update(parts.join("|")).digest("hex");
@@ -155,7 +139,7 @@ export function formatCorpusForPrompt(chunks: WeightedChunk[], maxChars = env.br
 }
 
 export async function buildBrandContentCorpus(
-  db: Db,
+  _db: Db,
   voice: Voice,
 ): Promise<BrandContentCorpus> {
   const chunks: WeightedChunk[] = [];
@@ -228,14 +212,6 @@ export async function buildBrandContentCorpus(
         text: reply,
       });
     }
-  }
-
-  if (voice.content_signal_ids.length) {
-    const posts = await listPostsForVoice(db, voice.organization_id, voice.content_signal_ids, {
-      status: "draft",
-      limit: 200,
-    });
-    chunks.push(...chunkFromPosts(posts));
   }
 
   const hash = computeCorpusHash(chunks, voice);

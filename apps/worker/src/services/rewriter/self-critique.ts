@@ -42,7 +42,7 @@ export async function runSelfCritique(
   const topic = opts.topic?.trim();
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Brand voice should affect tone only.`
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic or ignores the stated persona and constraints — brand voice must shape perspective and framing, not just word choice.`
       : "";
 
   const raw = await completeJson<unknown>({

@@ -146,9 +146,10 @@ describe("buildReconstructionSystemPrompt", () => {
     });
 
     assert.match(prompt, /Article subject: Tax implications of online casino winnings/);
+    assert.match(prompt, /full brand voice \(perspective, rhetorical patterns, fingerprints\)/i);
     assert.match(prompt, /do not make the brand, community, or content strategy the subject/i);
+    assert.match(prompt, /Apply full brand voice/);
     assert.match(prompt, /Mention "Frugal Gambler" at least once when it fits naturally/);
-    assert.doesNotMatch(prompt, /Include the brand's viewpoint and caveats where relevant/);
   });
 
   it("requires structured FAQ HTML in compose mode when includeFaq is true", () => {

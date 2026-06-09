@@ -6,7 +6,7 @@ export const VOICE_FIELD_TIPS = {
   persona_generation:
     "Persona generation usually takes 1–3 minutes. A progress indicator appears while it runs.",
   keywords:
-    "One keyword per line, or comma-separated. Up to 5. Short tone or brand traits (e.g. playful, urgent, trusted) — used when generating the persona, not for Gmail feed filtering.",
+    "One keyword per line, or comma-separated. Up to 5. Short tone or brand traits (e.g. playful, urgent, trusted). Shapes persona generation and Writer style when the voice writes an article — not used during Writer research.",
   preferred_phrases:
     "Each row is one optional https link with comma-separated phrases (synonyms). Use the AI variations toggle to allow close paraphrases of those terms in posts, or leave off for exact wording. At most one phrase group is used per post; higher-frequency rows are preferred. Included in the generated persona template.",
 } as const;

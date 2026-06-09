@@ -12,7 +12,6 @@ export type TopicResearchPlan = {
 
 export type PlanTopicResearchOpts = {
   topic: string;
-  voiceKeywords?: string[];
   hasUserReferences: boolean;
   maxSearchQueries?: number;
   userSubtopics?: string[];
@@ -58,8 +57,6 @@ export function buildTopicResearchPlanPrompts(opts: PlanTopicResearchOpts): {
   userPrompt: string;
 } {
   const topic = opts.topic.trim();
-  const keywords =
-    opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
   const researchConfig = writerComposeResearchConfig(opts.articleDepth ?? 50);
   const searchQueryRule =
     researchConfig.maxSearchQueries >= 5
@@ -78,7 +75,6 @@ ${searchQueryRule}
 
   const userPrompt = [
     `Topic: ${topic}`,
-    `Voice keywords (context): ${keywords}`,
     opts.hasUserReferences
       ? "The user will provide reference URLs; plan what to extract from them."
       : "No user reference URLs; search queries should help discover sources.",

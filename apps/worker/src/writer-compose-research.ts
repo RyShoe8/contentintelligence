@@ -14,7 +14,6 @@ import type { TopicResearchPlan } from "./writer-topic-research-plan.js";
 export type SynthesizeResearchBriefOpts = {
   topic: string;
   corpusSections: ReferenceCorpusSection[];
-  voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
@@ -57,8 +56,6 @@ export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
   const topic = opts.topic.trim();
   const hasReferences = opts.corpusSections.length > 0;
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
-  const keywords =
-    opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
   const depth =
     opts.articleDepth != null
       ? writerArticleDepthGuidance(opts.articleDepth)
@@ -76,7 +73,6 @@ ${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 
   const userPrompt = [
     `Topic: ${topic}`,
-    `Voice keywords (context): ${keywords}`,
     subtopicsBlock(opts.subtopics),
     "",
     hasReferences
@@ -119,7 +115,6 @@ export type RunDeepTopicResearchOpts = {
   topic: string;
   plan: TopicResearchPlan;
   corpusSections: ReferenceCorpusSection[];
-  voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
@@ -137,14 +132,11 @@ export function buildDeepResearchSectionPrompts(opts: {
   topic: string;
   questions: string[];
   corpusSections: ReferenceCorpusSection[];
-  voiceKeywords?: string[];
   hasUserReferences: boolean;
   subtopics?: string[];
   minCitationsPerSection?: number;
 }): { systemPrompt: string; userPrompt: string } {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
-  const keywords =
-    opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
   const minCitations = opts.minCitationsPerSection ?? 1;
 
   const systemPrompt = `You answer editorial research sub-questions using provided source excerpts.
@@ -159,7 +151,6 @@ Rules:
 
   const userPrompt = [
     `Topic: ${opts.topic.trim()}`,
-    `Voice keywords: ${keywords}`,
     "",
     "Answer these research questions:",
     ...opts.questions.map((q, i) => `${i + 1}. ${q}`),
@@ -178,13 +169,10 @@ export function buildDeepResearchConsolidationPrompts(opts: {
   topic: string;
   plan: TopicResearchPlan;
   sectionNotes: string;
-  voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
 }): { systemPrompt: string; userPrompt: string } {
-  const keywords =
-    opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
   const depth =
     opts.articleDepth != null
       ? writerArticleDepthGuidance(opts.articleDepth)
@@ -201,7 +189,6 @@ ${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 
   const userPrompt = [
     `Topic: ${opts.topic.trim()}`,
-    `Voice keywords: ${keywords}`,
     subtopicsBlock(opts.subtopics),
     "",
     "Planned angles:",
@@ -282,7 +269,6 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       topic: opts.topic,
       questions,
       corpusSections: opts.corpusSections,
-      voiceKeywords: opts.voiceKeywords,
       hasUserReferences,
       subtopics: opts.subtopics,
       minCitationsPerSection: researchConfig.minCitationsPerSection,
@@ -300,7 +286,6 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     return synthesizeResearchBrief({
       topic: opts.topic,
       corpusSections: opts.corpusSections,
-      voiceKeywords: opts.voiceKeywords,
       articleDepth: opts.articleDepth,
       subtopics: opts.subtopics,
       includeFaq: opts.includeFaq,
@@ -311,7 +296,6 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     topic: opts.topic,
     plan: opts.plan,
     sectionNotes,
-    voiceKeywords: opts.voiceKeywords,
     articleDepth: opts.articleDepth,
     subtopics: opts.subtopics,
     includeFaq: opts.includeFaq,

@@ -90,7 +90,7 @@ function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?
     return `### Example ${i + 1}: ${ex.title}\n${html}`;
   });
   const composeNote = composeMode
-    ? " Match rhythm and tone only — do not copy deal-post structure or community/meta framing."
+    ? " Examples are saved Writer articles only — match voice, rhythm, and rhetorical patterns, not topic content."
     : "";
   return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }
@@ -154,12 +154,13 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
   const composeTopicBlock =
     opts.composeMode && topic
       ? `\nArticle subject: ${topic}
-Write an authoritative editorial article ABOUT this topic. Apply brand voice to tone and phrasing only — do not make the brand, community, or content strategy the subject.
+Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
+Do not make the brand, community, or content strategy the subject of the article.
 Do not add sections about community engagement, creating content, or promoting the brand.`
       : "";
 
   const viewpointRule = opts.composeMode
-    ? "- Where facts support it, reflect the brand's editorial perspective in how points are framed — not by centering the brand name or community."
+    ? "- Apply full brand voice (perspective, caveats, rhetorical patterns) while keeping the topic as the article subject — not brand-as-subject sections."
     : "- Include the brand's viewpoint and caveats where relevant.";
 
   return `Write a full blog article in HTML from structured facts and brand interpretation.

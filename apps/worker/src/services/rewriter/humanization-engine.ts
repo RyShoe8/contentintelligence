@@ -28,7 +28,6 @@ import { runSelfCritique } from "./self-critique.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const COMPOSE_BRIEF_EXCERPT_CHARS = 6000;
-const COMPOSE_MAX_EXAMPLES = 2;
 
 export type HumanizationEngineOpts = {
   db: Db;
@@ -138,7 +137,7 @@ export async function runHumanizationEngine(
     facts,
     opts.writerArticleId,
   );
-  const examples = composeMode ? allExamples.slice(0, COMPOSE_MAX_EXAMPLES) : allExamples;
+  const examples = allExamples;
 
   const researchBriefExcerpt = composeMode
     ? factsInput.slice(0, COMPOSE_BRIEF_EXCERPT_CHARS)

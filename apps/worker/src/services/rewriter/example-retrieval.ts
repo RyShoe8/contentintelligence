@@ -1,8 +1,6 @@
 import type { Db } from "mongodb";
 import {
-  listPostsForVoice,
   listSavedWriterExamplesForVoice,
-  primarySocialCopy,
   type ContentFacts,
   writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
@@ -12,14 +10,13 @@ import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1200;
 const CANDIDATE_ARTICLE_LIMIT = 10;
-const CANDIDATE_POST_LIMIT = 10;
 const RANKED_EXAMPLE_LIMIT = 5;
 
 type ExampleCandidate = {
   id: string;
   title: string;
   content: string;
-  source: "article" | "post";
+  source: "article";
 };
 
 export async function loadExampleCandidates(
@@ -34,7 +31,7 @@ export async function loadExampleCandidates(
     voice.id,
     CANDIDATE_ARTICLE_LIMIT,
   );
-  const articleCandidates = articles
+  return articles
     .filter((a) => a.id !== excludeArticleId)
     .map((a) => ({
       id: a.id,
@@ -43,24 +40,6 @@ export async function loadExampleCandidates(
       source: "article" as const,
     }))
     .filter((c) => c.content.length > 0);
-
-  const posts = await listPostsForVoice(db, organizationId, voice.content_signal_ids ?? [], {
-    status: "draft",
-    limit: CANDIDATE_POST_LIMIT,
-  });
-  const postCandidates: ExampleCandidate[] = [];
-  for (const [i, p] of posts.entries()) {
-    const copy = primarySocialCopy(p.social_copy_by_platform, p.social_copy)?.trim();
-    if (!copy) continue;
-    postCandidates.push({
-      id: p.id,
-      title: `Post ${i + 1}`,
-      content: copy,
-      source: "post",
-    });
-  }
-
-  return [...articleCandidates, ...postCandidates];
 }
 
 function fallbackExamples(candidates: ExampleCandidate[]): ArticleRewriteExample[] {

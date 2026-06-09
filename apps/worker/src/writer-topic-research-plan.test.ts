@@ -9,7 +9,6 @@ describe("buildTopicResearchPlanPrompts", () => {
   it("includes topic and sub-question planning instructions", () => {
     const { systemPrompt, userPrompt } = buildTopicResearchPlanPrompts({
       topic: "Measuring content marketing ROI for B2B teams",
-      voiceKeywords: ["content", "ROI"],
       hasUserReferences: true,
     });
 
@@ -17,8 +16,8 @@ describe("buildTopicResearchPlanPrompts", () => {
     assert.match(systemPrompt, /search_queries/);
     assert.match(systemPrompt, /4-6 focused sub-questions/);
     assert.match(userPrompt, /Measuring content marketing ROI for B2B teams/);
-    assert.match(userPrompt, /content, ROI/);
     assert.match(userPrompt, /reference URLs/i);
+    assert.doesNotMatch(userPrompt, /Voice keywords/i);
   });
 
   it("plans for web discovery when no user references", () => {

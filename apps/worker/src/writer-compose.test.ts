@@ -33,12 +33,11 @@ describe("buildResearchBriefPrompts", () => {
     const { userPrompt, hasReferences } = buildResearchBriefPrompts({
       topic: "Measuring content marketing ROI",
       corpusSections: [{ url: "https://ref.example", text: "Benchmark stats from 2024.", source: "user" }],
-      voiceKeywords: ["content", "ROI"],
     });
     assert.equal(hasReferences, true);
     assert.match(userPrompt, /Reference excerpts \(primary sources\)/);
     assert.match(userPrompt, /Benchmark stats from 2024/);
-    assert.match(userPrompt, /content, ROI/);
+    assert.doesNotMatch(userPrompt, /Voice keywords/i);
   });
 
   it("uses cautious general knowledge mode without references", () => {
