@@ -4,6 +4,9 @@ export const COMPOSE_STALE_MS = 15 * 60 * 1000;
 /** Pending jobs with no output progress are likely orphaned after worker restart. */
 export const COMPOSE_ORPHAN_MS = 4 * 60 * 1000;
 
+/** Client clock may be slightly ahead of server compose_requested_at. */
+export const COMPOSE_READY_CLOCK_BUFFER_MS = 5000;
+
 export const COMPOSE_STALL_MESSAGE =
   "Generation was interrupted or timed out. Click Write again to retry.";
 
@@ -62,6 +65,17 @@ export function shouldPollCompose(article: ComposePollArticleFields): boolean {
   const started = composeGenerationStartedAt(article);
   if (started == null) return false;
   return Date.now() - started <= COMPOSE_STALE_MS;
+}
+
+/** Ignore stale ready from a prior compose run when polling a new generation. */
+export function isComposeReadyForPoll(
+  article: ComposePollArticleFields & { compose_status?: string },
+  pollStartedAtMs: number,
+): boolean {
+  if (article.compose_status !== "ready") return false;
+  const requested = composeGenerationStartedAt(article);
+  if (requested == null) return true;
+  return requested >= pollStartedAtMs - COMPOSE_READY_CLOCK_BUFFER_MS;
 }
 
 export function composeProgressLabel(mode: ComposePollMode): string {

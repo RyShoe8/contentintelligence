@@ -3,9 +3,14 @@ import {
   type Voice,
   type WriterLink,
   REWRITER_COMPOSE_GENERICITY_MAX,
+  composeEffectiveBrandConsistency,
+  stripLeadingComposeChrome,
   writerArticleDepthGuidance,
   writerComposeResearchConfig,
   writerComposeFaqStyleIssues,
+  writerComposeOperatorVoiceIssues,
+  writerComposeReferenceLeakIssues,
+  writerComposeStyleIssueCounts,
   writerComposeVoiceStyleIssues,
   writerLinksPresentCount,
   writerNonRequestedLinksInHtml,
@@ -58,6 +63,7 @@ async function postExpandComposeVoicePolish(opts: {
   topic: string;
   includeFaq: boolean;
   styleExampleExcerpt?: string;
+  knownExampleTitles?: string[];
 }): Promise<string> {
   let html = await polishComposeHtmlVoice({
     voice: opts.voice,
@@ -69,6 +75,8 @@ async function postExpandComposeVoicePolish(opts: {
 
   const voiceIssues = [
     ...writerComposeVoiceStyleIssues(html),
+    ...writerComposeOperatorVoiceIssues(html),
+    ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
     ...(opts.includeFaq ? writerComposeFaqStyleIssues(html) : []),
   ];
   const genericity = await analyzeGenericity(html);
@@ -234,6 +242,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   });
 
   const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);
+  const knownExampleTitles = humanized.examples.map((ex) => ex.title).filter(Boolean);
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
     sourceText: researchBrief,
@@ -279,8 +288,21 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       topic: opts.topic,
       includeFaq,
       styleExampleExcerpt,
+      knownExampleTitles,
     });
   }
+
+  html = stripLeadingComposeChrome(html);
+  const styleCounts = writerComposeStyleIssueCounts(html, { includeFaq, knownExampleTitles });
+  const brandConsistencyScore = composeEffectiveBrandConsistency(
+    {
+      humanAuthenticity: humanized.humanAuthenticityScore,
+      brandConsistency: humanized.brandConsistencyScore,
+      genericity: humanized.genericityScore,
+      issues: [],
+    },
+    styleCounts,
+  );
 
   const sourceTrimmed = researchBrief.trim();
 
@@ -306,7 +328,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     linksRevised: pipeline.linksRevised,
     factsExtracted: humanized.factsExtracted,
     humanAuthenticityScore: humanized.humanAuthenticityScore,
-    brandConsistencyScore: humanized.brandConsistencyScore,
+    brandConsistencyScore,
     genericityScore: humanized.genericityScore,
     humanizationAttempts: humanized.humanizationAttempts,
   };

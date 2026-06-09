@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import {
   listSavedWriterExamplesForVoice,
   listWriterStyleExamplesForVoice,
+  sanitizeArticleHtmlForLearning,
   type ContentFacts,
   writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
@@ -56,7 +57,7 @@ export async function loadExampleCandidates(
     .map((a) => ({
       id: a.id,
       title: a.title,
-      content: writerArticleHtmlForLearning(a),
+      content: sanitizeArticleHtmlForLearning(writerArticleHtmlForLearning(a) ?? ""),
       source: "article" as const,
       styleExample: styleIds.has(a.id),
     }))

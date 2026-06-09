@@ -1,3 +1,4 @@
+import { sanitizeArticleHtmlForLearning } from "@content-resourcer/db";
 import type { ArticleRewriteExample } from "./types.js";
 
 const PER_EXAMPLE_CHARS = 1200;
@@ -13,12 +14,13 @@ export function buildComposeStyleExampleExcerpt(
   const blocks: string[] = [];
   let total = 0;
   for (const ex of selected) {
-    const header = ex.title ? `### ${ex.title}\n` : "";
+    const header = `Example ${blocks.length + 1} (reference only — do not copy title or chrome):\n`;
     const remaining = MAX_TOTAL_CHARS - total - header.length;
     if (remaining <= 200) break;
     const sliceLen = Math.min(PER_EXAMPLE_CHARS, remaining);
+    const sanitized = sanitizeArticleHtmlForLearning(ex.html);
     const body =
-      ex.html.length > sliceLen ? `${ex.html.slice(0, sliceLen)}…` : ex.html;
+      sanitized.length > sliceLen ? `${sanitized.slice(0, sliceLen)}…` : sanitized;
     blocks.push(`${header}${body}`);
     total += header.length + body.length;
   }

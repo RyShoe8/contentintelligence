@@ -12,6 +12,7 @@ import {
   rewriterComposeQualityGatePassed,
   REWRITER_COMPOSE_GENERICITY_MAX,
   composeGenericityScore,
+  composeEffectiveBrandConsistency,
   contentFactsSchema,
   brandInterpretationSchema,
 } from "./rewriter-types.js";
@@ -305,5 +306,41 @@ describe("rewriterComposeQualityGatePassed", () => {
       65,
     );
     assert.equal(REWRITER_COMPOSE_GENERICITY_MAX, 45);
+  });
+
+  it("fails compose gate when voice style issues remain", () => {
+    const html =
+      "<h2>Understanding the Spectrum</h2><p>The landscape of senior living plays a crucial role in quality of life.</p>";
+    assert.equal(
+      rewriterComposeQualityGatePassed(
+        composeResearchFacts,
+        html,
+        {
+          humanAuthenticity: 90,
+          brandConsistency: 90,
+          genericity: 20,
+          issues: [],
+        },
+        { score: 18, issues: [] },
+      ),
+      false,
+    );
+  });
+
+  it("caps effective brand consistency when voice or leak issues exist", () => {
+    assert.equal(
+      composeEffectiveBrandConsistency(
+        { humanAuthenticity: 90, brandConsistency: 90, genericity: 20, issues: [] },
+        { voiceStyleIssueCount: 2, operatorVoiceIssueCount: 0, leakIssueCount: 0 },
+      ),
+      75,
+    );
+    assert.equal(
+      composeEffectiveBrandConsistency(
+        { humanAuthenticity: 90, brandConsistency: 90, genericity: 20, issues: [] },
+        { voiceStyleIssueCount: 0, operatorVoiceIssueCount: 0, leakIssueCount: 1 },
+      ),
+      60,
+    );
   });
 });

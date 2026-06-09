@@ -1,4 +1,4 @@
-import { WRITER_SOURCE_MIN_CHARS, writerStyleExampleHtmlFromPaste } from "@content-resourcer/db";
+import { WRITER_SOURCE_MIN_CHARS, sanitizeArticleHtmlForLearning, writerStyleExampleHtmlFromPaste } from "@content-resourcer/db";
 import type { RssFeedItem } from "./parse-rss-feed.js";
 
 const HTML_TAG_RE = /<[a-z][\s\S]*>/i;
@@ -66,7 +66,7 @@ export async function resolveArticleHtmlFromRssItem(
   }
 
   const mainHtml = extractMainContentHtml(pageHtml);
-  const fromPage = normalizeArticleHtml(mainHtml, maxChars);
+  const fromPage = normalizeArticleHtml(sanitizeArticleHtmlForLearning(mainHtml), maxChars);
   if (fromPage) return fromPage;
 
   if (item.summaryText.length >= WRITER_SOURCE_MIN_CHARS) {

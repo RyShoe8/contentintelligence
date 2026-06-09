@@ -1,5 +1,7 @@
 import { convert } from "html-to-text";
+import { sanitizeArticleHtmlForLearning } from "@content-resourcer/db";
 import { fetchSafeText } from "./safe-fetch.js";
+import { extractMainContentHtml } from "./services/rss/extract-article-html.js";
 
 export const REFERENCE_CHARS_PER_URL = 16_000;
 export const REFERENCE_CORPUS_MAX_CHARS = 80_000;
@@ -42,7 +44,8 @@ async function fetchUrlSection(
   const html = await fetchText(url);
   if (!html) return { section: null, failed: true };
 
-  const text = capText(stripHtmlToText(html), perUrlBudget);
+  const mainHtml = sanitizeArticleHtmlForLearning(extractMainContentHtml(html));
+  const text = capText(stripHtmlToText(mainHtml), perUrlBudget);
   if (!text) return { section: null, failed: true };
 
   return { section: { url, text, source }, failed: false };

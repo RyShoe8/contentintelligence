@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   COMPOSE_ORPHAN_MS,
+  COMPOSE_READY_CLOCK_BUFFER_MS,
   COMPOSE_STALE_MS,
   COMPOSE_STALL_MESSAGE,
   clearComposePollMode,
@@ -9,6 +10,7 @@ import {
   composeProgressLabel,
   isComposePendingOrphan,
   isComposePendingStale,
+  isComposeReadyForPoll,
   resolveComposePollMode,
   saveComposePollMode,
   shouldPollCompose,
@@ -180,6 +182,64 @@ describe("compose poll mode sessionStorage", () => {
     assert.equal(
       composePollModeStorageKey(articleId),
       `writer-compose-poll-mode:${articleId}`,
+    );
+  });
+});
+
+describe("isComposeReadyForPoll", () => {
+  const pollStartedAt = Date.parse("2026-05-27T12:00:00.000Z");
+
+  it("accepts ready when compose_requested_at is after poll start", () => {
+    assert.equal(
+      isComposeReadyForPoll(
+        {
+          compose_status: "ready",
+          compose_requested_at: "2026-05-27T12:00:01.000Z",
+        },
+        pollStartedAt,
+      ),
+      true,
+    );
+  });
+
+  it("rejects stale ready from a prior run before poll start", () => {
+    assert.equal(
+      isComposeReadyForPoll(
+        {
+          compose_status: "ready",
+          compose_requested_at: "2026-05-27T11:00:00.000Z",
+        },
+        pollStartedAt,
+      ),
+      false,
+    );
+  });
+
+  it("allows small client clock skew via buffer", () => {
+    assert.equal(
+      isComposeReadyForPoll(
+        {
+          compose_status: "ready",
+          compose_requested_at: new Date(
+            pollStartedAt - COMPOSE_READY_CLOCK_BUFFER_MS + 1000,
+          ).toISOString(),
+        },
+        pollStartedAt,
+      ),
+      true,
+    );
+  });
+
+  it("returns false when status is not ready", () => {
+    assert.equal(
+      isComposeReadyForPoll(
+        {
+          compose_status: "pending",
+          compose_requested_at: "2026-05-27T12:00:01.000Z",
+        },
+        pollStartedAt,
+      ),
+      false,
     );
   });
 });

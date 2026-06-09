@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { composeReferenceLeakPlainTextIssues } from "./sanitize-article-html.js";
 
 export const WRITER_LINK_MAX = 5;
 export const WRITER_REFERENCE_URL_MAX = 15;
@@ -224,6 +225,10 @@ const COMPOSE_TEXTBOOK_HEADING_RES = [
   /^common questions addressed/i,
   /^key features of\b/i,
   /^design essentials/i,
+  /^what matters most\b/i,
+  /\btrends shaping\b/i,
+  /^embracing nature\b/i,
+  /^tackling design challenges\b/i,
 ];
 
 const COMPOSE_GENERIC_GUIDE_PHRASES = [
@@ -244,6 +249,17 @@ const COMPOSE_GENERIC_GUIDE_PHRASES = [
   "significantly enhances",
   "notable trend is",
   "when designing for",
+  "quality of life",
+  "fosters engagement",
+  "well-being",
+  "seamlessly",
+  "enhances comfort",
+  "thoughtful integration",
+  "promoting their",
+  "overall quality",
+  "social interaction",
+  "mental well-being",
+  "physical health and mental",
 ];
 
 const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 55;
@@ -327,6 +343,45 @@ export function writerComposeVoiceStyleIssues(html: string): string[] {
   }
 
   return [...new Set(issues)].slice(0, 6);
+}
+
+const COMPOSE_MIN_WE_PER_500_WORDS = 3;
+
+/** Flags missing operator first-person voice in compose output. */
+export function writerComposeOperatorVoiceIssues(html: string): string[] {
+  const plain = stripHtmlToPlainText(html);
+  const words = plain.split(/\s+/).filter(Boolean);
+  if (words.length < 120) return [];
+
+  const issues: string[] = [];
+  const weCount = (plain.match(/\b(?:we|our|us)\b/gi) ?? []).length;
+  const per500 = (weCount / words.length) * 500;
+  if (per500 < COMPOSE_MIN_WE_PER_500_WORDS) {
+    issues.push(
+      `Low first-person operator voice (${weCount} we/our/us in ${words.length} words) — match brand examples`,
+    );
+  }
+
+  const paragraphs = writerHtmlParagraphs(html);
+  const opening = stripHtmlToPlainText(paragraphs[0] ?? "").trim();
+  if (
+    opening.length >= 40 &&
+    !/\b(?:we|our|us)\b/i.test(opening) &&
+    /\b(?:designers?|communities|facilities|seniors?|residents?|it is|they)\b/i.test(opening)
+  ) {
+    issues.push("Opening paragraph reads like neutral third-person overview — lead with operator we-voice");
+  }
+
+  return issues.slice(0, 2);
+}
+
+/** Flags blog page chrome or copied example metadata in compose output. */
+export function writerComposeReferenceLeakIssues(
+  html: string,
+  knownExampleTitles: string[] = [],
+): string[] {
+  const plain = stripHtmlToPlainText(html);
+  return composeReferenceLeakPlainTextIssues(plain, knownExampleTitles);
 }
 
 /** Flags industry-guide FAQ shape vs short editorial FAQ answers. */

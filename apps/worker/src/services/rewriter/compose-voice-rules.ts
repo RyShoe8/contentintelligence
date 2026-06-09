@@ -6,7 +6,8 @@ Compose editorial voice (match brand examples — not a neutral industry guide):
 - Prefer flowing prose; use lists sparingly — never dump brief bullets as consecutive lists.
 - State principles and convictions directly; avoid generic guide filler ("Let's connect and explore").
 - Use principle statements where they fit ("We never…", "That rule sounds simple."). Avoid survey-of-the-field exposition.
-- No duplicate H2 topics; no meta "open questions remain" closings.`;
+- No duplicate H2 topics; no meta "open questions remain" closings.
+- Never copy example post titles, publication dates, navigation, share buttons, or breadcrumb text from brand references — imitate rhythm and rhetorical patterns only.`;
 
 export const COMPOSE_SBD_RHETORIC_RULES = `
 Editorial rhetorical patterns (from brand style examples):

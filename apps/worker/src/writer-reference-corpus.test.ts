@@ -50,6 +50,22 @@ describe("buildReferenceCorpus", () => {
       assert.ok(section.text.length <= REFERENCE_CHARS_PER_URL + 50);
     }
   });
+
+  it("strips blog page chrome from fetched pages", async () => {
+    async function chromeFetch(): Promise<string | null> {
+      return `<html><body><nav>Site menu</nav><article>
+        <div class="back-to-blog"><a href="/blog">← Back to Blog</a></div>
+        <div class="post-meta">October 12, 2023</div>
+        <div class="social-share">Share Facebook LinkedIn</div>
+        <p>Reference content for chrome test. ${"word ".repeat(5000)}</p>
+      </article></body></html>`;
+    }
+    const result = await buildReferenceCorpus(["https://good.example/chrome"], chromeFetch);
+    assert.equal(result.fetched, 1);
+    assert.doesNotMatch(result.sections[0]?.text ?? "", /Back to Blog/i);
+    assert.doesNotMatch(result.sections[0]?.text ?? "", /Share Facebook/i);
+    assert.match(result.sections[0]?.text ?? "", /Reference content for chrome test/);
+  });
 });
 
 describe("buildReferenceCorpusPrioritized", () => {

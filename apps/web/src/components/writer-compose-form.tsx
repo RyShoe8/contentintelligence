@@ -24,9 +24,11 @@ import {
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
 import {
   COMPOSE_STALL_MESSAGE,
+  composeGenerationStartedAt,
   composeProgressLabel,
   isComposePendingOrphan,
   isComposePendingStale,
+  isComposeReadyForPoll,
   resolveComposePollMode,
   saveComposePollMode,
   clearComposePollMode,
@@ -315,7 +317,11 @@ export function WriterComposeForm({
   }, []);
 
   const startComposePolling = useCallback(
-    (pollArticleId: string, mode: "full" | "write_only" = "full") => {
+    (
+      pollArticleId: string,
+      mode: "full" | "write_only" = "full",
+      opts?: { pollStartedAtMs?: number },
+    ) => {
       if (composePollArticleIdRef.current === pollArticleId && composePollRef.current) {
         setWriting(true);
         setComposeWriteMode(mode);
@@ -331,7 +337,7 @@ export function WriterComposeForm({
       setComposeWriteMode(mode);
       setComposeProgress(composeProgressLabel(mode));
       setWriteError(null);
-      composePollStartedRef.current = Date.now();
+      composePollStartedRef.current = opts?.pollStartedAtMs ?? Date.now();
 
       const handleStale = () => {
         stopComposePolling();
@@ -354,7 +360,15 @@ export function WriterComposeForm({
             setWriteError(data.error ?? `Status check failed (${r.status})`);
             return;
           }
-          if (data.compose_status === "ready") {
+          if (
+            isComposeReadyForPoll(
+              {
+                compose_status: data.compose_status,
+                compose_requested_at: data.compose_requested_at,
+              },
+              composePollStartedRef.current,
+            )
+          ) {
             applyComposeStatusData(data);
             stopComposePolling();
             router.refresh();
@@ -424,7 +438,10 @@ export function WriterComposeForm({
       const mode = resolveComposePollMode(resumeArticleId, {
         serverPhase: resumeComposePhase,
       });
-      startComposePolling(resumeArticleId, mode);
+      const resumeStartedAt =
+        composeGenerationStartedAt({ compose_requested_at: resumeRequestedAt }) ??
+        Date.now();
+      startComposePolling(resumeArticleId, mode, { pollStartedAtMs: resumeStartedAt });
     }
     return () => {
       if (composePollArticleIdRef.current === resumeArticleId) {
@@ -607,16 +624,13 @@ export function WriterComposeForm({
     }
 
     const mode = skipResearch ? "write_only" : "full";
-    const optimisticPollId = skipResearch && articleId ? articleId : null;
 
     setWriteError(null);
-    if (optimisticPollId) {
-      startComposePolling(optimisticPollId, "write_only");
-    } else {
-      setWriting(true);
-      setComposeWriteMode(mode);
-      setComposeProgress(composeProgressLabel(mode));
-    }
+    composePollStartedRef.current = Date.now();
+    setOutputHtml("");
+    setWriting(true);
+    setComposeWriteMode(mode);
+    setComposeProgress(composeProgressLabel(mode));
     setReferencesFetched(null);
     setReferencesFailed([]);
     setLinksPresent(null);
@@ -667,7 +681,9 @@ export function WriterComposeForm({
         if (r.status === 409 && data.error === "compose_already_running") {
           const nextId = articleId || data.writer_article_id;
           if (nextId) {
-            startComposePolling(nextId, mode);
+            startComposePolling(nextId, mode, {
+              pollStartedAtMs: composePollStartedRef.current,
+            });
             return;
           }
         }
@@ -682,9 +698,9 @@ export function WriterComposeForm({
           if (nextId !== articleId) {
             router.push(`/writer?article_id=${encodeURIComponent(nextId)}`);
           }
-          if (!optimisticPollId || nextId !== optimisticPollId) {
-            startComposePolling(nextId, mode);
-          }
+          startComposePolling(nextId, mode, {
+            pollStartedAtMs: composePollStartedRef.current,
+          });
         } else {
           stopComposePolling();
           setWriteError("Generation accepted but no article id returned");

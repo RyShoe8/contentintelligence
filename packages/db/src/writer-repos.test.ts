@@ -59,3 +59,29 @@ describe("isStyleSourceUrlExcluded", () => {
     );
   });
 });
+
+describe("upsertWriterComposePending generated_html", () => {
+  it("clears generated_html when entering pending on re-queue", () => {
+    const row = writerArticleSchema.parse({
+      id: "00000000-0000-4000-8000-000000000011",
+      organization_id: "00000000-0000-4000-8000-000000000020",
+      voice_id: "00000000-0000-4000-8000-000000000030",
+      mode: "compose",
+      title: "Senior living design",
+      topic: "Senior living design",
+      reference_urls: [],
+      source_text: "Research brief kept for write-only.",
+      links: [],
+      generated_html: "",
+      status: "draft",
+      compose_status: "pending",
+      compose_requested_at: new Date(),
+      compose_phase: "write_only",
+      created_by: "user@example.com",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    assert.equal(row.generated_html, "");
+    assert.match(row.source_text, /Research brief/);
+  });
+});

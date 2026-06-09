@@ -8,6 +8,9 @@ import {
   rewriterProceduralCompletenessIssues,
   selfCritiqueResultSchema,
   stripHtmlToPlainText,
+  writerComposeOperatorVoiceIssues,
+  writerComposeReferenceLeakIssues,
+  writerComposeVoiceStyleIssues,
   type ContentFacts,
   type SelfCritiqueResult,
 } from "@content-resourcer/db";
@@ -28,6 +31,7 @@ export async function runSelfCritique(
     topic?: string;
     styleExampleExcerpt?: string;
     includeFaq?: boolean;
+    knownExampleTitles?: string[];
   } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
@@ -37,7 +41,12 @@ export async function runSelfCritique(
   const proceduralOnly = isProceduralContentFacts(facts);
   const deterministicIssues =
     opts.composeMode && composeNarrative
-      ? rewriterComposeCompletenessIssues(facts, html)
+      ? [
+          ...rewriterComposeCompletenessIssues(facts, html),
+          ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
+          ...writerComposeVoiceStyleIssues(html),
+          ...writerComposeOperatorVoiceIssues(html),
+        ]
       : hybrid
         ? rewriterInstructionPreserveCompletenessIssues(facts, html)
         : proceduralOnly
@@ -60,7 +69,7 @@ export async function runSelfCritique(
       : "";
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks). Fail if genericity would exceed ${REWRITER_COMPOSE_GENERICITY_MAX} even when humanAuthenticity/brandConsistency look acceptable.${faqCritiqueBlock}`
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks). Compare the article opening and heading rhythm side-by-side with the style reference — short paragraphs and "we" alone are insufficient if tone still reads like a neutral industry guide. Fail if the article copies reference chrome (Back to Blog, share buttons, publication dates) or style example post titles. If copy reads like a generic guide, FAQ survey, or copies reference metadata, brandConsistency must be below 70 even when "we" is present. Fail if genericity would exceed ${REWRITER_COMPOSE_GENERICITY_MAX} even when humanAuthenticity/brandConsistency look acceptable.${faqCritiqueBlock}`
       : "";
 
   const raw = await completeJson<unknown>({
@@ -70,7 +79,7 @@ Reply JSON only:
 Scores 0–100. Answer these internally:
 1. Marketing copy? 2. AI-generated? 3. Affiliate spam? 4. LinkedIn fluff? 5. Opinions or just info?
 humanAuthenticity: reads like a real operator wrote it.
-brandConsistency: matches the stated persona/constraints.
+brandConsistency: matches the stated persona/constraints and brand style example rhythm — not just using "we" with generic guide structure.
 genericity: template/AI feel (high = bad). For compose articles, score genericity above ${REWRITER_COMPOSE_GENERICITY_MAX} when copy reads like a neutral industry guide.
 issues: short bullets for failures.
 ${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
@@ -78,7 +87,7 @@ ${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
       topic ? `Article topic: ${topic}` : "",
       personaBlock,
       opts.styleExampleExcerpt?.trim()
-        ? `\nBrand style reference (compare rhythm and paragraph length):\n${opts.styleExampleExcerpt.trim().slice(0, 2800)}`
+        ? `\nBrand style reference (compare opening rhythm, paragraph length, and operator voice side-by-side):\n${opts.styleExampleExcerpt.trim().slice(0, 2800)}`
         : "",
       "",
       "Facts the article should reflect (JSON):",

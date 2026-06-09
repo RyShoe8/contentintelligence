@@ -70,10 +70,12 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
   const styleExampleBlock =
     opts.composeMode && opts.styleExampleExcerpt?.trim()
-      ? `\n\nBrand style reference (match rhythm and paragraph length, not content):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}`
+      ? `\n\nBrand style reference (match rhythm and paragraph length only — do not copy titles, dates, navigation, or share buttons):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}`
       : "";
 
-  const userContent = `${opts.html.trim()}${styleExampleBlock}`;
+  const systemPromptWithStyle = `${systemPrompt}${styleExampleBlock}`;
+
+  const userContent = opts.html.trim();
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
@@ -81,7 +83,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
     max_tokens: env.maxTokensWriter,
     temperature: 0.5,
     messages: [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: systemPromptWithStyle },
       { role: "user", content: userContent },
     ],
   });

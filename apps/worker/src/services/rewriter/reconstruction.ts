@@ -108,10 +108,10 @@ function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?
   const blocks = selected.map((ex, i) => {
     const html =
       ex.html.length > excerptChars ? `${ex.html.slice(0, excerptChars)}…` : ex.html;
-    return `### Example ${i + 1}: ${ex.title}\n${html}`;
+    return `### Example ${i + 1} (do not copy title or chrome): ${ex.title}\n${html}`;
   });
   const composeNote = composeMode
-    ? " Imitate heading style, paragraph length, sentence rhythm, openings/closings, and rhetorical patterns from these examples. Facts come from research; prose comes from these examples plus persona — not from the research brief outline."
+    ? " Imitate heading style, paragraph length, sentence rhythm, openings/closings, and rhetorical patterns from these examples — never copy titles, dates, navigation, or share buttons. Facts come from research; prose comes from these examples plus persona — not from the research brief outline."
     : "";
   return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }

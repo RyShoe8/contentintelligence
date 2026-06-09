@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { stripHtmlToPlainText } from "./writer-validation.js";
+import {
+  stripHtmlToPlainText,
+  writerComposeFaqStyleIssues,
+  writerComposeOperatorVoiceIssues,
+  writerComposeReferenceLeakIssues,
+  writerComposeVoiceStyleIssues,
+} from "./writer-validation.js";
 
 export const proceduralSectionSchema = z.object({
   title: z.string().trim().min(1),
@@ -279,16 +285,67 @@ export function composeGenericityScore(
   return Math.max(genericity.score, critique.genericity);
 }
 
+export function composeEffectiveBrandConsistency(
+  critique: SelfCritiqueResult,
+  opts: {
+    voiceStyleIssueCount?: number;
+    leakIssueCount?: number;
+    operatorVoiceIssueCount?: number;
+  } = {},
+): number {
+  let cap = critique.brandConsistency;
+  if ((opts.leakIssueCount ?? 0) > 0) cap = Math.min(cap, 60);
+  else if ((opts.voiceStyleIssueCount ?? 0) > 0 || (opts.operatorVoiceIssueCount ?? 0) > 0) {
+    cap = Math.min(cap, 75);
+  }
+  return cap;
+}
+
+export type ComposeStyleIssueCounts = {
+  voiceStyleIssueCount: number;
+  operatorVoiceIssueCount: number;
+  leakIssueCount: number;
+  faqStyleIssueCount: number;
+};
+
+export function writerComposeStyleIssueCounts(
+  html: string,
+  opts: { includeFaq?: boolean; knownExampleTitles?: string[] } = {},
+): ComposeStyleIssueCounts {
+  const voiceStyleIssues = writerComposeVoiceStyleIssues(html);
+  const operatorVoiceIssues = writerComposeOperatorVoiceIssues(html);
+  const leakIssues = writerComposeReferenceLeakIssues(html, opts.knownExampleTitles);
+  const faqStyleIssues = opts.includeFaq ? writerComposeFaqStyleIssues(html) : [];
+  return {
+    voiceStyleIssueCount: voiceStyleIssues.length,
+    operatorVoiceIssueCount: operatorVoiceIssues.length,
+    leakIssueCount: leakIssues.length,
+    faqStyleIssueCount: faqStyleIssues.length,
+  };
+}
+
 export function rewriterComposeQualityGatePassed(
   facts: ContentFacts,
   html: string,
   critique: SelfCritiqueResult,
   genericity: GenericityAnalysis,
+  opts: { includeFaq?: boolean; knownExampleTitles?: string[] } = {},
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;
+  const styleCounts = writerComposeStyleIssueCounts(html, opts);
+  if (
+    styleCounts.voiceStyleIssueCount +
+      styleCounts.operatorVoiceIssueCount +
+      styleCounts.leakIssueCount +
+      styleCounts.faqStyleIssueCount >
+    0
+  ) {
+    return false;
+  }
+  const effectiveBc = composeEffectiveBrandConsistency(critique, styleCounts);
   if (critique.humanAuthenticity < REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN) return false;
-  if (critique.brandConsistency < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) return false;
+  if (effectiveBc < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) return false;
   if (composeGenericityScore(genericity, critique) > REWRITER_COMPOSE_GENERICITY_MAX) {
     return false;
   }

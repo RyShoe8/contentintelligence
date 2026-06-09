@@ -16,6 +16,8 @@ import {
   writerComposeBriefOutlineIssues,
   writerComposeFaqStyleIssues,
   writerComposeLinkIssues,
+  writerComposeOperatorVoiceIssues,
+  writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
   writerComposeVoiceStyleIssues,
   writerHasRelatedLinksBlock,
@@ -812,6 +814,31 @@ describe("writerComposeVoiceStyleIssues", () => {
     const html =
       "<h2>We sit in every chair</h2><p>We never specify seating we have not tested.</p><p>That rule sounds simple. We take it seriously.</p>";
     assert.equal(writerComposeVoiceStyleIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeReferenceLeakIssues", () => {
+  it("flags blog chrome in compose output", () => {
+    const html = "<p>← Back to BlogOctober 12, 2023</p><p>ShareFacebookLinkedIn</p><p>Body copy.</p>";
+    const issues = writerComposeReferenceLeakIssues(html);
+    assert.ok(issues.length > 0);
+  });
+
+  it("flags copied style example titles", () => {
+    const html = "<p>Crafting Homes: The Art of Senior Living Design</p><p>We believe every space should feel like home.</p>";
+    const issues = writerComposeReferenceLeakIssues(html, [
+      "Crafting Homes: The Art of Senior Living Design",
+    ]);
+    assert.ok(issues.some((i) => i.includes("copies style example title")));
+  });
+});
+
+describe("writerComposeOperatorVoiceIssues", () => {
+  it("flags low we-voice density in long articles", () => {
+    const words = Array.from({ length: 200 }, () => "designers").join(" ");
+    const html = `<p>${words}</p>`;
+    const issues = writerComposeOperatorVoiceIssues(html);
+    assert.ok(issues.some((i) => i.includes("Low first-person operator voice")));
   });
 });
 

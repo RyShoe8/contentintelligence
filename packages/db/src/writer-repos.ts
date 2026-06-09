@@ -410,7 +410,7 @@ export async function upsertWriterComposePending(
       defaultComposeTitle(data.topic.trim()),
     source_text: existing?.source_text ?? "",
     links: data.links,
-    generated_html: existing?.generated_html ?? "",
+    generated_html: "",
     final_html: existing?.final_html ?? undefined,
     status: "draft" as WriterArticleStatus,
     compose_status: "pending",
