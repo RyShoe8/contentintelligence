@@ -21,6 +21,7 @@ import { SourcesInPostsSlider } from "./sources-in-posts-slider";
 import { DistributionPlatformsEditor } from "./distribution-platforms-editor";
 import { PreferredPhrasesEditor } from "./preferred-phrases-editor";
 import { PersonaGenerationIndicator } from "./persona-generation-indicator";
+import { StyleExamplesSyncIndicator } from "./style-examples-sync-indicator";
 import { VOICE_FIELD_TIPS } from "./field-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { LocalDateTime } from "@/components/local-date-time";
@@ -69,6 +70,7 @@ export default async function VoicesPage({
     error_detail?: string;
     style_example_saved?: string;
     style_example_deleted?: string;
+    style_sync?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -90,6 +92,8 @@ export default async function VoicesPage({
   const activePersonaPolling = activeVoice
     ? shouldPollPersona(activeVoice, sp.generating) && !activePersonaStale
     : false;
+  const activeStyleSyncPolling =
+    !!activeVoice && sp.style_sync === "1" && !!activeVoice.rss_feed_url?.trim();
 
   const styleExamples: VoiceStyleExampleItem[] = activeVoice
     ? (await listWriterStyleExamplesForVoice(db, orgId, activeVoice.id)).map((ex) => {
@@ -120,7 +124,9 @@ export default async function VoicesPage({
             ? "Select a voice to generate."
             : sp.error === "style_example_not_found"
               ? "Style example not found."
-              : null;
+              : sp.error === "style_sync_unconfigured"
+                ? "RSS import is not configured. Set WORKER_URL on Vercel to import style examples from your feed."
+                : null;
 
   return (
     <div className="space-y-6">
@@ -364,6 +370,18 @@ export default async function VoicesPage({
               voiceId={activeVoice.id}
               rssFeedUrl={activeVoice.rss_feed_url}
               examples={styleExamples}
+              workerConfigured={workerConfigured}
+              syncSummary={activeVoice.style_examples_sync_summary}
+              syncError={activeVoice.style_examples_sync_error}
+              syncSyncedAt={activeVoice.style_examples_synced_at?.toISOString()}
+              syncIndicator={
+                <StyleExamplesSyncIndicator
+                  voiceId={activeVoice.id}
+                  startPolling={activeStyleSyncPolling}
+                  initialExampleCount={styleExamples.length}
+                  voiceIdParam={activeVoice.id}
+                />
+              }
             />
           ) : null}
 

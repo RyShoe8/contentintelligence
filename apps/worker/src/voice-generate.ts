@@ -5,7 +5,7 @@ import {
   updateVoicePersonaStatus,
 } from "@content-resourcer/db";
 import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
-import { ingestVoiceRssStyleExamples } from "./jobs/ingest-voice-rss-style-examples.js";
+import { ingestVoiceRssStyleExamplesAndRecordSync } from "./jobs/ingest-voice-rss-style-examples.js";
 
 export const PERSONA_GENERATION_TIMEOUT_MS = 12 * 60 * 1000;
 
@@ -41,7 +41,7 @@ export async function runVoicePersonaGeneration(
   });
 
   try {
-    await ingestVoiceRssStyleExamples(db, voice);
+    await ingestVoiceRssStyleExamplesAndRecordSync(db, voice);
     const voiceForAnalysis = (await getVoice(db, voiceId)) ?? voice;
 
     const { profile, persona, corpusHash, cached } = await withTimeout(

@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent } from "react";
+import { type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { deleteVoiceStyleExampleAction } from "@/app/voices/actions";
 
@@ -16,6 +16,11 @@ type Props = {
   voiceId: string;
   rssFeedUrl?: string;
   examples: VoiceStyleExampleItem[];
+  workerConfigured: boolean;
+  syncSummary?: string;
+  syncError?: string;
+  syncSyncedAt?: string;
+  syncIndicator?: ReactNode;
 };
 
 function confirmDelete(title: string, e: FormEvent<HTMLFormElement>) {
@@ -25,7 +30,16 @@ function confirmDelete(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
-export function VoiceStyleExamplesEditor({ voiceId, rssFeedUrl, examples }: Props) {
+export function VoiceStyleExamplesEditor({
+  voiceId,
+  rssFeedUrl,
+  examples,
+  workerConfigured,
+  syncSummary,
+  syncError,
+  syncSyncedAt,
+  syncIndicator,
+}: Props) {
   const hasRss = !!rssFeedUrl?.trim();
 
   return (
@@ -36,6 +50,28 @@ export function VoiceStyleExamplesEditor({ voiceId, rssFeedUrl, examples }: Prop
         any you do not want used for Writer style or persona research — removed articles stay
         excluded on future syncs.
       </p>
+
+      {hasRss && !workerConfigured ? (
+        <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800">
+          Set <code className="text-[var(--fg)]">WORKER_URL</code> on Vercel to import articles from
+          RSS when you save.
+        </p>
+      ) : null}
+
+      {syncIndicator}
+
+      {syncError ? (
+        <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700">
+          Last RSS import failed: {syncError}
+        </p>
+      ) : null}
+
+      {syncSummary && !syncError ? (
+        <p className="text-xs text-[var(--muted)]">
+          Last RSS import: {syncSummary}
+          {syncSyncedAt ? ` · ${new Date(syncSyncedAt).toLocaleString()}` : ""}
+        </p>
+      ) : null}
 
       {!hasRss ? (
         <p className="text-xs text-[var(--muted)]">

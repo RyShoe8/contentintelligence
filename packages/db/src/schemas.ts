@@ -407,6 +407,15 @@ export const voiceSchema = z.preprocess(
     (v) => (v == null || v === "" ? 0 : v),
     z.number().int().min(0).default(0),
   ),
+  style_examples_synced_at: z.coerce.date().optional(),
+  style_examples_sync_summary: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : String(v)),
+    z.string().max(500).optional(),
+  ),
+  style_examples_sync_error: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().max(500).optional(),
+  ),
   created_by: z.string().email(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),

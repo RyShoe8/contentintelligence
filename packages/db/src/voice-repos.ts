@@ -83,6 +83,12 @@ export async function upsertVoice(
     brand_profile: data.brand_profile ?? existing?.brand_profile,
     corpus_hash: data.corpus_hash ?? existing?.corpus_hash,
     brand_profile_version: data.brand_profile_version ?? existing?.brand_profile_version ?? 0,
+    style_examples_synced_at:
+      data.style_examples_synced_at ?? existing?.style_examples_synced_at,
+    style_examples_sync_summary:
+      data.style_examples_sync_summary ?? existing?.style_examples_sync_summary,
+    style_examples_sync_error:
+      data.style_examples_sync_error ?? existing?.style_examples_sync_error,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,
     updated_at: now,
@@ -256,6 +262,59 @@ export async function addExcludedStyleSourceUrl(
   const row = voiceSchema.parse({
     ...existing,
     excluded_style_source_urls: [...current, normalized],
+    updated_at: now,
+  });
+  await voices(db).replaceOne({ id: voiceId }, row);
+  return row;
+}
+
+export function formatStyleExamplesSyncSummary(result: {
+  ingested: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  skip_reasons?: {
+    excluded?: number;
+    invalid_url?: number;
+    no_body?: number;
+  };
+  feed_fetch_failed?: boolean;
+}): string {
+  const parts = [
+    `${result.ingested} imported`,
+    `${result.updated} updated`,
+    `${result.skipped} skipped`,
+    `${result.failed} failed`,
+  ];
+  const reasons = result.skip_reasons;
+  if (reasons && result.skipped > 0) {
+    const detail: string[] = [];
+    if (reasons.no_body) detail.push(`${reasons.no_body} no body`);
+    if (reasons.excluded) detail.push(`${reasons.excluded} excluded`);
+    if (reasons.invalid_url) detail.push(`${reasons.invalid_url} invalid URL`);
+    if (detail.length) parts.push(`(${detail.join(", ")})`);
+  }
+  if (result.feed_fetch_failed) parts.push("(feed fetch failed)");
+  return parts.join(", ");
+}
+
+export async function updateVoiceStyleExamplesSyncStatus(
+  db: Db,
+  voiceId: string,
+  update: {
+    style_examples_synced_at: Date;
+    style_examples_sync_summary: string;
+    style_examples_sync_error?: string;
+  },
+): Promise<Voice | null> {
+  const existing = await voices(db).findOne({ id: voiceId });
+  if (!existing) return null;
+  const now = new Date();
+  const row = voiceSchema.parse({
+    ...existing,
+    style_examples_synced_at: update.style_examples_synced_at,
+    style_examples_sync_summary: update.style_examples_sync_summary,
+    style_examples_sync_error: update.style_examples_sync_error ?? undefined,
     updated_at: now,
   });
   await voices(db).replaceOne({ id: voiceId }, row);

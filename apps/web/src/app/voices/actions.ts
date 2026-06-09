@@ -9,6 +9,7 @@ import {
   getVoice,
   getWriterStyleExample,
   linkVoiceToSignals,
+  listWriterStyleExamplesForVoice,
   normalizeDistributionPlatforms,
   upsertVoice,
   type Voice,
@@ -220,9 +221,11 @@ async function workerVoiceGenerate(voiceId: string, force = false) {
   return parsed;
 }
 
-async function workerVoiceSyncStyleExamples(voiceId: string): Promise<void> {
+async function workerVoiceSyncStyleExamples(
+  voiceId: string,
+): Promise<{ ok: boolean; error?: string }> {
   const base = process.env.WORKER_URL?.replace(/\/$/, "");
-  if (!base) return;
+  if (!base) return { ok: false, error: "WORKER_URL is not configured" };
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (process.env.INGEST_SECRET) {
@@ -232,11 +235,27 @@ async function workerVoiceSyncStyleExamples(voiceId: string): Promise<void> {
   const url = new URL(`${base}/voices/sync-style-examples`);
   url.searchParams.set("voice_id", voiceId);
 
-  await fetch(url.toString(), {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ voice_id: voiceId }),
-  }).catch(() => {});
+  try {
+    const r = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ voice_id: voiceId }),
+    });
+    if (!r.ok) {
+      const text = await r.text();
+      let err = text;
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown };
+        if (parsed.error != null) err = String(parsed.error);
+      } catch {
+        // keep raw text
+      }
+      return { ok: false, error: err.slice(0, 240) };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e instanceof Error ? e.message : String(e)).slice(0, 240) };
+  }
 }
 
 export async function saveVoiceAction(formData: FormData) {
@@ -253,10 +272,15 @@ export async function saveVoiceAction(formData: FormData) {
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
 
   const existing = voiceId ? await getVoiceForSession(db, voiceId, orgId) : null;
-  const rssChanged =
-    !!existing &&
-    fields.rss_feed_url.trim() !== (existing.rss_feed_url ?? "").trim() &&
-    !!fields.rss_feed_url.trim();
+  const rssUrl = fields.rss_feed_url.trim();
+  const previousRssUrl = (existing?.rss_feed_url ?? "").trim();
+  const rssUrlChanged = rssUrl !== previousRssUrl;
+  let zeroStyleExamples = true;
+  if (existing && rssUrl) {
+    const examples = await listWriterStyleExamplesForVoice(db, orgId, existing.id);
+    zeroStyleExamples = examples.length === 0;
+  }
+  const shouldSyncStyleExamples = !!rssUrl && (rssUrlChanged || zeroStyleExamples);
 
   const voice = await upsertVoice(db, {
     id: voiceId || undefined,
@@ -281,11 +305,16 @@ export async function saveVoiceAction(formData: FormData) {
 
   await linkVoiceToSignals(db, voice.id, orgId, signalIds);
 
-  if (rssChanged) {
+  revalidatePath("/voices");
+
+  if (shouldSyncStyleExamples) {
+    if (!process.env.WORKER_URL?.trim()) {
+      redirect(`/voices?voice_id=${voice.id}&saved=1&error=style_sync_unconfigured`);
+    }
     void workerVoiceSyncStyleExamples(voice.id);
+    redirect(`/voices?voice_id=${voice.id}&saved=1&style_sync=1`);
   }
 
-  revalidatePath("/voices");
   redirect(`/voices?voice_id=${voice.id}&saved=1`);
 }
 

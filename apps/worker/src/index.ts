@@ -20,7 +20,7 @@ import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
-import { ingestVoiceRssStyleExamples } from "./jobs/ingest-voice-rss-style-examples.js";
+import { ingestVoiceRssStyleExamplesAndRecordSync } from "./jobs/ingest-voice-rss-style-examples.js";
 import {
   isVoicePersonaGenerateInFlight,
   runVoicePersonaGenerateExclusive,
@@ -592,7 +592,7 @@ async function main(): Promise<void> {
     }
 
     try {
-      const result = await ingestVoiceRssStyleExamples(db, voice);
+      const result = await ingestVoiceRssStyleExamplesAndRecordSync(db, voice);
       return reply.send({ voice_id: voiceId, ...result });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

@@ -1,8 +1,10 @@
 import type { Db } from "mongodb";
 import {
+  formatStyleExamplesSyncSummary,
   isStyleSourceUrlExcluded,
   mergeVoiceBrandMemory,
   normalizeStyleSourceUrl,
+  updateVoiceStyleExamplesSyncStatus,
   upsertWriterStyleExampleFromRss,
   type Voice,
 } from "@content-resourcer/db";
@@ -17,7 +19,26 @@ export type IngestVoiceRssStyleExamplesResult = {
   updated: number;
   skipped: number;
   failed: number;
+  skip_reasons?: {
+    excluded?: number;
+    invalid_url?: number;
+    no_body?: number;
+  };
+  feed_fetch_failed?: boolean;
 };
+
+function initSkipReasons(): NonNullable<IngestVoiceRssStyleExamplesResult["skip_reasons"]> {
+  return { excluded: 0, invalid_url: 0, no_body: 0 };
+}
+
+function bumpSkipReason(
+  result: IngestVoiceRssStyleExamplesResult,
+  reason: keyof NonNullable<IngestVoiceRssStyleExamplesResult["skip_reasons"]>,
+): void {
+  result.skipped += 1;
+  if (!result.skip_reasons) result.skip_reasons = initSkipReasons();
+  result.skip_reasons[reason] = (result.skip_reasons[reason] ?? 0) + 1;
+}
 
 async function mergeFingerprintsFromHtml(db: Db, voice: Voice, html: string): Promise<void> {
   if (!voice.brand_profile) return;
@@ -43,6 +64,7 @@ export async function ingestVoiceRssStyleExamples(
 
   const xml = await fetchSafeText(feedUrl);
   if (!xml) {
+    result.feed_fetch_failed = true;
     result.failed += 1;
     return result;
   }
@@ -53,11 +75,11 @@ export async function ingestVoiceRssStyleExamples(
   for (const item of items) {
     const sourceUrl = normalizeStyleSourceUrl(item.link);
     if (!sourceUrl) {
-      result.skipped += 1;
+      bumpSkipReason(result, "invalid_url");
       continue;
     }
     if (isStyleSourceUrlExcluded(sourceUrl, excluded)) {
-      result.skipped += 1;
+      bumpSkipReason(result, "excluded");
       continue;
     }
 
@@ -68,7 +90,7 @@ export async function ingestVoiceRssStyleExamples(
         env.voiceRssArticleMaxChars,
       );
       if (!html) {
-        result.skipped += 1;
+        bumpSkipReason(result, "no_body");
         continue;
       }
 
@@ -91,4 +113,27 @@ export async function ingestVoiceRssStyleExamples(
   }
 
   return result;
+}
+
+export async function ingestVoiceRssStyleExamplesAndRecordSync(
+  db: Db,
+  voice: Voice,
+): Promise<IngestVoiceRssStyleExamplesResult> {
+  try {
+    const result = await ingestVoiceRssStyleExamples(db, voice);
+    await updateVoiceStyleExamplesSyncStatus(db, voice.id, {
+      style_examples_synced_at: new Date(),
+      style_examples_sync_summary: formatStyleExamplesSyncSummary(result),
+      style_examples_sync_error: undefined,
+    });
+    return result;
+  } catch (e) {
+    const message = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    await updateVoiceStyleExamplesSyncStatus(db, voice.id, {
+      style_examples_synced_at: new Date(),
+      style_examples_sync_summary: "Sync failed",
+      style_examples_sync_error: message,
+    }).catch(() => {});
+    throw e;
+  }
 }
