@@ -64,6 +64,7 @@ async function postExpandComposeVoicePolish(opts: {
   includeFaq: boolean;
   styleExampleExcerpt?: string;
   knownExampleTitles?: string[];
+  faqItems?: { question: string; answer: string }[];
 }): Promise<string> {
   let html = await polishComposeHtmlVoice({
     voice: opts.voice,
@@ -77,7 +78,7 @@ async function postExpandComposeVoicePolish(opts: {
     ...writerComposeVoiceStyleIssues(html),
     ...writerComposeOperatorVoiceIssues(html),
     ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
-    ...(opts.includeFaq ? writerComposeFaqStyleIssues(html) : []),
+    ...(opts.includeFaq ? writerComposeFaqStyleIssues(html, opts.faqItems ?? []) : []),
   ];
   const genericity = await analyzeGenericity(html);
   const genericityHigh = genericity.score > REWRITER_COMPOSE_GENERICITY_MAX;
@@ -127,6 +128,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   brandConsistencyScore: number;
   genericityScore: number;
   humanizationAttempts: number;
+  voiceQualityWarning?: string;
 }> {
   if (opts.voice.persona_status !== "ready") {
     throw new Error("voice_persona_not_ready");
@@ -289,11 +291,16 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       includeFaq,
       styleExampleExcerpt,
       knownExampleTitles,
+      faqItems: humanized.facts.faqItems,
     });
   }
 
   html = stripLeadingComposeChrome(html);
-  const styleCounts = writerComposeStyleIssueCounts(html, { includeFaq, knownExampleTitles });
+  const styleCounts = writerComposeStyleIssueCounts(html, {
+    includeFaq,
+    knownExampleTitles,
+    faqItems: humanized.facts.faqItems,
+  });
   const brandConsistencyScore = composeEffectiveBrandConsistency(
     {
       humanAuthenticity: humanized.humanAuthenticityScore,
@@ -331,5 +338,6 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     brandConsistencyScore,
     genericityScore: humanized.genericityScore,
     humanizationAttempts: humanized.humanizationAttempts,
+    voiceQualityWarning: humanized.voiceQualityWarning,
   };
 }

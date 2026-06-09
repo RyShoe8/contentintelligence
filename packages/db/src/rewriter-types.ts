@@ -21,6 +21,13 @@ export const narrativeSectionSchema = z.object({
 
 export type NarrativeSection = z.infer<typeof narrativeSectionSchema>;
 
+export const faqItemSchema = z.object({
+  question: z.string().trim().min(1),
+  answer: z.string().trim().min(1),
+});
+
+export type FaqItem = z.infer<typeof faqItemSchema>;
+
 export const contentFactsSchema = z.object({
   offer: z.string().trim().optional(),
   depositAmount: z.string().trim().optional(),
@@ -32,6 +39,7 @@ export const contentFactsSchema = z.object({
   narrativeSections: z.array(narrativeSectionSchema).optional(),
   sections: z.array(proceduralSectionSchema).optional(),
   keyDetails: z.array(z.string().trim()).default([]),
+  faqItems: z.array(faqItemSchema).optional(),
 });
 
 export type ContentFacts = z.infer<typeof contentFactsSchema>;
@@ -80,7 +88,7 @@ export const REWRITER_SELF_CRITIQUE_GENERICITY_MAX = 30;
 export const REWRITER_MAX_HUMANIZATION_ATTEMPTS = 3;
 export const REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN = 85;
 export const REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN = 85;
-export const REWRITER_COMPOSE_GENERICITY_MAX = 45;
+export const REWRITER_COMPOSE_GENERICITY_MAX = 38;
 
 function normalizeForMatch(text: string): string {
   return text
@@ -114,10 +122,15 @@ export function isHybridContentFacts(facts: ContentFacts): boolean {
   );
 }
 
-/** Compose research briefs: hybrid contentType with narrative blocks (may lack procedural sections). */
+/** Compose research briefs: hybrid with narrative blocks or flat keyDetails pool. */
 export function isComposeNarrativeFacts(facts: ContentFacts): boolean {
-  return facts.contentType === "hybrid" && (facts.narrativeSections?.length ?? 0) > 0;
+  return (
+    facts.contentType === "hybrid" &&
+    ((facts.narrativeSections?.length ?? 0) > 0 || facts.keyDetails.length > 0)
+  );
 }
+
+export const COMPOSE_KEY_DETAILS_COVERAGE_MIN = 0.85;
 
 export function isInstructionPreserveMode(facts: ContentFacts): boolean {
   return isHybridContentFacts(facts) || isProceduralContentFacts(facts);
@@ -184,36 +197,50 @@ export function rewriterNarrativeCompletenessIssues(
   return issues;
 }
 
-/** Compose completeness: all facts present, but research-brief section titles are not required as headings. */
+/** Compose completeness: keyDetails coverage threshold; legacy narrativeSections ignored for section buckets. */
 export function writerComposeNarrativeCompletenessIssues(
   facts: ContentFacts,
   html: string,
 ): string[] {
-  if (!isComposeNarrativeFacts(facts) || !facts.narrativeSections) return [];
+  if (!isComposeNarrativeFacts(facts)) return [];
 
   const plain = stripHtmlToPlainText(html);
   const issues: string[] = [];
 
-  for (const section of facts.narrativeSections) {
-    let missingPoints = 0;
-    for (const point of section.points) {
-      if (!textPresentInPlain(point, plain)) missingPoints++;
+  if (facts.keyDetails.length > 0) {
+    let missingKeyDetails = 0;
+    for (const detail of facts.keyDetails) {
+      if (!textPresentInPlain(detail, plain)) missingKeyDetails++;
     }
-    if (missingPoints > 0) {
+    const presentRatio = 1 - missingKeyDetails / facts.keyDetails.length;
+    if (presentRatio < COMPOSE_KEY_DETAILS_COVERAGE_MIN) {
       issues.push(
-        `Missing ${missingPoints}/${section.points.length} research facts from "${section.title}"`,
+        `Only ${Math.round(presentRatio * 100)}% of research facts present (need ≥${Math.round(COMPOSE_KEY_DETAILS_COVERAGE_MIN * 100)}%) — missing ${missingKeyDetails}/${facts.keyDetails.length} key details`,
       );
+    }
+  } else if (facts.narrativeSections?.length) {
+    for (const section of facts.narrativeSections) {
+      let missingPoints = 0;
+      for (const point of section.points) {
+        if (!textPresentInPlain(point, plain)) missingPoints++;
+      }
+      if (missingPoints > 0) {
+        issues.push(
+          `Missing ${missingPoints}/${section.points.length} research facts from "${section.title}"`,
+        );
+      }
     }
   }
 
-  let missingKeyDetails = 0;
-  for (const detail of facts.keyDetails) {
-    if (!textPresentInPlain(detail, plain)) missingKeyDetails++;
-  }
-  if (missingKeyDetails > 0) {
-    issues.push(
-      `Missing ${missingKeyDetails}/${facts.keyDetails.length} key detail facts`,
-    );
+  if (facts.faqItems?.length) {
+    let missingFaq = 0;
+    for (const item of facts.faqItems) {
+      const combined = `${item.question} ${item.answer}`;
+      if (!textPresentInPlain(combined, plain)) missingFaq++;
+    }
+    if (missingFaq > 0) {
+      issues.push(`Missing ${missingFaq}/${facts.faqItems.length} FAQ items`);
+    }
   }
 
   return [...issues, ...rewriterProceduralCompletenessIssues(facts, html)];
@@ -310,12 +337,14 @@ export type ComposeStyleIssueCounts = {
 
 export function writerComposeStyleIssueCounts(
   html: string,
-  opts: { includeFaq?: boolean; knownExampleTitles?: string[] } = {},
+  opts: { includeFaq?: boolean; knownExampleTitles?: string[]; faqItems?: { question: string; answer: string }[] } = {},
 ): ComposeStyleIssueCounts {
   const voiceStyleIssues = writerComposeVoiceStyleIssues(html);
   const operatorVoiceIssues = writerComposeOperatorVoiceIssues(html);
   const leakIssues = writerComposeReferenceLeakIssues(html, opts.knownExampleTitles);
-  const faqStyleIssues = opts.includeFaq ? writerComposeFaqStyleIssues(html) : [];
+  const faqStyleIssues = opts.includeFaq
+    ? writerComposeFaqStyleIssues(html, opts.faqItems ?? [])
+    : [];
   return {
     voiceStyleIssueCount: voiceStyleIssues.length,
     operatorVoiceIssueCount: operatorVoiceIssues.length,
@@ -329,7 +358,11 @@ export function rewriterComposeQualityGatePassed(
   html: string,
   critique: SelfCritiqueResult,
   genericity: GenericityAnalysis,
-  opts: { includeFaq?: boolean; knownExampleTitles?: string[] } = {},
+  opts: {
+    includeFaq?: boolean;
+    knownExampleTitles?: string[];
+    faqItems?: { question: string; answer: string }[];
+  } = {},
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;

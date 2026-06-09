@@ -49,6 +49,7 @@ function resultToComposeMeta(
     brand_consistency_score: result.brandConsistencyScore,
     genericity_score: result.genericityScore,
     humanization_attempts: result.humanizationAttempts,
+    voice_quality_warning: result.voiceQualityWarning,
   };
 }
 

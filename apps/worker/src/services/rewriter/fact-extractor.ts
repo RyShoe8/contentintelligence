@@ -3,6 +3,7 @@ import {
   narrativeSectionSchema,
   proceduralSectionSchema,
   type ContentFacts,
+  type FaqItem,
   type NarrativeSection,
   type ProceduralSection,
 } from "@content-resourcer/db";
@@ -24,22 +25,76 @@ export { filterFaqNarrativeSections };
 
 function buildComposeExtractSystemPrompt(includeFaq?: boolean): string {
   const faqRules = includeFaq
-    ? `- Include a narrativeSections entry titled "FAQ" when the brief has FAQ content.
-- points: preserve each Q/A as one string in "Q: ...? A: ..." form.
-- Do NOT drop FAQ content.`
-    : `- Omit FAQ, frequently asked questions, and Q&A content entirely.
-- Do NOT create a narrativeSections entry whose title matches FAQ.`;
+    ? `- faqItems: array of {"question": string, "answer": string} from FAQ content in the brief. Preserve facts; answers will be rewritten in brand voice.
+- Do NOT put FAQ in keyDetails.`
+    : `- Omit faqItems entirely. Do not extract FAQ or Q&A content.`;
 
   return `Extract structured facts from an editorial research brief as JSON only.
 Schema:
-{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"keyDetails":string[]}
+{"contentType":"hybrid","keyDetails":string[],"faqItems"?:{"question":string,"answer":string}[]}
 Rules:
-- narrativeSections: one object per labeled brief section (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence). Skip empty sections. Section titles are internal grouping labels only — not article headings.
+- keyDetails: 12–24 atomic factual statements with source URLs when present. Flat pool — no section grouping.
+- Include angles, caveats, and open questions as individual keyDetails — do NOT create narrativeSections or brief section labels.
+- Do NOT output narrativeSections.
 ${faqRules}
-- points: preserve factual bullets with source URLs/citations where present in the brief.
-- keyDetails: 8–20 atomic factual statements with source URLs when available.
-- Do NOT drop angles, caveats, or open questions.
 - Omit promotional tone and brand/community commentary.`;
+}
+
+function parseFaqItems(raw: unknown): FaqItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: FaqItem[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item == null) continue;
+    const q = "question" in item ? String((item as { question: unknown }).question).trim() : "";
+    const a = "answer" in item ? String((item as { answer: unknown }).answer).trim() : "";
+    if (q && a) items.push({ question: q, answer: a });
+  }
+  return items;
+}
+
+function parseFaqFromBriefSections(sections: NarrativeSection[]): {
+  faqItems: FaqItem[];
+  remaining: NarrativeSection[];
+} {
+  const faqItems: FaqItem[] = [];
+  const remaining: NarrativeSection[] = [];
+  for (const section of sections) {
+    if (FAQ_SECTION_TITLE_RE.test(section.title.trim())) {
+      for (const point of section.points) {
+        const qaMatch = point.match(/^Q:\s*(.+?\?)\s*A:\s*(.+)$/is);
+        if (qaMatch) {
+          faqItems.push({
+            question: qaMatch[1]!.trim(),
+            answer: qaMatch[2]!.trim(),
+          });
+        }
+      }
+    } else {
+      remaining.push(section);
+    }
+  }
+  return { faqItems, remaining };
+}
+
+export function flattenBriefToKeyDetails(brief: string, includeFaq?: boolean): ContentFacts {
+  let sections = parseBriefSectionsByHeaders(brief);
+  let faqItems: FaqItem[] = [];
+  if (includeFaq) {
+    const parsed = parseFaqFromBriefSections(sections);
+    faqItems = parsed.faqItems;
+    sections = parsed.remaining;
+  } else {
+    sections = filterFaqNarrativeSections(sections);
+  }
+  const keyDetails = sections.flatMap((s) => s.points).filter(Boolean).slice(0, 24);
+  if (keyDetails.length === 0 && brief.trim()) {
+    keyDetails.push(brief.trim().slice(0, 2000));
+  }
+  return contentFactsSchema.parse({
+    contentType: "hybrid",
+    keyDetails,
+    ...(faqItems.length ? { faqItems } : {}),
+  });
 }
 
 async function extractComposeResearchFacts(
@@ -54,40 +109,23 @@ async function extractComposeResearchFacts(
   });
 
   const parsed = parseContentFacts(raw);
-  let narrativeSections = parseNarrativeSections(
-    raw && typeof raw === "object" && "narrativeSections" in raw
-      ? (raw as { narrativeSections?: unknown }).narrativeSections
-      : parsed?.narrativeSections,
-  );
-  if (!includeFaq) {
-    narrativeSections = filterFaqNarrativeSections(narrativeSections);
-  }
+  const faqItems = includeFaq
+    ? parseFaqItems(raw && typeof raw === "object" && "faqItems" in raw ? (raw as { faqItems?: unknown }).faqItems : parsed?.faqItems)
+    : [];
 
-  if (narrativeSections.length > 0) {
+  const keyDetails = parsed?.keyDetails?.length
+    ? parsed.keyDetails
+    : [];
+
+  if (keyDetails.length >= 3) {
     return contentFactsSchema.parse({
       contentType: "hybrid",
-      narrativeSections,
-      keyDetails: parsed?.keyDetails?.length ? parsed.keyDetails : [],
+      keyDetails,
+      ...(faqItems.length ? { faqItems } : {}),
     });
   }
 
-  let fallbackSections = parseBriefSectionsByHeaders(trimmed);
-  if (!includeFaq) {
-    fallbackSections = filterFaqNarrativeSections(fallbackSections);
-  }
-  if (fallbackSections.length > 0) {
-    return contentFactsSchema.parse({
-      contentType: "hybrid",
-      narrativeSections: fallbackSections,
-      keyDetails: fallbackSections.flatMap((s) => s.points).slice(0, 20),
-    });
-  }
-
-  return contentFactsSchema.parse({
-    contentType: "hybrid",
-    narrativeSections: [{ title: "Research brief", points: [trimmed.slice(0, 2000)] }],
-    keyDetails: trimmed.length > 400 ? [trimmed.slice(0, 400)] : [trimmed],
-  });
+  return flattenBriefToKeyDetails(trimmed, includeFaq);
 }
 
 const HYBRID_EXTRACT_MAX_TOKENS = 6000;

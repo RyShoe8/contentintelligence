@@ -385,7 +385,10 @@ export function writerComposeReferenceLeakIssues(
 }
 
 /** Flags industry-guide FAQ shape vs short editorial FAQ answers. */
-export function writerComposeFaqStyleIssues(html: string): string[] {
+export function writerComposeFaqStyleIssues(
+  html: string,
+  faqItems: { question: string; answer: string }[] = [],
+): string[] {
   const issues: string[] = [];
   const faqHeadingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
   let faqMatch: RegExpExecArray | null;
@@ -424,7 +427,35 @@ export function writerComposeFaqStyleIssues(html: string): string[] {
     }
   }
 
-  return [...new Set(issues)].slice(0, 4);
+  const qaBlockRe2 = /<h3\b[^>]*>([\s\S]*?)<\/h3>\s*<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  let overlapMatch: RegExpExecArray | null;
+  while (faqItems.length > 0 && (overlapMatch = qaBlockRe2.exec(html)) !== null) {
+    const answer = stripHtmlToPlainText(overlapMatch[2] ?? "").trim();
+    if (answer.length < 30) continue;
+    for (const item of faqItems) {
+      const source = item.answer.trim();
+      if (source.length < 30) continue;
+      const answerWords = new Set(
+        answer
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 3),
+      );
+      const sourceWords = source
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 3);
+      if (sourceWords.length === 0) continue;
+      const matched = sourceWords.filter((w) => answerWords.has(w)).length;
+      if (matched / sourceWords.length >= 0.7) {
+        issues.push("FAQ answer copies research brief wording — rewrite in brand voice");
+        break;
+      }
+    }
+    if (issues.some((i) => i.includes("copies research brief"))) break;
+  }
+
+  return [...new Set(issues)].slice(0, 5);
 }
 
 export function writerHasRelatedLinksBlock(html: string): boolean {

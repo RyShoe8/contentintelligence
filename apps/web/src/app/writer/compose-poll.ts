@@ -183,6 +183,20 @@ export function clearComposePollSession(articleId: string): void {
   sessionStorage.removeItem(composePollSessionStorageKey(articleId));
 }
 
+export type ComposeResultPhase = "full" | "write_only";
+
+/** Research stats apply only after a full Research and Write run. */
+export function shouldShowComposeResearchStats(phase: ComposeResultPhase | null | undefined): boolean {
+  return phase === "full";
+}
+
+/** Link rework notices apply only after full compose (Write-only shows links + scores only). */
+export function shouldShowComposeLinkReworkNotices(
+  phase: ComposeResultPhase | null | undefined,
+): boolean {
+  return phase === "full";
+}
+
 export function resolveComposePollMode(
   articleId: string,
   opts?: {

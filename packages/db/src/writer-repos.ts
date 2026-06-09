@@ -531,7 +531,8 @@ export function resolveWriterComposeStatus(article: WriterArticle): WriterCompos
 export function writerComposeStatusPayload(article: WriterArticle) {
   const composeStatus = resolveWriterComposeStatus(article);
   const meta = article.compose_meta;
-  return {
+  const writeOnly = article.compose_phase === "write_only";
+  const base = {
     writer_article_id: article.id,
     compose_status: composeStatus,
     compose_error: article.compose_error,
@@ -540,13 +541,6 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     server_now: new Date().toISOString(),
     generated_html: article.generated_html,
     research_brief: article.source_text,
-    references_fetched: meta?.references_fetched,
-    references_failed: meta?.references_failed,
-    user_references_fetched: meta?.user_references_fetched,
-    web_references_fetched: meta?.web_references_fetched,
-    web_search_urls: meta?.web_search_urls,
-    research_questions: meta?.research_questions,
-    research_mode: meta?.research_mode,
     source_truncated: meta?.source_truncated,
     links_requested: meta?.links_requested,
     links_present: meta?.links_present,
@@ -562,6 +556,20 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     brand_consistency_score: meta?.brand_consistency_score,
     genericity_score: meta?.genericity_score,
     humanization_attempts: meta?.humanization_attempts,
+    voice_quality_warning: meta?.voice_quality_warning,
+  };
+  if (writeOnly) {
+    return base;
+  }
+  return {
+    ...base,
+    references_fetched: meta?.references_fetched,
+    references_failed: meta?.references_failed,
+    user_references_fetched: meta?.user_references_fetched,
+    web_references_fetched: meta?.web_references_fetched,
+    web_search_urls: meta?.web_search_urls,
+    research_questions: meta?.research_questions,
+    research_mode: meta?.research_mode,
   };
 }
 

@@ -36,7 +36,10 @@ import {
   saveComposePollSession,
   shouldAcceptComposePollReady,
   shouldPollCompose,
+  shouldShowComposeLinkReworkNotices,
+  shouldShowComposeResearchStats,
   shouldStallComposePoll,
+  type ComposeResultPhase,
 } from "@/app/writer/compose-poll";
 import { Button } from "@/components/ui/button";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
@@ -98,6 +101,7 @@ type ComposeStatusResponse = {
   brand_consistency_score?: number;
   genericity_score?: number;
   humanization_attempts?: number;
+  voice_quality_warning?: string;
 };
 
 const COMPOSE_POLL_INTERVAL_MS = 3000;
@@ -245,6 +249,10 @@ export function WriterComposeForm({
   const [brandConsistencyScore, setBrandConsistencyScore] = useState<number | null>(null);
   const [genericityScore, setGenericityScore] = useState<number | null>(null);
   const [humanizationAttempts, setHumanizationAttempts] = useState<number | null>(null);
+  const [resultComposePhase, setResultComposePhase] = useState<ComposeResultPhase | null>(
+    selectedArticle?.compose_phase ?? null,
+  );
+  const [voiceQualityWarning, setVoiceQualityWarning] = useState<string | null>(null);
   const [deepResearch, setDeepResearch] = useState(true);
   const [webSearch, setWebSearch] = useState(true);
   const [includeFaq, setIncludeFaq] = useState(false);
@@ -294,24 +302,33 @@ export function WriterComposeForm({
 
   const applyComposeStatusData = useCallback((data: ComposeStatusResponse) => {
     if (data.generated_html) setOutputHtml(data.generated_html);
-    if (data.research_brief) setResearchBrief(data.research_brief);
-    if (typeof data.references_fetched === "number") {
-      setReferencesFetched(data.references_fetched);
+    if (data.research_brief) {
+      setResearchBrief((prev) =>
+        data.research_brief !== prev ? data.research_brief! : prev,
+      );
     }
-    if (Array.isArray(data.references_failed)) {
-      setReferencesFailed(data.references_failed);
+    if (data.compose_phase === "full" || data.compose_phase === "write_only") {
+      setResultComposePhase(data.compose_phase);
     }
-    if (typeof data.research_questions === "number") {
-      setResearchQuestions(data.research_questions);
-    }
-    if (typeof data.user_references_fetched === "number") {
-      setUserReferencesFetched(data.user_references_fetched);
-    }
-    if (typeof data.web_references_fetched === "number") {
-      setWebReferencesFetched(data.web_references_fetched);
-    }
-    if (typeof data.research_mode === "string") {
-      setResearchMode(data.research_mode);
+    if (shouldShowComposeResearchStats(data.compose_phase)) {
+      if (typeof data.references_fetched === "number") {
+        setReferencesFetched(data.references_fetched);
+      }
+      if (Array.isArray(data.references_failed)) {
+        setReferencesFailed(data.references_failed);
+      }
+      if (typeof data.research_questions === "number") {
+        setResearchQuestions(data.research_questions);
+      }
+      if (typeof data.user_references_fetched === "number") {
+        setUserReferencesFetched(data.user_references_fetched);
+      }
+      if (typeof data.web_references_fetched === "number") {
+        setWebReferencesFetched(data.web_references_fetched);
+      }
+      if (typeof data.research_mode === "string") {
+        setResearchMode(data.research_mode);
+      }
     }
     if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
     if (typeof data.links_present === "number") setLinksPresent(data.links_present);
@@ -319,13 +336,15 @@ export function WriterComposeForm({
     if (typeof data.links_woven === "number" && data.links_woven > 0) {
       setLinksWovenNotice(data.links_woven);
     }
-    if (typeof data.links_appended === "number" && data.links_appended > 0) {
-      setLinksAppendedNotice(data.links_appended);
+    if (shouldShowComposeLinkReworkNotices(data.compose_phase)) {
+      if (typeof data.links_appended === "number" && data.links_appended > 0) {
+        setLinksAppendedNotice(data.links_appended);
+      }
+      if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
+        setLinksRedistributedNotice(data.links_redistributed);
+      }
+      if (data.links_revised === true) setLinksRevisedNotice(true);
     }
-    if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
-      setLinksRedistributedNotice(data.links_redistributed);
-    }
-    if (data.links_revised === true) setLinksRevisedNotice(true);
     if (typeof data.human_authenticity_score === "number") {
       setHumanAuthenticityScore(data.human_authenticity_score);
     }
@@ -337,6 +356,11 @@ export function WriterComposeForm({
     }
     if (typeof data.humanization_attempts === "number") {
       setHumanizationAttempts(data.humanization_attempts);
+    }
+    if (typeof data.voice_quality_warning === "string" && data.voice_quality_warning.trim()) {
+      setVoiceQualityWarning(data.voice_quality_warning.trim());
+    } else if (data.compose_status === "ready") {
+      setVoiceQualityWarning(null);
     }
   }, []);
 
@@ -708,6 +732,8 @@ export function WriterComposeForm({
     setUserReferencesFetched(null);
     setWebReferencesFetched(null);
     setResearchMode(null);
+    setResultComposePhase(mode);
+    setVoiceQualityWarning(null);
 
     try {
       const r = await fetch("/api/worker/writer/compose", {
@@ -1192,7 +1218,13 @@ export function WriterComposeForm({
           </p>
         ) : null}
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
-        {researchMode != null || researchQuestions != null ? (
+        {voiceQualityWarning ? (
+          <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/95">
+            Voice quality: did not fully pass — {voiceQualityWarning}
+          </p>
+        ) : null}
+        {shouldShowComposeResearchStats(resultComposePhase) &&
+        (researchMode != null || researchQuestions != null) ? (
           <p className="text-xs text-[var(--muted)]">
             Research mode: {researchMode ?? "—"}
             {researchQuestions != null && researchQuestions > 0
@@ -1200,7 +1232,8 @@ export function WriterComposeForm({
               : ""}
           </p>
         ) : null}
-        {referencesFetched != null || referencesFailed.length > 0 ? (
+        {shouldShowComposeResearchStats(resultComposePhase) &&
+        (referencesFetched != null || referencesFailed.length > 0) ? (
           <p className="text-xs text-[var(--muted)]">
             Sources fetched: {referencesFetched ?? 0}
             {userReferencesFetched != null || webReferencesFetched != null
@@ -1236,18 +1269,22 @@ export function WriterComposeForm({
               : ""}
           </p>
         ) : null}
-        {linksRevisedNotice ? (
+        {shouldShowComposeLinkReworkNotices(resultComposePhase) && linksRevisedNotice ? (
           <p className="text-xs text-amber-200/90">
             Links were reworked for more natural placement in the article.
           </p>
         ) : null}
-        {linksRedistributedNotice != null && linksRedistributedNotice > 0 ? (
+        {shouldShowComposeLinkReworkNotices(resultComposePhase) &&
+        linksRedistributedNotice != null &&
+        linksRedistributedNotice > 0 ? (
           <p className="text-xs text-[var(--muted)]">
             {linksRedistributedNotice} link{linksRedistributedNotice === 1 ? "" : "s"} moved earlier
             in the article for more natural placement.
           </p>
         ) : null}
-        {linksAppendedNotice != null && linksAppendedNotice > 0 ? (
+        {shouldShowComposeLinkReworkNotices(resultComposePhase) &&
+        linksAppendedNotice != null &&
+        linksAppendedNotice > 0 ? (
           <p className="text-xs text-amber-200/90">
             {linksAppendedNotice} link{linksAppendedNotice === 1 ? "" : "s"} added in a Related links
             section at the end.

@@ -255,6 +255,28 @@ describe("rewriterComposeCompletenessIssues", () => {
     assert.ok(issues.length > 0);
     assert.ok(!issues.some((i) => i.includes("Topic overview")));
   });
+
+  it("passes when at least 85% of keyDetails are present", () => {
+    const manyFacts = contentFactsSchema.parse({
+      contentType: "hybrid",
+      keyDetails: [
+        "Fact one about taxes",
+        "Fact two about withholding",
+        "Fact three about records",
+        "Fact four about state rules",
+        "Fact five about reporting",
+        "Fact six about deductions",
+        "Fact seven about audits",
+      ],
+    });
+    const html = [
+      "<h2>What winners owe</h2>",
+      "<p>Fact one about taxes. Fact two about withholding. Fact three about records.</p>",
+      "<p>Fact four about state rules. Fact five about reporting. Fact six about deductions.</p>",
+    ].join("");
+    const issues = rewriterComposeCompletenessIssues(manyFacts, html);
+    assert.equal(issues.length, 0);
+  });
 });
 
 describe("rewriterComposeQualityGatePassed", () => {
@@ -305,7 +327,7 @@ describe("rewriterComposeQualityGatePassed", () => {
       }),
       65,
     );
-    assert.equal(REWRITER_COMPOSE_GENERICITY_MAX, 45);
+    assert.equal(REWRITER_COMPOSE_GENERICITY_MAX, 38);
   });
 
   it("fails compose gate when voice style issues remain", () => {

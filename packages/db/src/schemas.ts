@@ -686,6 +686,7 @@ export const writerComposeMetaSchema = z.object({
   brand_consistency_score: z.number().optional(),
   genericity_score: z.number().optional(),
   humanization_attempts: z.number().int().optional(),
+  voice_quality_warning: z.string().max(2000).optional(),
 });
 
 export type WriterComposeMeta = z.infer<typeof writerComposeMetaSchema>;

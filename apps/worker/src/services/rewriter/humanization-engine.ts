@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import {
   REWRITER_COMPOSE_GENERICITY_MAX,
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN,
   composeEffectiveBrandConsistency,
   composeGenericityScore,
   isComposeNarrativeFacts,
@@ -36,6 +37,11 @@ import { extractContentFacts } from "./fact-extractor.js";
 import { retrieveRankedExamples } from "./example-retrieval.js";
 import { analyzeGenericity } from "./generic-detector.js";
 import { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
+import {
+  extractStyleExampleHeadings,
+  planComposeOutline,
+  type ComposeOutline,
+} from "./compose-outline.js";
 import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
@@ -69,6 +75,7 @@ export type HumanizationEngineResult = {
   genericityScore: number;
   humanizationAttempts: number;
   factsExtracted: boolean;
+  voiceQualityWarning?: string;
 };
 
 type AttemptSnapshot = {
@@ -110,7 +117,7 @@ function qualityGatePassed(
   genericity: GenericityAnalysis,
   critique: SelfCritiqueResult,
   composeMode: boolean,
-  composeGateOpts?: { includeFaq?: boolean; knownExampleTitles?: string[] },
+  composeGateOpts?: { includeFaq?: boolean; knownExampleTitles?: string[]; faqItems?: { question: string; answer: string }[] },
 ): boolean {
   if (composeMode && isComposeNarrativeFacts(facts)) {
     return rewriterComposeQualityGatePassed(facts, html, critique, genericity, composeGateOpts);
@@ -136,6 +143,41 @@ function effectiveBrandScore(
   styleCounts: ReturnType<typeof writerComposeStyleIssueCounts>,
 ): number {
   return composeEffectiveBrandConsistency(critique, styleCounts);
+}
+
+function buildVoiceQualityWarning(opts: {
+  gateOk: boolean;
+  noDrift: boolean;
+  genericityOk: boolean;
+  effectiveBc: number;
+  genericityScore: number;
+  styleIssueCounts: ReturnType<typeof writerComposeStyleIssueCounts>;
+  completenessIssues: string[];
+}): string | undefined {
+  if (opts.gateOk && opts.noDrift && opts.genericityOk) return undefined;
+  const parts: string[] = [];
+  if (!opts.genericityOk) {
+    parts.push(
+      `Genericity ${opts.genericityScore} exceeds max ${REWRITER_COMPOSE_GENERICITY_MAX}`,
+    );
+  }
+  if (opts.effectiveBc < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) {
+    parts.push(`Brand consistency ${opts.effectiveBc} below target ${REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN}`);
+  }
+  const styleTotal =
+    opts.styleIssueCounts.voiceStyleIssueCount +
+    opts.styleIssueCounts.operatorVoiceIssueCount +
+    opts.styleIssueCounts.leakIssueCount +
+    opts.styleIssueCounts.faqStyleIssueCount;
+  if (styleTotal > 0) {
+    parts.push("Voice style checks flagged generic or off-brand patterns");
+  }
+  if (opts.completenessIssues.length > 0) {
+    parts.push(opts.completenessIssues[0]!);
+  }
+  return parts.length
+    ? `${parts.join("; ")}. Review before publishing.`
+    : "Voice quality did not fully pass. Review before publishing.";
 }
 
 export async function runHumanizationEngine(
@@ -176,7 +218,19 @@ export async function runHumanizationEngine(
   const composeGateOpts = {
     includeFaq: opts.includeFaq,
     knownExampleTitles,
+    faqItems: facts.faqItems,
   };
+
+  let composeOutline: ComposeOutline | undefined;
+  if (composeMode && opts.topic?.trim()) {
+    composeOutline = await planComposeOutline({
+      topic: opts.topic,
+      subtopics: opts.subtopics,
+      keyDetails: facts.keyDetails,
+      faqItems: facts.faqItems,
+      styleHeadings: extractStyleExampleHeadings(examples),
+    });
+  }
 
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
@@ -199,6 +253,7 @@ export async function runHumanizationEngine(
       composeMode,
       topic: opts.topic,
       includeFaq: opts.includeFaq,
+      composeOutline,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -240,7 +295,9 @@ export async function runHumanizationEngine(
       ? writerComposeReferenceLeakIssues(html, knownExampleTitles)
       : [];
     const faqStyleIssues =
-      composeMode && opts.includeFaq ? writerComposeFaqStyleIssues(html) : [];
+      composeMode && opts.includeFaq
+        ? writerComposeFaqStyleIssues(html, facts.faqItems ?? [])
+        : [];
     const styleIssueCounts = composeMode
       ? writerComposeStyleIssueCounts(html, composeGateOpts)
       : {
@@ -316,16 +373,40 @@ export async function runHumanizationEngine(
   }
 
   const final = best!;
+  const finalGenericityScore = composeGenericityScore(final.genericity, final.critique);
+  const finalBc = effectiveBrandScore(final.critique, final.styleIssueCounts);
+  const finalGenericityOk = finalGenericityScore <= REWRITER_COMPOSE_GENERICITY_MAX;
+  const finalGateOk = qualityGatePassed(
+    facts,
+    final.html,
+    final.genericity,
+    final.critique,
+    composeMode,
+    composeMode ? composeGateOpts : undefined,
+  );
+  const voiceQualityWarning = composeMode
+    ? buildVoiceQualityWarning({
+        gateOk: finalGateOk,
+        noDrift: final.completenessIssueCount === 0,
+        genericityOk: finalGenericityOk,
+        effectiveBc: finalBc,
+        genericityScore: finalGenericityScore,
+        styleIssueCounts: final.styleIssueCounts,
+        completenessIssues: [],
+      })
+    : undefined;
+
   return {
     html: final.html,
     sourceTruncated,
     facts,
     examples,
     humanAuthenticityScore: final.critique.humanAuthenticity,
-    brandConsistencyScore: effectiveBrandScore(final.critique, final.styleIssueCounts),
-    genericityScore: composeGenericityScore(final.genericity, final.critique),
+    brandConsistencyScore: finalBc,
+    genericityScore: finalGenericityScore,
     humanizationAttempts: attempts,
     factsExtracted: factsExtracted(facts),
+    voiceQualityWarning,
   };
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   filterFaqNarrativeSections,
+  flattenBriefToKeyDetails,
   parseBriefSectionsByHeaders,
   parseContentFacts,
 } from "./fact-extractor.js";
@@ -92,6 +93,35 @@ describe("parseBriefSectionsByHeaders", () => {
     assert.ok(sections.length >= 2);
     assert.equal(sections[0]?.title, "Topic Overview");
     assert.match(sections[1]?.points.join(" "), /taxable under federal law/);
+  });
+});
+
+describe("flattenBriefToKeyDetails", () => {
+  it("flattens brief headers into keyDetails without narrative section buckets", () => {
+    const brief = [
+      "Topic Overview:",
+      "Senior living design focuses on comfort.",
+      "",
+      "Key Facts:",
+      "- Lighting affects mood",
+      "- Chairs must pass the sit test",
+    ].join("\n");
+
+    const facts = flattenBriefToKeyDetails(brief);
+    assert.ok(facts.keyDetails.length >= 2);
+    assert.equal(facts.narrativeSections?.length ?? 0, 0);
+    assert.match(facts.keyDetails.join(" "), /sit test/i);
+  });
+
+  it("parses faqItems when includeFaq is true", () => {
+    const facts = parseContentFacts({
+      contentType: "hybrid",
+      keyDetails: ["Design matters"],
+      faqItems: [{ question: "Why chairs?", answer: "Comfort drives retention." }],
+    });
+    assert.ok(facts);
+    assert.equal(facts!.faqItems?.length, 1);
+    assert.equal(facts!.faqItems?.[0]?.question, "Why chairs?");
   });
 });
 

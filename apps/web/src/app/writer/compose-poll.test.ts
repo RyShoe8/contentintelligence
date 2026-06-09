@@ -23,6 +23,8 @@ import {
   shouldPollCompose,
   shouldStallComposePoll,
   storedComposePollMode,
+  shouldShowComposeResearchStats,
+  shouldShowComposeLinkReworkNotices,
 } from "./compose-poll.js";
 
 describe("shouldPollCompose", () => {
@@ -364,5 +366,21 @@ describe("shouldAcceptComposePollReady", () => {
 describe("COMPOSE_STALL_MESSAGE", () => {
   it("mentions retry", () => {
     assert.match(COMPOSE_STALL_MESSAGE, /Write again to retry/i);
+  });
+});
+
+describe("shouldShowComposeResearchStats", () => {
+  it("shows research stats only for full compose", () => {
+    assert.equal(shouldShowComposeResearchStats("full"), true);
+    assert.equal(shouldShowComposeResearchStats("write_only"), false);
+    assert.equal(shouldShowComposeResearchStats(null), false);
+  });
+});
+
+describe("shouldShowComposeLinkReworkNotices", () => {
+  it("shows link rework notices only for full compose", () => {
+    assert.equal(shouldShowComposeLinkReworkNotices("full"), true);
+    assert.equal(shouldShowComposeLinkReworkNotices("write_only"), false);
+    assert.equal(shouldShowComposeLinkReworkNotices(undefined), false);
   });
 });

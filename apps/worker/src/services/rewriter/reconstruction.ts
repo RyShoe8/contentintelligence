@@ -22,10 +22,15 @@ import {
   COMPOSE_VOICE_RULES,
   composeFaqPromptRules,
 } from "./compose-voice-rules.js";
+import { buildRichExampleExcerpt } from "./compose-style-excerpt.js";
+import {
+  formatComposeOutlineForPrompt,
+  type ComposeOutline,
+} from "./compose-outline.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
-const COMPOSE_EXAMPLE_EXCERPT_CHARS = 2800;
+const COMPOSE_EXAMPLE_EXCERPT_CHARS = 3500;
 
 function fingerprintsBlock(memory?: BrandMemory): string {
   if (!memory) return "";
@@ -69,14 +74,19 @@ function hasNarrativeSections(facts: ContentFacts): boolean {
   return (facts.narrativeSections?.length ?? 0) > 0;
 }
 
+function isComposeFactPool(facts: ContentFacts, composeMode?: boolean): boolean {
+  return composeMode === true && facts.keyDetails.length > 0;
+}
+
 function hybridRulesBlock(facts: ContentFacts, composeMode?: boolean): string {
-  if (composeMode && hasNarrativeSections(facts)) {
+  if (composeMode && (hasNarrativeSections(facts) || isComposeFactPool(facts, composeMode))) {
     return `
-Compose article (editorial voice, not a research summary):
-- Cover EVERY point in narrativeSections and EVERY keyDetails entry — nothing omitted.
-- Do NOT use research-brief section titles as headings (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence, FAQ).
-- Write editorial <h2>/<h3> headings that fit the topic and match the brand examples below (structure, rhythm, openings).
-- Weave all facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
+Compose article (author-first editorial voice — not a research summary):
+- Facts are a pool in keyDetails — weave them into editorial sections; do NOT mirror research brief structure.
+- Do NOT use research-brief section titles as headings (Topic overview, Key facts, Angles to cover, Caveats, Open questions, FAQ).
+- Do NOT default to topical survey headings (e.g. "What Active Adult Living Looks Like", "Memory Care: A Focus on…") unless the editorial outline specifies them.
+- Write editorial <h2>/<h3> headings matching brand examples and the editorial outline below.
+- Weave facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
 - Include procedural sections with full ordered steps when present (see procedural rules above).
 - Do not add filler closings like "What are your thoughts?"
 - No duplicate H2 topics; no meta "open questions remain" endings.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
@@ -104,14 +114,17 @@ function formatSectionsForPrompt(facts: ContentFacts): string {
 function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?: boolean): string {
   if (!examples.length) return "";
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
-  const selected = composeMode ? examples.slice(0, 2) : examples;
+  const selected = composeMode ? examples : examples.slice(0, 5);
   const blocks = selected.map((ex, i) => {
-    const html =
-      ex.html.length > excerptChars ? `${ex.html.slice(0, excerptChars)}…` : ex.html;
-    return `### Example ${i + 1} (do not copy title or chrome): ${ex.title}\n${html}`;
+    const body = composeMode
+      ? buildRichExampleExcerpt(ex.html, excerptChars)
+      : ex.html.length > excerptChars
+        ? `${ex.html.slice(0, excerptChars)}…`
+        : ex.html;
+    return `### Example ${i + 1} (do not copy title or chrome): ${ex.title}\n${body}`;
   });
   const composeNote = composeMode
-    ? " Imitate heading style, paragraph length, sentence rhythm, openings/closings, and rhetorical patterns from these examples — never copy titles, dates, navigation, or share buttons. Facts come from research; prose comes from these examples plus persona — not from the research brief outline."
+    ? " Imitate heading style, paragraph length, sentence rhythm, openings/closings, and rhetorical patterns from these examples — never copy titles, dates, navigation, or share buttons. Facts come from research; prose and structure come from these examples plus persona and the editorial outline — not from the research brief."
     : "";
   return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }
@@ -131,6 +144,7 @@ export type ReconstructArticleOpts = {
   composeMode?: boolean;
   topic?: string;
   includeFaq?: boolean;
+  composeOutline?: ComposeOutline;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -222,6 +236,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
     JSON.stringify(opts.facts, null, 2),
     formatNarrativeSectionsForPrompt(opts.facts),
     formatSectionsForPrompt(opts.facts),
+    opts.composeOutline ? formatComposeOutlineForPrompt(opts.composeOutline) : "",
     "",
     "Brand interpretation (JSON):",
     JSON.stringify(opts.interpretation, null, 2),

@@ -104,6 +104,16 @@ export async function retrieveRankedExamples(
     return fallbackExamples(candidates, composeMode);
   }
 
+  const styleExampleCount = candidates.filter((c) => c.styleExample).length;
+  if (composeMode && styleExampleCount > 0 && styleExampleCount <= 3) {
+    const styleOnly = candidates.filter((c) => c.styleExample);
+    return styleOnly.map((c) => ({
+      title: c.title,
+      html:
+        c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
+    }));
+  }
+
   const catalog = candidates.map((c, i) => ({
     index: i,
     title: c.title,
@@ -116,13 +126,13 @@ export async function retrieveRankedExamples(
   }));
 
   const composeRankingNote = composeMode
-    ? " Strongly prefer candidates with styleExample=true for voice/rhythm match — topical fit alone is not enough."
+    ? " Prefer candidates with styleExample=true for voice and paragraph rhythm — voice match outweighs topical fit."
     : "";
 
   const raw = await completeJson<{ selected?: number[] }>({
     system: `Select the best brand writing examples for reconstructing an article from facts.
 Reply JSON only: {"selected": [index, ...]} with up to ${rankedLimit} indices (0-based).
-Prefer topical relevance to the facts and stylistic match to a human brand operator — not generic AI tone.${composeRankingNote}`,
+For compose articles: prioritize stylistic and rhythmic match to a human brand operator over topical overlap.${composeRankingNote}`,
     user: [
       "Facts (JSON):",
       JSON.stringify(facts, null, 2),

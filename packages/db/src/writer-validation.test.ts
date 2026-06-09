@@ -855,6 +855,16 @@ describe("writerComposeFaqStyleIssues", () => {
     assert.ok(issues.some((i) => i.includes("Your Questions Answered")));
     assert.ok(issues.some((i) => i.includes("FAQ answers average")));
   });
+
+  it("flags FAQ answers that copy research brief wording", () => {
+    const sourceAnswer =
+      "Federal withholding may apply to large casino winnings and state tax rules vary significantly across jurisdictions for reporting purposes.";
+    const html = `<h2>Questions we hear</h2><h3>Do I owe tax?</h3><p>${sourceAnswer}</p>`;
+    const issues = writerComposeFaqStyleIssues(html, [
+      { question: "Do I owe tax?", answer: sourceAnswer },
+    ]);
+    assert.ok(issues.some((i) => i.includes("copies research brief wording")));
+  });
 });
 
 describe("writerComposeLinkIssues", () => {
