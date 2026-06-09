@@ -660,6 +660,9 @@ export type WriterArticleMode = z.infer<typeof writerArticleModeSchema>;
 export const writerComposeJobStatusSchema = z.enum(["pending", "ready", "failed"]);
 export type WriterComposeJobStatus = z.infer<typeof writerComposeJobStatusSchema>;
 
+export const writerComposePhaseSchema = z.enum(["full", "write_only"]);
+export type WriterComposePhase = z.infer<typeof writerComposePhaseSchema>;
+
 export const writerComposeMetaSchema = z.object({
   references_fetched: z.number().int().optional(),
   references_failed: z.array(z.string()).default([]).optional(),
@@ -712,6 +715,7 @@ export const writerArticleSchema = z.object({
     (v) => (v == null || v === "" ? undefined : v),
     z.coerce.date().optional(),
   ),
+  compose_phase: writerComposePhaseSchema.optional(),
   compose_meta: z.preprocess(
     (v) => (v == null ? undefined : v),
     writerComposeMetaSchema.optional(),

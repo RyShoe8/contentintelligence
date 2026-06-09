@@ -54,6 +54,18 @@ describe("writerArticleSchema", () => {
     assert.equal(parsed.mode, "compose");
   });
 
+  it("accepts compose_phase on compose articles", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+      compose_status: "pending",
+      compose_phase: "write_only",
+      compose_requested_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(parsed.compose_phase, "write_only");
+  });
+
   it("coerces null compose_error and compose_meta to undefined", () => {
     const parsed = writerArticleSchema.parse({
       ...minimalWriterDoc,

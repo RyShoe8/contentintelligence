@@ -362,6 +362,7 @@ export type UpsertWriterComposePendingInput = {
   reference_urls: string[];
   links: WriterLink[];
   created_by: string;
+  compose_phase: "full" | "write_only";
   preserve_compose_meta?: boolean;
 };
 
@@ -415,6 +416,7 @@ export async function upsertWriterComposePending(
     compose_status: "pending",
     compose_error: undefined,
     compose_requested_at: now,
+    compose_phase: data.compose_phase,
     compose_meta: data.preserve_compose_meta ? existing?.compose_meta : undefined,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,
@@ -533,6 +535,7 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     writer_article_id: article.id,
     compose_status: composeStatus,
     compose_error: article.compose_error,
+    compose_phase: article.compose_phase,
     compose_requested_at: article.compose_requested_at?.toISOString(),
     generated_html: article.generated_html,
     research_brief: article.source_text,

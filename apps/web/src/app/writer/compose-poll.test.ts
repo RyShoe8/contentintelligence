@@ -153,7 +153,7 @@ describe("compose poll mode sessionStorage", () => {
     saveComposePollMode(articleId, "write_only");
     assert.equal(storedComposePollMode(articleId), "write_only");
     assert.equal(resolveComposePollMode(articleId), "write_only");
-    assert.equal(resolveComposePollMode(articleId, "full"), "write_only");
+    assert.equal(resolveComposePollMode(articleId, { fallback: "full" }), "write_only");
   });
 
   it("clears stored poll mode", () => {
@@ -161,6 +161,19 @@ describe("compose poll mode sessionStorage", () => {
     clearComposePollMode(articleId);
     assert.equal(storedComposePollMode(articleId), null);
     assert.equal(resolveComposePollMode(articleId), "full");
+  });
+
+  it("prefers serverPhase over sessionStorage", () => {
+    saveComposePollMode(articleId, "full");
+    assert.equal(
+      resolveComposePollMode(articleId, { serverPhase: "write_only" }),
+      "write_only",
+    );
+  });
+
+  it("falls back to full when server and storage are missing", () => {
+    assert.equal(resolveComposePollMode(articleId), "full");
+    assert.equal(resolveComposePollMode(articleId, { serverPhase: null }), "full");
   });
 
   it("uses stable storage key", () => {

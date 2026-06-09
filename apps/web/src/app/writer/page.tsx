@@ -76,6 +76,7 @@ export default async function WriterPage({
           final_html: selectedRaw.final_html,
           compose_status: resolveWriterComposeStatus(selectedRaw),
           compose_error: selectedRaw.compose_error,
+          compose_phase: selectedRaw.compose_phase,
           compose_requested_at: selectedRaw.compose_requested_at?.toISOString(),
         }
       : null;

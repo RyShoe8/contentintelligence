@@ -182,6 +182,7 @@ export async function startWriterComposeJob(
     reference_urls: parsed.data.reference_urls,
     links: parsed.data.links,
     created_by: createdBy,
+    compose_phase: parsed.data.skip_research ? "write_only" : "full",
     preserve_compose_meta: parsed.data.skip_research,
   });
 

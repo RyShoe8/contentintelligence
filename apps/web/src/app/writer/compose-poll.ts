@@ -90,7 +90,14 @@ export function clearComposePollMode(articleId: string): void {
 
 export function resolveComposePollMode(
   articleId: string,
-  fallback: ComposePollMode = "full",
+  opts?: {
+    serverPhase?: ComposePollMode | null;
+    fallback?: ComposePollMode;
+  },
 ): ComposePollMode {
+  const fallback = opts?.fallback ?? "full";
+  if (opts?.serverPhase === "full" || opts?.serverPhase === "write_only") {
+    return opts.serverPhase;
+  }
   return storedComposePollMode(articleId) ?? fallback;
 }

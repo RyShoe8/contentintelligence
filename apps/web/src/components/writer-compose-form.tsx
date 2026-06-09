@@ -59,6 +59,7 @@ export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
   final_html?: string;
   compose_status?: "pending" | "ready" | "failed";
   compose_error?: string;
+  compose_phase?: "full" | "write_only";
   compose_requested_at?: string;
 };
 
@@ -67,6 +68,7 @@ type ComposeStatusResponse = {
   writer_article_id?: string;
   compose_status?: "pending" | "ready" | "failed";
   compose_error?: string;
+  compose_phase?: "full" | "write_only";
   compose_requested_at?: string;
   generated_html?: string;
   research_brief?: string;
@@ -152,6 +154,30 @@ function initialExpandedVoiceIds(
   return ids;
 }
 
+function initialPendingComposeState(selectedArticle: WriterComposeArticleDetail | null): {
+  writing: boolean;
+  composeWriteMode: "full" | "write_only" | null;
+  composeProgress: string | null;
+} {
+  if (
+    !selectedArticle?.id ||
+    !shouldPollCompose({
+      compose_status: selectedArticle.compose_status,
+      compose_requested_at: selectedArticle.compose_requested_at,
+    })
+  ) {
+    return { writing: false, composeWriteMode: null, composeProgress: null };
+  }
+  const mode = resolveComposePollMode(selectedArticle.id, {
+    serverPhase: selectedArticle.compose_phase,
+  });
+  return {
+    writing: true,
+    composeWriteMode: mode,
+    composeProgress: composeProgressLabel(mode),
+  };
+}
+
 export function WriterComposeForm({
   voices,
   articles,
@@ -161,6 +187,7 @@ export function WriterComposeForm({
 }: Props) {
   const router = useRouter();
   const readyVoices = voices.filter((v) => v.ready);
+  const pendingComposeInitial = initialPendingComposeState(selectedArticle);
 
   const [voiceId, setVoiceId] = useState(
     selectedArticle?.voice_id ?? readyVoices[0]?.id ?? "",
@@ -182,7 +209,7 @@ export function WriterComposeForm({
   const [showHtmlPreview, setShowHtmlPreview] = useState(
     () => !writerArticleDisplayHtml(selectedArticle).trim(),
   );
-  const [writing, setWriting] = useState(false);
+  const [writing, setWriting] = useState(pendingComposeInitial.writing);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [referencesFetched, setReferencesFetched] = useState<number | null>(null);
   const [referencesFailed, setReferencesFailed] = useState<string[]>([]);
@@ -212,8 +239,12 @@ export function WriterComposeForm({
   const [researchMode, setResearchMode] = useState<string | null>(null);
   const [articleDepth, setArticleDepth] = useState(WRITER_ARTICLE_DEPTH_DEFAULT);
   const [subtopicsText, setSubtopicsText] = useState("");
-  const [composeProgress, setComposeProgress] = useState<string | null>(null);
-  const [composeWriteMode, setComposeWriteMode] = useState<"full" | "write_only" | null>(null);
+  const [composeProgress, setComposeProgress] = useState<string | null>(
+    pendingComposeInitial.composeProgress,
+  );
+  const [composeWriteMode, setComposeWriteMode] = useState<"full" | "write_only" | null>(
+    pendingComposeInitial.composeWriteMode,
+  );
   const composePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const composePollArticleIdRef = useRef<string | null>(null);
   const composePollStartedRef = useRef(0);
@@ -335,6 +366,14 @@ export function WriterComposeForm({
             router.refresh();
             return;
           }
+          if (data.compose_status === "pending") {
+            const polledMode = resolveComposePollMode(pollArticleId, {
+              serverPhase: data.compose_phase,
+            });
+            setComposeWriteMode(polledMode);
+            setComposeProgress(composeProgressLabel(polledMode));
+            saveComposePollMode(pollArticleId, polledMode);
+          }
           if (
             data.compose_status === "pending" &&
             isComposePendingOrphan({
@@ -369,6 +408,7 @@ export function WriterComposeForm({
   const resumeArticleId = selectedArticle?.id;
   const resumeComposeStatus = selectedArticle?.compose_status;
   const resumeRequestedAt = selectedArticle?.compose_requested_at;
+  const resumeComposePhase = selectedArticle?.compose_phase;
 
   useEffect(() => {
     if (
@@ -381,7 +421,9 @@ export function WriterComposeForm({
       if (composePollArticleIdRef.current === resumeArticleId && composePollRef.current) {
         return;
       }
-      const mode = resolveComposePollMode(resumeArticleId);
+      const mode = resolveComposePollMode(resumeArticleId, {
+        serverPhase: resumeComposePhase,
+      });
       startComposePolling(resumeArticleId, mode);
     }
     return () => {
@@ -394,6 +436,7 @@ export function WriterComposeForm({
     resumeArticleId,
     resumeComposeStatus,
     resumeRequestedAt,
+    resumeComposePhase,
     startComposePolling,
     clearComposePollInterval,
   ]);
