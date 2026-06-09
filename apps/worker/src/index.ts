@@ -590,14 +590,30 @@ async function main(): Promise<void> {
     if (!voice) {
       return reply.code(404).send({ error: "voice_not_found" });
     }
-
-    try {
-      const result = await ingestVoiceRssStyleExamplesAndRecordSync(db, voice);
-      return reply.send({ voice_id: voiceId, ...result });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      return reply.code(500).send({ error: message });
+    if (!voice.rss_feed_url?.trim()) {
+      return reply.code(400).send({ error: "rss_feed_url not configured" });
     }
+
+    app.log.info({ voice_id: voiceId }, "style_examples_sync_accepted");
+
+    void (async () => {
+      try {
+        const jobDb = await getDb();
+        await ensureIndexes(jobDb);
+        const current = await getVoice(jobDb, voiceId);
+        if (!current) return;
+        const result = await ingestVoiceRssStyleExamplesAndRecordSync(jobDb, current);
+        app.log.info({ voice_id: voiceId, ...result }, "style_examples_sync_done");
+      } catch (e) {
+        app.log.error({ voice_id: voiceId, err: e }, "style_examples_sync_failed");
+      }
+    })();
+
+    return reply.code(202).send({
+      accepted: true,
+      voice_id: voiceId,
+      message: "Style examples sync started.",
+    });
   });
 
   const port = env.port;

@@ -221,43 +221,6 @@ async function workerVoiceGenerate(voiceId: string, force = false) {
   return parsed;
 }
 
-async function workerVoiceSyncStyleExamples(
-  voiceId: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const base = process.env.WORKER_URL?.replace(/\/$/, "");
-  if (!base) return { ok: false, error: "WORKER_URL is not configured" };
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.INGEST_SECRET) {
-    headers["x-ingest-secret"] = process.env.INGEST_SECRET;
-  }
-
-  const url = new URL(`${base}/voices/sync-style-examples`);
-  url.searchParams.set("voice_id", voiceId);
-
-  try {
-    const r = await fetch(url.toString(), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ voice_id: voiceId }),
-    });
-    if (!r.ok) {
-      const text = await r.text();
-      let err = text;
-      try {
-        const parsed = JSON.parse(text) as { error?: unknown };
-        if (parsed.error != null) err = String(parsed.error);
-      } catch {
-        // keep raw text
-      }
-      return { ok: false, error: err.slice(0, 240) };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: (e instanceof Error ? e.message : String(e)).slice(0, 240) };
-  }
-}
-
 export async function saveVoiceAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
@@ -311,7 +274,6 @@ export async function saveVoiceAction(formData: FormData) {
     if (!process.env.WORKER_URL?.trim()) {
       redirect(`/voices?voice_id=${voice.id}&saved=1&error=style_sync_unconfigured`);
     }
-    void workerVoiceSyncStyleExamples(voice.id);
     redirect(`/voices?voice_id=${voice.id}&saved=1&style_sync=1`);
   }
 

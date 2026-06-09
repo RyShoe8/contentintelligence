@@ -14,15 +14,18 @@ type Props = {
 };
 
 export function StyleExamplesSyncIndicator({
+  voiceId,
   startPolling,
   initialExampleCount,
   voiceIdParam,
 }: Props) {
   const router = useRouter();
-  const [polling, setPolling] = useState(startPolling && initialExampleCount === 0);
+  const [polling, setPolling] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [error, setError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartedRef = useRef(0);
+  const syncStartedRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -37,12 +40,12 @@ export function StyleExamplesSyncIndicator({
     router.replace(`/voices?voice_id=${voiceIdParam}`);
   }, [router, voiceIdParam]);
 
-  useEffect(() => {
-    if (!startPolling || initialExampleCount > 0) return;
-
-    pollStartedRef.current = Date.now();
+  const startPollingLoop = useCallback(() => {
+    stopPolling();
     setPolling(true);
     setTimedOut(false);
+    setError("");
+    pollStartedRef.current = Date.now();
 
     const tick = () => {
       if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
@@ -56,8 +59,61 @@ export function StyleExamplesSyncIndicator({
 
     void tick();
     pollRef.current = setInterval(tick, POLL_INTERVAL_MS);
-    return () => stopPolling();
-  }, [startPolling, initialExampleCount, router, stopPolling, clearSyncParam]);
+  }, [clearSyncParam, router, stopPolling]);
+
+  useEffect(() => {
+    if (!startPolling || initialExampleCount > 0) return;
+    if (syncStartedRef.current) return;
+    syncStartedRef.current = true;
+
+    let cancelled = false;
+
+    async function kickSync() {
+      setPolling(true);
+      setTimedOut(false);
+      setError("");
+
+      try {
+        const r = await fetch("/api/worker/voices/sync-style-examples", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voice_id: voiceId }),
+        });
+        const data = (await r.json().catch(() => ({}))) as { error?: string };
+        if (!r.ok) {
+          if (!cancelled) {
+            stopPolling();
+            setError(data.error ?? `Could not start RSS import (${r.status})`);
+            clearSyncParam();
+          }
+          return;
+        }
+      } catch (e) {
+        if (!cancelled) {
+          stopPolling();
+          setError(e instanceof Error ? e.message : "Could not start RSS import");
+          clearSyncParam();
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      startPollingLoop();
+    }
+
+    void kickSync();
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
+  }, [
+    clearSyncParam,
+    initialExampleCount,
+    startPolling,
+    startPollingLoop,
+    stopPolling,
+    voiceId,
+  ]);
 
   useEffect(() => {
     if (initialExampleCount > 0 && polling) {
@@ -65,6 +121,14 @@ export function StyleExamplesSyncIndicator({
       clearSyncParam();
     }
   }, [initialExampleCount, polling, stopPolling, clearSyncParam]);
+
+  if (error) {
+    return (
+      <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-700">
+        {error}
+      </p>
+    );
+  }
 
   if (polling) {
     return (
