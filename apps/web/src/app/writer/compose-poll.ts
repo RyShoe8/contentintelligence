@@ -1,8 +1,8 @@
 /** Compose generation is considered stalled after this many ms without ready/failed. */
 export const COMPOSE_STALE_MS = 15 * 60 * 1000;
 
-/** Pending jobs with no output progress are likely orphaned after worker restart. */
-export const COMPOSE_ORPHAN_MS = 4 * 60 * 1000;
+/** Pending jobs likely orphaned after worker restart (aligned with stale window). */
+export const COMPOSE_ORPHAN_MS = COMPOSE_STALE_MS;
 
 /** Client clock may be slightly ahead of server compose_requested_at. */
 export const COMPOSE_READY_CLOCK_BUFFER_MS = 5000;
@@ -51,10 +51,7 @@ export function isComposePendingOrphan(
   if (article.compose_status !== "pending") return false;
   const started = composeGenerationStartedAt(article);
   if (started == null) return false;
-  if (nowMs - started <= COMPOSE_ORPHAN_MS) return false;
-  const html = article.generated_html?.trim();
-  if (html) return false;
-  return true;
+  return nowMs - started > COMPOSE_ORPHAN_MS;
 }
 
 /**
@@ -76,6 +73,20 @@ export function isComposeReadyForPoll(
   const requested = composeGenerationStartedAt(article);
   if (requested == null) return true;
   return requested >= pollStartedAtMs - COMPOSE_READY_CLOCK_BUFFER_MS;
+}
+
+/** Accept ready when polling an in-flight job joined via compose_already_running (409). */
+export function shouldAcceptComposePollReady(
+  article: ComposePollArticleFields & { compose_status?: string },
+  pollStartedAtMs: number,
+  opts?: { joinedExistingJob?: boolean },
+): boolean {
+  if (article.compose_status !== "ready") return false;
+  if (isComposeReadyForPoll(article, pollStartedAtMs)) return true;
+  if (!opts?.joinedExistingJob) return false;
+  const requested = composeGenerationStartedAt(article);
+  if (requested == null) return true;
+  return requested <= pollStartedAtMs + COMPOSE_READY_CLOCK_BUFFER_MS;
 }
 
 export function composeProgressLabel(mode: ComposePollMode): string {

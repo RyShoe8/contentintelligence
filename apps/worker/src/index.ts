@@ -10,6 +10,7 @@ import {
   saveGmailOAuth,
   updateVoicePersonaStatus,
   recoverOrphanedComposeJobs,
+  COMPOSE_ORPHAN_RECOVERY_GRACE_MS,
 } from "@content-resourcer/db";
 import Fastify from "fastify";
 import { google } from "googleapis";
@@ -622,7 +623,10 @@ async function main(): Promise<void> {
   try {
     const db = await getDb();
     await ensureIndexes(db);
-    const { recovered, articleIds } = await recoverOrphanedComposeJobs(db);
+    const { recovered, articleIds } = await recoverOrphanedComposeJobs(db, {
+      failAllPending: false,
+      graceMs: COMPOSE_ORPHAN_RECOVERY_GRACE_MS,
+    });
     if (recovered > 0) {
       app.log.info({ recovered, articleIds }, "compose_job_recovered");
     }

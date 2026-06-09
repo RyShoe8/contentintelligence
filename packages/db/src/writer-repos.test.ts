@@ -61,7 +61,8 @@ describe("isStyleSourceUrlExcluded", () => {
 });
 
 describe("upsertWriterComposePending generated_html", () => {
-  it("clears generated_html when entering pending on re-queue", () => {
+  it("preserves generated_html when entering pending on re-queue", () => {
+    const priorHtml = "<p>Prior draft until new generation completes.</p>";
     const row = writerArticleSchema.parse({
       id: "00000000-0000-4000-8000-000000000011",
       organization_id: "00000000-0000-4000-8000-000000000020",
@@ -72,7 +73,7 @@ describe("upsertWriterComposePending generated_html", () => {
       reference_urls: [],
       source_text: "Research brief kept for write-only.",
       links: [],
-      generated_html: "",
+      generated_html: priorHtml,
       status: "draft",
       compose_status: "pending",
       compose_requested_at: new Date(),
@@ -81,7 +82,7 @@ describe("upsertWriterComposePending generated_html", () => {
       created_at: new Date(),
       updated_at: new Date(),
     });
-    assert.equal(row.generated_html, "");
+    assert.equal(row.generated_html, priorHtml);
     assert.match(row.source_text, /Research brief/);
   });
 });

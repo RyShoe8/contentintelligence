@@ -13,6 +13,7 @@ import {
   isComposeReadyForPoll,
   resolveComposePollMode,
   saveComposePollMode,
+  shouldAcceptComposePollReady,
   shouldPollCompose,
   storedComposePollMode,
 } from "./compose-poll.js";
@@ -75,7 +76,7 @@ describe("isComposePendingStale", () => {
 });
 
 describe("isComposePendingOrphan", () => {
-  it("is orphan when pending too long with no generated_html", () => {
+  it("is orphan when pending exceeds orphan window", () => {
     const old = new Date(Date.now() - COMPOSE_ORPHAN_MS - 1000);
     assert.equal(
       isComposePendingOrphan({
@@ -87,13 +88,13 @@ describe("isComposePendingOrphan", () => {
     );
   });
 
-  it("is not orphan when generated_html exists", () => {
-    const old = new Date(Date.now() - COMPOSE_ORPHAN_MS - 1000);
+  it("is not orphan when pending inside orphan window even with empty generated_html", () => {
+    const recent = new Date(Date.now() - 5 * 60 * 1000);
     assert.equal(
       isComposePendingOrphan({
         compose_status: "pending",
-        compose_requested_at: old,
-        generated_html: "<p>draft</p>",
+        compose_requested_at: recent,
+        generated_html: "",
       }),
       false,
     );
@@ -238,6 +239,38 @@ describe("isComposeReadyForPoll", () => {
           compose_requested_at: "2026-05-27T12:00:01.000Z",
         },
         pollStartedAt,
+      ),
+      false,
+    );
+  });
+});
+
+describe("shouldAcceptComposePollReady", () => {
+  const pollStartedAt = Date.parse("2026-05-27T12:00:00.000Z");
+
+  it("accepts ready for joined existing job when compose_requested_at predates poll start", () => {
+    assert.equal(
+      shouldAcceptComposePollReady(
+        {
+          compose_status: "ready",
+          compose_requested_at: "2026-05-27T11:58:00.000Z",
+        },
+        pollStartedAt,
+        { joinedExistingJob: true },
+      ),
+      true,
+    );
+  });
+
+  it("rejects stale ready from prior run when not joined existing job", () => {
+    assert.equal(
+      shouldAcceptComposePollReady(
+        {
+          compose_status: "ready",
+          compose_requested_at: "2026-05-27T11:00:00.000Z",
+        },
+        pollStartedAt,
+        { joinedExistingJob: false },
       ),
       false,
     );
