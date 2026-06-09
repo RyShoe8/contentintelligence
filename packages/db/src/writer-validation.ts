@@ -582,6 +582,38 @@ export function writerLinksNeedRevision(
   if (writerLinksMissingFromHtml(html, links).length > 0) return true;
   if (writerLinksClusteredAtEnd(html, links)) return true;
   if (writerLinksShallowOrFabricated(sourceText, html, links)) return true;
+  if (writerLinksUnnaturalPlacement(html, links)) return true;
+  return false;
+}
+
+/** True when links sit in parenthetical afterthoughts or other non-inline patterns. */
+export function writerLinksUnnaturalPlacement(html: string, links: WriterLink[]): boolean {
+  if (!links.length) return false;
+
+  const body = html.split(/<h2\b[^>]*>\s*Related links\s*<\/h2>/i)[0] ?? html;
+  if (/\(\s*<a\b/i.test(body)) return true;
+  if (/\bSee\s+<a\b/i.test(body)) return true;
+
+  for (const link of links) {
+    if (!writerLinkPresentInHtml(body, link.url)) continue;
+    const paragraphs = writerHtmlParagraphs(body);
+    const pIdx = writerLinkParagraphForUrl(body, link.url);
+    if (pIdx == null) continue;
+    const paragraph = paragraphs[pIdx] ?? "";
+    if (/\(\s*<a\b[^>]*>[\s\S]*?<\/a>\s*\)/i.test(paragraph)) return true;
+    if (/\.\s*\(\s*<a\b/i.test(paragraph)) return true;
+    if (/\bSee\s+<a\b/i.test(paragraph)) return true;
+
+    const anchorRe = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = anchorRe.exec(paragraph)) !== null) {
+      const href = m[1]?.trim();
+      if (!href || !hrefMatchesWriterUrl(href, link.url)) continue;
+      const inner = stripHtmlToPlainText(m[2] ?? "").trim().toLowerCase();
+      if (inner === "source") return true;
+    }
+  }
+
   return false;
 }
 
@@ -601,7 +633,7 @@ export function formatWriterLinksForPrompt(
     const label = l.label?.trim();
     const anchorPart = label
       ? opts?.exactAnchorLabels
-        ? ` — required anchor text (use exactly): ${label}`
+        ? ` — preferred anchor text (use when it fits naturally in a sentence): ${label}`
         : ` — suggested anchor: ${label}`
       : "";
     const placement =
@@ -611,7 +643,10 @@ export function formatWriterLinksForPrompt(
   lines.push("Placement: distribute links across the article body, not clustered at the end.");
   if (opts?.exactAnchorLabels && links.some((l) => l.label?.trim())) {
     lines.push(
-      "When required anchor text is listed, use that exact phrase as the link text inside the anchor tag.",
+      "When preferred anchor text is listed, use it as the link text only when it fits naturally in the sentence. Otherwise link the closest natural phrase already in the paragraph.",
+    );
+    lines.push(
+      "Never append links as parenthetical afterthoughts like (anchor text) or trailing See anchor.",
     );
   }
   return lines.join("\n");
@@ -776,6 +811,58 @@ function linkParagraphIndexInArray(paragraphs: string[], url: string): number | 
   return null;
 }
 
+const LINK_PHRASE_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "our",
+  "your",
+  "their",
+  "this",
+  "that",
+  "for",
+  "and",
+  "or",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "by",
+  "with",
+  "from",
+]);
+
+function linkablePhraseCandidates(anchor: string): string[] {
+  const words = anchor
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !LINK_PHRASE_STOP_WORDS.has(w.toLowerCase()));
+  const candidates: string[] = [];
+  for (let len = words.length; len >= 1; len--) {
+    for (let start = 0; start <= words.length - len; start++) {
+      candidates.push(words.slice(start, start + len).join(" "));
+    }
+  }
+  return candidates.sort((a, b) => b.length - a.length);
+}
+
+function wrapFirstMatchingPhrase(
+  paragraph: string,
+  plain: string,
+  href: string,
+  phrases: string[],
+): string | null {
+  for (const phrase of phrases) {
+    if (!normalizedContains(plain, phrase)) continue;
+    const phraseEsc = escapeHtmlText(phrase);
+    const phraseRe = new RegExp(escapeRegex(phrase), "i");
+    const updated = paragraph.replace(phraseRe, `<a href="${href}">${phraseEsc}</a>`);
+    if (updated !== paragraph) return updated;
+  }
+  return null;
+}
+
 function insertWriterLinkIntoParagraph(
   paragraph: string,
   link: WriterLink,
@@ -793,12 +880,15 @@ function insertWriterLinkIntoParagraph(
     return paragraph.replace(anchorRe, `<a href="${href}">${anchorEsc}</a>`);
   }
 
-  const periodSplit = paragraph.match(/^(<p\b[^>]*>[\s\S]*?)(\.\s+)([\s\S]*?<\/p>)$/i);
-  if (periodSplit) {
-    return `${periodSplit[1]} (<a href="${href}">${anchorEsc}</a>).${periodSplit[2]!.slice(1)}${periodSplit[3]}`;
-  }
+  const phraseMatch = wrapFirstMatchingPhrase(
+    paragraph,
+    plain,
+    href,
+    linkablePhraseCandidates(anchor),
+  );
+  if (phraseMatch) return phraseMatch;
 
-  return paragraph.replace(/<\/p>\s*$/i, ` (<a href="${href}">${anchorEsc}</a>).</p>`);
+  return paragraph;
 }
 
 /**
@@ -829,17 +919,25 @@ export function redistributeWriterLinksInBody(
     if (!extracted) continue;
 
     let sourceParagraph = paragraphs[currentIdx] ?? "";
-    sourceParagraph = sourceParagraph.replace(extracted.anchorHtml, extracted.anchorText);
-    sourceParagraph = sourceParagraph.replace(/\s{2,}/g, " ");
-    paragraphs[currentIdx] = sourceParagraph;
+    const strippedSource = sourceParagraph
+      .replace(extracted.anchorHtml, extracted.anchorText)
+      .replace(/\s{2,}/g, " ");
 
     if (currentIdx !== targetIdx) {
-      paragraphs[targetIdx] = insertWriterLinkIntoParagraph(
-        paragraphs[targetIdx] ?? "",
+      const targetBefore = paragraphs[targetIdx] ?? "";
+      const targetAfter = insertWriterLinkIntoParagraph(
+        targetBefore,
         link,
         extracted.anchorText,
       );
-      redistributed++;
+      if (
+        targetAfter !== targetBefore &&
+        writerLinkPresentInHtml(targetAfter, link.url)
+      ) {
+        paragraphs[targetIdx] = targetAfter;
+        paragraphs[currentIdx] = strippedSource;
+        redistributed++;
+      }
     }
   }
 
@@ -874,26 +972,23 @@ export function weaveMissingWriterLinksInBody(
   for (let i = 0; i < missingLinks.length; i++) {
     const link = missingLinks[i]!;
     const frac = WEAVE_PARAGRAPH_FRACTIONS[i % WEAVE_PARAGRAPH_FRACTIONS.length]!;
-    const pIdx = Math.min(
+    const preferredIdx = Math.min(
       paragraphs.length - 1,
       Math.max(0, Math.floor(paragraphs.length * frac)),
     );
-    const paragraph = paragraphs[pIdx] ?? "";
-    const href = escapeHtmlText(link.url);
-    const anchor = writerLinkAnchorText(link);
-    const anchorEsc = escapeHtmlText(anchor);
-    let updated = paragraph;
-
-    const plain = stripHtmlToPlainText(paragraph);
-    if (normalizedContains(plain, anchor) && !writerLinkPresentInHtml(paragraph, link.url)) {
-      const anchorRe = new RegExp(escapeRegex(anchor), "i");
-      updated = paragraph.replace(anchorRe, `<a href="${href}">${anchorEsc}</a>`);
+    const tryOrder = [
+      preferredIdx,
+      ...paragraphs.map((_, idx) => idx).filter((idx) => idx !== preferredIdx),
+    ];
+    for (const pIdx of tryOrder) {
+      const paragraph = paragraphs[pIdx] ?? "";
+      const updated = insertWriterLinkIntoParagraph(paragraph, link);
+      if (updated !== paragraph && writerLinkPresentInHtml(updated, link.url)) {
+        paragraphs[pIdx] = updated;
+        woven++;
+        break;
+      }
     }
-    if (updated === paragraph) {
-      updated = paragraph.replace(/<\/p>\s*$/i, ` See <a href="${href}">${anchorEsc}</a>.</p>`);
-    }
-    paragraphs[pIdx] = updated;
-    woven++;
   }
 
   let result = html;
@@ -908,11 +1003,11 @@ export function weaveMissingWriterLinksInBody(
   return { html: result, woven };
 }
 
-/** Weave missing links into body; redistribute end-heavy links; append Related links when needed. */
-export function finalizeWriterLinksInHtml(
+/** Inline weave + redistribution only (no Related links block or label enforcement). */
+export function mechanicalWriterLinksInHtml(
   html: string,
   links: WriterLink[],
-): { html: string; linksWoven: number; linksAppended: number; linksRedistributed: number } {
+): { html: string; linksWoven: number; linksRedistributed: number } {
   let out = html;
   let missing = writerLinksMissingFromHtml(out, links);
   let linksWoven = 0;
@@ -933,10 +1028,19 @@ export function finalizeWriterLinksInHtml(
       const reWoven = weaveMissingWriterLinksInBody(out, missing);
       out = reWoven.html;
       linksWoven += reWoven.woven;
-      missing = writerLinksMissingFromHtml(out, links);
     }
   }
 
+  return { html: out, linksWoven, linksRedistributed };
+}
+
+/** Enforce anchor labels and append Related links for any still-missing URLs. */
+export function postReviseWriterLinksInHtml(
+  html: string,
+  links: WriterLink[],
+): { html: string; linksAppended: number } {
+  let out = html;
+  const missing = writerLinksMissingFromHtml(out, links);
   let linksAppended = 0;
   if (missing.length) {
     const before = out;
@@ -944,7 +1048,22 @@ export function finalizeWriterLinksInHtml(
     if (out !== before) linksAppended = missing.length;
   }
   out = enforceWriterLinkAnchorLabels(out, links);
-  return { html: out, linksWoven, linksAppended, linksRedistributed };
+  return { html: out, linksAppended };
+}
+
+/** Weave missing links into body; redistribute end-heavy links; append Related links when needed. */
+export function finalizeWriterLinksInHtml(
+  html: string,
+  links: WriterLink[],
+): { html: string; linksWoven: number; linksAppended: number; linksRedistributed: number } {
+  const mechanical = mechanicalWriterLinksInHtml(html, links);
+  const post = postReviseWriterLinksInHtml(mechanical.html, links);
+  return {
+    html: post.html,
+    linksWoven: mechanical.linksWoven,
+    linksAppended: post.linksAppended,
+    linksRedistributed: mechanical.linksRedistributed,
+  };
 }
 
 export function writerLinkAnchorMatches(html: string, link: WriterLink): boolean {
@@ -1023,4 +1142,15 @@ export function defaultComposeTitle(topic: string): string {
   const trimmed = topic.trim();
   if (!trimmed) return "Untitled article";
   return trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed;
+}
+
+export type WriterArticleHtmlFields = {
+  final_html?: string | null;
+  generated_html?: string;
+};
+
+/** Prefer user-saved HTML over worker-generated output when displaying or editing. */
+export function writerArticleDisplayHtml(article: WriterArticleHtmlFields | null | undefined): string {
+  if (!article) return "";
+  return article.final_html?.trim() || article.generated_html?.trim() || "";
 }

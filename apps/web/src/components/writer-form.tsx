@@ -7,6 +7,7 @@ import {
   parseWriterLinks,
   WRITER_LINK_MAX,
   WRITER_SOURCE_MIN_CHARS,
+  writerArticleDisplayHtml,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveRewriterArticleAction, deleteRewriterArticleAction } from "@/app/rewriter/actions";
@@ -71,12 +72,6 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
-function displayHtml(article: WriterArticleDetail | null, draftHtml: string): string {
-  if (draftHtml) return draftHtml;
-  if (!article) return "";
-  return article.final_html?.trim() || article.generated_html || "";
-}
-
 function initialExpandedVoiceIds(
   voices: WriterVoiceOption[],
   articles: WriterArticleListItem[],
@@ -111,10 +106,10 @@ export function WriterForm({
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
-  const [outputHtml, setOutputHtml] = useState(() =>
-    displayHtml(selectedArticle, selectedArticle?.generated_html ?? ""),
+  const [outputHtml, setOutputHtml] = useState(() => writerArticleDisplayHtml(selectedArticle));
+  const [showHtmlPreview, setShowHtmlPreview] = useState(
+    () => !writerArticleDisplayHtml(selectedArticle).trim(),
   );
-  const [showHtmlPreview, setShowHtmlPreview] = useState(true);
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [truncatedNotice, setTruncatedNotice] = useState(false);
@@ -732,8 +727,8 @@ export function WriterForm({
 
               <p className="text-xs text-[var(--muted)]">
                 {showHtmlPreview
-                  ? "Switch to HTML source to edit markup. Save uses the current HTML."
-                  : "Edit HTML, then save. Paste into your blog WYSIWYG (HTML mode)."}
+                  ? "Switch to HTML source to edit markup, then Save."
+                  : "Edit in HTML source, then Save. Paste into your blog WYSIWYG (HTML mode)."}
               </p>
 
               <label className="flex flex-col gap-1 text-sm">

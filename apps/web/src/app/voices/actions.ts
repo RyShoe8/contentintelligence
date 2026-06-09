@@ -1,19 +1,25 @@
 "use server";
 
 import {
+  createWriterStyleExample,
   deleteVoice,
+  deleteWriterStyleExample,
   ensureIndexes,
   getContentSignal,
   getVoice,
   linkVoiceToSignals,
   normalizeDistributionPlatforms,
+  updateWriterStyleExample,
   upsertVoice,
+  WRITER_SOURCE_MIN_CHARS,
   type Voice,
 } from "@content-resourcer/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
+import { extractWriterFingerprints } from "@/lib/writer-fingerprints";
+import { writerStyleExampleHtmlFromPaste } from "@/lib/writer-style-example-html";
 
 function splitLines(s: string): string[] {
   return s
@@ -380,4 +386,92 @@ export async function deleteVoiceAction(formData: FormData) {
 
   revalidatePath("/voices");
   redirect("/voices?deleted=1");
+}
+
+function styleExampleRedirect(voiceId: string, query: string) {
+  redirect(`/voices?voice_id=${encodeURIComponent(voiceId)}&${query}`);
+}
+
+export async function importVoiceStyleExampleAction(formData: FormData) {
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
+  const voiceId = String(formData.get("voice_id") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+
+  if (!voiceId) redirect("/voices?error=missing_voice");
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const voice = await getVoiceForSession(db, voiceId, orgId);
+  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  const finalHtml = writerStyleExampleHtmlFromPaste(content);
+  if (finalHtml.length < WRITER_SOURCE_MIN_CHARS) {
+    styleExampleRedirect(voiceId, "error=style_example_too_short");
+  }
+
+  await createWriterStyleExample(db, {
+    organization_id: orgId,
+    voice_id: voiceId,
+    title: title || "Style example",
+    final_html: finalHtml,
+    created_by: session.user.email ?? "unknown",
+  });
+
+  void extractWriterFingerprints(voiceId, orgId, finalHtml).catch(() => {});
+
+  revalidatePath("/voices");
+  styleExampleRedirect(voiceId, "style_example_saved=1");
+}
+
+export async function updateVoiceStyleExampleAction(formData: FormData) {
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
+  const voiceId = String(formData.get("voice_id") ?? "").trim();
+  const exampleId = String(formData.get("example_id") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+
+  if (!voiceId || !exampleId) redirect("/voices?error=missing_voice");
+
+  const finalHtml = writerStyleExampleHtmlFromPaste(content);
+  if (finalHtml.length < WRITER_SOURCE_MIN_CHARS) {
+    styleExampleRedirect(voiceId, "error=style_example_too_short");
+  }
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const voice = await getVoiceForSession(db, voiceId, orgId);
+  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  const updated = await updateWriterStyleExample(db, exampleId, orgId, voiceId, {
+    title: title || "Style example",
+    final_html: finalHtml,
+  });
+  if (!updated) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  void extractWriterFingerprints(voiceId, orgId, finalHtml).catch(() => {});
+
+  revalidatePath("/voices");
+  styleExampleRedirect(voiceId, "style_example_saved=1");
+}
+
+export async function deleteVoiceStyleExampleAction(formData: FormData) {
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
+  const voiceId = String(formData.get("voice_id") ?? "").trim();
+  const exampleId = String(formData.get("example_id") ?? "").trim();
+
+  if (!voiceId || !exampleId) redirect("/voices?error=missing_voice");
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const voice = await getVoiceForSession(db, voiceId, orgId);
+  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  await deleteWriterStyleExample(db, exampleId, orgId, voiceId);
+
+  revalidatePath("/voices");
+  styleExampleRedirect(voiceId, "style_example_deleted=1");
 }

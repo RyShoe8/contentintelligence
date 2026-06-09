@@ -1,9 +1,12 @@
 import Link from "next/link";
 import {
   ensureIndexes,
+  getWriterArticle,
   listContentSignals,
   listVoices,
   getVoice,
+  listWriterStyleExamplesForVoice,
+  writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -23,6 +26,10 @@ import { VOICE_FIELD_TIPS } from "./field-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { LocalDateTime } from "@/components/local-date-time";
 import { LabelWithTip } from "../signals/label-with-tip";
+import {
+  VoiceStyleExamplesEditor,
+  type VoiceStyleExampleItem,
+} from "@/components/voice-style-examples-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +68,8 @@ export default async function VoicesPage({
     generating?: string;
     error?: string;
     error_detail?: string;
+    style_example_saved?: string;
+    style_example_deleted?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -83,6 +92,19 @@ export default async function VoicesPage({
     ? shouldPollPersona(activeVoice, sp.generating) && !activePersonaStale
     : false;
 
+  const styleExamples: VoiceStyleExampleItem[] = activeVoice
+    ? (await listWriterStyleExamplesForVoice(db, orgId, activeVoice.id)).map((ex) => {
+        const html = writerArticleHtmlForLearning(ex);
+        return {
+          id: ex.id,
+          title: ex.title,
+          updated_at: ex.updated_at.toISOString(),
+          char_count: html.length,
+          html,
+        };
+      })
+    : [];
+
   const errorMsg =
     sp.error === "name"
       ? "Enter a voice name."
@@ -97,7 +119,11 @@ export default async function VoicesPage({
             })()
           : sp.error === "missing_voice"
             ? "Select a voice to generate."
-            : null;
+            : sp.error === "style_example_too_short"
+              ? `Style example must be at least 100 characters.`
+              : sp.error === "style_example_not_found"
+                ? "Style example not found."
+                : null;
 
   return (
     <div className="space-y-6">
@@ -114,6 +140,16 @@ export default async function VoicesPage({
       {sp.deleted === "1" ? (
         <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">
           Voice deleted.
+        </p>
+      ) : null}
+      {sp.style_example_saved === "1" ? (
+        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-700">
+          Style example saved. Writer will use it when this voice writes an article.
+        </p>
+      ) : null}
+      {sp.style_example_deleted === "1" ? (
+        <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">
+          Style example deleted.
         </p>
       ) : null}
       {activeVoice ? (
@@ -330,6 +366,10 @@ export default async function VoicesPage({
               <LocalDateTime iso={activeVoice.persona_generated_at.toISOString()} />
             ) : null}
           </label>
+
+          {activeVoice ? (
+            <VoiceStyleExamplesEditor voiceId={activeVoice.id} examples={styleExamples} />
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <button

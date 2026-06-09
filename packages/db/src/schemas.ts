@@ -641,7 +641,7 @@ export const writerArticleLinkSchema = z.object({
   label: z.string().max(80).optional(),
 });
 
-export const writerArticleModeSchema = z.enum(["compose", "rewrite"]);
+export const writerArticleModeSchema = z.enum(["compose", "rewrite", "style_example"]);
 export type WriterArticleMode = z.infer<typeof writerArticleModeSchema>;
 
 export const writerComposeJobStatusSchema = z.enum(["pending", "ready", "failed"]);

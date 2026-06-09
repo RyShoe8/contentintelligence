@@ -44,7 +44,7 @@ Rules:
 - Keep every factual claim and every existing <a href> URL unchanged.
 - Add depth: new H2/H3 sections, examples, nuance, caveats, and practical detail drawn from the research brief.
 - Target ${opts.minWords}–${opts.maxWords} words total.
-- When required anchor text is listed for a link, use that exact phrase as the link text.
+- When required anchor text is listed for a link, use it only when it fits naturally in a sentence; never as a parenthetical afterthought like (anchor text) or trailing See anchor.
 - Do NOT add a "Related links" section.${topicBlock}${subtopicsBlock}`;
 
   const userPrompt = [

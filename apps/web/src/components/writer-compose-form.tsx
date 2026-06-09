@@ -18,6 +18,7 @@ import {
   WRITER_WEB_SEARCH_MAX_QUERIES_LIMIT,
   WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
   WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
+  writerArticleDisplayHtml,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
@@ -132,12 +133,6 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
-function displayHtml(article: WriterComposeArticleDetail | null, draftHtml: string): string {
-  if (draftHtml) return draftHtml;
-  if (!article) return "";
-  return article.final_html?.trim() || article.generated_html || "";
-}
-
 function initialExpandedVoiceIds(
   voices: WriterComposeVoiceOption[],
   articles: WriterComposeArticleListItem[],
@@ -177,10 +172,10 @@ export function WriterComposeForm({
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
-  const [outputHtml, setOutputHtml] = useState(() =>
-    displayHtml(selectedArticle, selectedArticle?.generated_html ?? ""),
+  const [outputHtml, setOutputHtml] = useState(() => writerArticleDisplayHtml(selectedArticle));
+  const [showHtmlPreview, setShowHtmlPreview] = useState(
+    () => !writerArticleDisplayHtml(selectedArticle).trim(),
   );
-  const [showHtmlPreview, setShowHtmlPreview] = useState(true);
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [referencesFetched, setReferencesFetched] = useState<number | null>(null);
@@ -1156,8 +1151,8 @@ export function WriterComposeForm({
 
               <p className="text-xs text-[var(--muted)]">
                 {showHtmlPreview
-                  ? "Switch to HTML source to edit markup. Save uses the current HTML."
-                  : "Edit HTML, then save. Paste into your blog WYSIWYG (HTML mode)."}
+                  ? "Switch to HTML source to edit markup, then Save."
+                  : "Edit in HTML source, then Save. Paste into your blog WYSIWYG (HTML mode)."}
               </p>
 
               <label className="flex flex-col gap-1 text-sm">

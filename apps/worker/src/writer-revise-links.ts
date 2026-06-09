@@ -18,13 +18,13 @@ Rules:
 - Keep factual claims and overall structure; do not invent new offers, stats, or quotes.
 - Weave each required URL into paragraphs that already discuss related ideas in the current HTML or original source.
 - Spread links across the article body when there are multiple URLs.
-- When required anchor text is listed, use that exact phrase as the link text inside the anchor tag.
-- Otherwise, suggested anchor text is a hint only—prefer natural phrasing already in the article.
+- When preferred anchor text is listed, use it as link text only when it fits naturally in the sentence; otherwise link the closest natural phrase already in the paragraph.
 - Do NOT add sentences whose main purpose is to name a product/brand from the link list.
 - If the source does not discuss a brand/product, do NOT invent a pitch line; link an existing relevant phrase instead.
 - Do NOT add sentences whose only purpose is to hold a link; remove link-only promotional one-liners.
 - Do NOT cluster all links in the final paragraph or final three sentences.
 - Do NOT add a "Related links" or link-dump section.
+- Never use parenthetical link stubs like (anchor text) or trailing See anchor patterns — rewrite them into inline sentence grammar.
 - Each listed URL must appear exactly once.
 - Do NOT add URLs that were not listed.`;
 

@@ -1,5 +1,6 @@
 import {
-  finalizeWriterLinksInHtml,
+  mechanicalWriterLinksInHtml,
+  postReviseWriterLinksInHtml,
   type Voice,
   type WriterLink,
   writerLinksNeedRevision,
@@ -31,25 +32,30 @@ export async function applyWriterLinkPipeline(
   let linksAppended = 0;
   let linksRedistributed = 0;
 
-  if (
-    opts.links.length > 0 &&
-    writerLinksNeedRevision(out, opts.links, opts.sourceText.trim())
-  ) {
+  if (!opts.links.length) {
+    return { html: out, linksRevised, linksWoven, linksAppended, linksRedistributed };
+  }
+
+  const source = opts.sourceText.trim();
+  const mechanical = mechanicalWriterLinksInHtml(out, opts.links);
+  out = mechanical.html;
+  linksWoven += mechanical.linksWoven;
+  linksRedistributed += mechanical.linksRedistributed;
+
+  if (writerLinksNeedRevision(out, opts.links, source)) {
     out = await reviseWriterLinksInHtml({
       html: out,
       links: opts.links,
       voice: opts.voice,
-      sourceText: opts.sourceText.trim(),
+      sourceText: source,
       exactAnchorLabels: opts.exactAnchorLabels,
     });
     linksRevised = true;
   }
 
-  const finalized = finalizeWriterLinksInHtml(out, opts.links);
-  out = finalized.html;
-  linksWoven += finalized.linksWoven;
-  linksAppended += finalized.linksAppended;
-  linksRedistributed += finalized.linksRedistributed;
+  const post = postReviseWriterLinksInHtml(out, opts.links);
+  out = post.html;
+  linksAppended += post.linksAppended;
 
   return { html: out, linksRevised, linksWoven, linksAppended, linksRedistributed };
 }

@@ -11,6 +11,7 @@ import {
   weaveMissingWriterLinksInBody,
   writerArticleDepthGuidance,
   writerArticleDepthLabel,
+  writerArticleDisplayHtml,
   writerComposeResearchConfig,
   writerComposeTopicDriftIssues,
   writerLinkAnchorMatches,
@@ -20,6 +21,7 @@ import {
   writerLinksMissingFromHtml,
   writerLinksNeedSpread,
   writerLinksNeedRevision,
+  writerLinksUnnaturalPlacement,
   writerLinksPresentCount,
   writerLinksShallowOrFabricated,
   writerNonRequestedLinksInHtml,
@@ -185,9 +187,9 @@ describe("writerLinksNeedSpread", () => {
 describe("redistributeWriterLinksInBody", () => {
   it("spreads three links clustered in the last paragraph", () => {
     const html = [
-      "<p>Opening paragraph one.</p>",
-      "<p>Second paragraph two.</p>",
-      "<p>Third paragraph three.</p>",
+      "<p>Opening paragraph one discusses A topics.</p>",
+      "<p>Second paragraph two mentions B details.</p>",
+      "<p>Third paragraph three covers C options.</p>",
       '<p>Fourth with <a href="https://a.example">A</a>, <a href="https://b.example">B</a>, and <a href="https://c.example">C</a>.</p>',
     ].join("\n");
     const links = [
@@ -206,7 +208,7 @@ describe("redistributeWriterLinksInBody", () => {
   it("moves a single last-paragraph link toward the middle", () => {
     const html = [
       "<p>Paragraph one.</p>",
-      "<p>Paragraph two.</p>",
+      "<p>Paragraph two about Solo options.</p>",
       "<p>Paragraph three.</p>",
       "<p>Paragraph four.</p>",
       '<p>Paragraph five with <a href="https://solo.example">Solo</a>.</p>',
@@ -468,6 +470,27 @@ describe("parseWriterSubtopics", () => {
   });
 });
 
+describe("writerArticleDisplayHtml", () => {
+  it("prefers final_html over generated_html", () => {
+    assert.equal(
+      writerArticleDisplayHtml({
+        final_html: "<p>Saved edit</p>",
+        generated_html: "<p>Generated draft</p>",
+      }),
+      "<p>Saved edit</p>",
+    );
+  });
+
+  it("falls back to generated_html when final_html is empty", () => {
+    assert.equal(
+      writerArticleDisplayHtml({
+        generated_html: "<p>Generated draft</p>",
+      }),
+      "<p>Generated draft</p>",
+    );
+  });
+});
+
 describe("writerArticleDepthGuidance", () => {
   it("maps depth tiers to word targets", () => {
     assert.equal(writerArticleDepthLabel(10), "Overview");
@@ -657,20 +680,55 @@ describe("writerLinksShallowOrFabricated", () => {
 });
 
 describe("weaveMissingWriterLinksInBody", () => {
-  it("inserts missing links as inline anchors in body paragraphs", () => {
-    const html = "<p>Intro paragraph one.</p><p>Middle paragraph two.</p><p>Closing paragraph three.</p>";
+  it("inserts missing links as inline anchors when label text appears in a paragraph", () => {
+    const html =
+      "<p>Intro paragraph one.</p><p>Middle paragraph about Missing items.</p><p>Closing paragraph three.</p>";
     const { html: out, woven } = weaveMissingWriterLinksInBody(html, [
       { url: "https://missing.example", label: "Missing" },
     ]);
     assert.equal(woven, 1);
     assert.equal(writerLinkPresentInHtml(out, "https://missing.example"), true);
+    assert.doesNotMatch(out, /\(\s*<a\b/i);
+    assert.doesNotMatch(out, /\bSee\s+<a\b/i);
     assert.doesNotMatch(out, /Related links/i);
+  });
+
+  it("does not append parenthetical or See links when label is absent from paragraph", () => {
+    const html = "<p>Intro paragraph one.</p><p>Middle paragraph two.</p><p>Closing paragraph three.</p>";
+    const { html: out, woven } = weaveMissingWriterLinksInBody(html, [
+      { url: "https://missing.example", label: "Missing" },
+    ]);
+    assert.equal(woven, 0);
+    assert.equal(writerLinkPresentInHtml(out, "https://missing.example"), false);
+    assert.doesNotMatch(out, /\(\s*<a\b/i);
+    assert.doesNotMatch(out, /\bSee\s+<a\b/i);
+  });
+});
+
+describe("writerLinksUnnaturalPlacement", () => {
+  it("flags parenthetical anchor afterthoughts", () => {
+    const html = '<p>We can help with your project (<a href="https://firm.example">our firm</a>).</p>';
+    const links = [{ url: "https://firm.example", label: "our firm" }];
+    assert.equal(writerLinksUnnaturalPlacement(html, links), true);
+  });
+
+  it("flags trailing See anchor patterns", () => {
+    const html = '<p>Learn more about options. See <a href="https://guide.example">this guide</a>.</p>';
+    const links = [{ url: "https://guide.example", label: "this guide" }];
+    assert.equal(writerLinksUnnaturalPlacement(html, links), true);
+  });
+
+  it("returns false for inline links in normal sentence grammar", () => {
+    const html = '<p>Contact <a href="https://firm.example">our firm</a> for a consultation.</p>';
+    const links = [{ url: "https://firm.example", label: "our firm" }];
+    assert.equal(writerLinksUnnaturalPlacement(html, links), false);
   });
 });
 
 describe("finalizeWriterLinksInHtml", () => {
   it("weaves before appending related links", () => {
-    const html = "<p>Only one <a href=\"https://one.example\">One</a>.</p><p>Second paragraph.</p>";
+    const html =
+      '<p>Topics One and Two with <a href="https://one.example">One</a>.</p><p>Second paragraph.</p>';
     const { html: out, linksWoven, linksAppended, linksRedistributed } = finalizeWriterLinksInHtml(html, [
       { url: "https://one.example" },
       { url: "https://two.example", label: "Two" },
@@ -685,11 +743,24 @@ describe("finalizeWriterLinksInHtml", () => {
     assert.doesNotMatch(out, /Related links/i);
   });
 
+  it("appends Related links instead of parenthetical body inserts when label absent", () => {
+    const html = '<p>Only one <a href="https://one.example">One</a>.</p><p>Second paragraph.</p>';
+    const { html: out, linksWoven, linksAppended } = finalizeWriterLinksInHtml(html, [
+      { url: "https://one.example" },
+      { url: "https://two.example", label: "Two" },
+    ]);
+    assert.equal(linksWoven, 0);
+    assert.equal(linksAppended, 1);
+    const body = out.split(/<h2\b[^>]*>\s*Related links\s*<\/h2>/i)[0] ?? out;
+    assert.doesNotMatch(body, /\(\s*<a\b/i);
+    assert.match(out, /Related links/i);
+  });
+
   it("redistributes links clustered at the end after weaving", () => {
     const html = [
-      "<p>Opening paragraph one.</p>",
-      "<p>Second paragraph two.</p>",
-      "<p>Third paragraph three.</p>",
+      "<p>Opening paragraph one discusses A topics.</p>",
+      "<p>Second paragraph two mentions B details.</p>",
+      "<p>Third paragraph three covers C options.</p>",
       '<p>Fourth with <a href="https://a.example">A</a>, <a href="https://b.example">B</a>, and <a href="https://c.example">C</a>.</p>',
     ].join("\n");
     const links = [
@@ -704,9 +775,9 @@ describe("finalizeWriterLinksInHtml", () => {
 
   it("enforces user anchor labels after redistribution", () => {
     const html = [
-      "<p>Opening paragraph one.</p>",
-      "<p>Second paragraph two.</p>",
-      "<p>Third paragraph three.</p>",
+      "<p>Opening paragraph one discusses Label A topics.</p>",
+      "<p>Second paragraph two mentions Label B details.</p>",
+      "<p>Third paragraph three covers Label C options.</p>",
       '<p>Fourth with <a href="https://a.example">wrong A</a>, <a href="https://b.example">wrong B</a>, and <a href="https://c.example">wrong C</a>.</p>',
     ].join("\n");
     const links = [
@@ -727,6 +798,15 @@ describe("writerLinksNeedRevision", () => {
     const html = '<p>Short pitch for <a href="https://brand.example">BrandX</a>.</p>';
     assert.equal(
       writerLinksNeedRevision(html, [{ url: "https://brand.example", label: "BrandX" }], source),
+      true,
+    );
+  });
+
+  it("triggers on parenthetical link placement", () => {
+    const source = "x".repeat(WRITER_SOURCE_MIN_CHARS);
+    const html = '<p>We can help (<a href="https://firm.example">our firm</a>).</p>';
+    assert.equal(
+      writerLinksNeedRevision(html, [{ url: "https://firm.example", label: "our firm" }], source),
       true,
     );
   });

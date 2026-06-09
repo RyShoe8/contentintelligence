@@ -99,4 +99,17 @@ describe("resolveWriterComposeStatus", () => {
     });
     assert.equal(resolveWriterComposeStatus(article), undefined);
   });
+
+  it("parses style_example mode", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "style_example",
+      status: "saved",
+      generated_html: "",
+      final_html: "<p>Human blog copy for style matching.</p>".repeat(8),
+      source_text: "",
+    });
+    assert.equal(parsed.mode, "style_example");
+    assert.equal(resolveWriterComposeStatus(parsed), undefined);
+  });
 });

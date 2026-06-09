@@ -59,6 +59,8 @@ export async function listWriterArticlesByOrgAndMode(
   return docs.map((d) => writerArticleSchema.parse(d));
 }
 
+const WRITER_STYLE_EXAMPLE_MODES: WriterArticleMode[] = ["compose", "style_example"];
+
 export async function listSavedWriterExamplesForVoice(
   db: Db,
   organizationId: string,
@@ -70,6 +72,7 @@ export async function listSavedWriterExamplesForVoice(
       organization_id: organizationId,
       voice_id: voiceId,
       status: "saved",
+      mode: { $in: WRITER_STYLE_EXAMPLE_MODES },
     })
     .sort({ updated_at: -1 })
     .limit(limit)
@@ -77,6 +80,109 @@ export async function listSavedWriterExamplesForVoice(
   return docs
     .map((d) => writerArticleSchema.parse(d))
     .filter((a) => writerArticleHtmlForLearning(a).length > 0);
+}
+
+export async function listWriterStyleExamplesForVoice(
+  db: Db,
+  organizationId: string,
+  voiceId: string,
+): Promise<WriterArticle[]> {
+  const docs = await writerArticles(db)
+    .find({
+      organization_id: organizationId,
+      voice_id: voiceId,
+      mode: "style_example",
+    })
+    .sort({ updated_at: -1 })
+    .toArray();
+  return docs.map((d) => writerArticleSchema.parse(d));
+}
+
+export type CreateWriterStyleExampleInput = {
+  organization_id: string;
+  voice_id: string;
+  title: string;
+  final_html: string;
+  created_by: string;
+};
+
+export async function createWriterStyleExample(
+  db: Db,
+  data: CreateWriterStyleExampleInput,
+): Promise<WriterArticle> {
+  const now = new Date();
+  const row: WriterArticle = writerArticleSchema.parse({
+    id: randomUUID(),
+    organization_id: data.organization_id,
+    voice_id: data.voice_id,
+    mode: "style_example",
+    title: data.title.trim(),
+    source_text: "",
+    links: [],
+    generated_html: "",
+    final_html: data.final_html,
+    status: "saved",
+    created_by: data.created_by,
+    created_at: now,
+    updated_at: now,
+  });
+  await writerArticles(db).insertOne(row);
+  return row;
+}
+
+export async function getWriterStyleExample(
+  db: Db,
+  id: string,
+  organizationId: string,
+  voiceId: string,
+): Promise<WriterArticle | null> {
+  const doc = await writerArticles(db).findOne({
+    id,
+    organization_id: organizationId,
+    voice_id: voiceId,
+    mode: "style_example",
+  });
+  return doc ? writerArticleSchema.parse(doc) : null;
+}
+
+export async function updateWriterStyleExample(
+  db: Db,
+  id: string,
+  organizationId: string,
+  voiceId: string,
+  update: { title: string; final_html: string },
+): Promise<WriterArticle | null> {
+  const existing = await getWriterStyleExample(db, id, organizationId, voiceId);
+  if (!existing) return null;
+
+  const now = new Date();
+  const row = writerArticleSchema.parse({
+    ...existing,
+    title: update.title.trim() || existing.title,
+    final_html: update.final_html,
+    status: "saved",
+    updated_at: now,
+  });
+  await writerArticles(db).replaceOne(
+    { id, organization_id: organizationId, voice_id: voiceId, mode: "style_example" },
+    row,
+  );
+  return row;
+}
+
+export async function deleteWriterStyleExample(
+  db: Db,
+  id: string,
+  organizationId: string,
+  voiceId: string,
+): Promise<boolean> {
+  const result = await writerArticles(db).deleteOne({
+    id,
+    organization_id: organizationId,
+    voice_id: voiceId,
+    mode: "style_example",
+  });
+  return result.deletedCount > 0;
 }
 
 export type UpsertWriterArticleDraftInput = {

@@ -163,6 +163,14 @@ Do not add sections about community engagement, creating content, or promoting t
     ? "- Apply full brand voice (perspective, caveats, rhetorical patterns) while keeping the topic as the article subject — not brand-as-subject sections."
     : "- Include the brand's viewpoint and caveats where relevant.";
 
+  const linkRulesBlock =
+    opts.links.length > 0
+      ? `\nRequired links:
+- Weave each URL into normal sentence grammar as inline <a href> anchors.
+- Never end a sentence with a parenthetical link like (anchor text) or a trailing See anchor.
+- Do not add sentences whose only purpose is to hold a link; wrap a phrase already in the sentence when possible.`
+      : "";
+
   return `Write a full blog article in HTML from structured facts and brand interpretation.
 Rules:
 - Do NOT rewrite any original draft text. You never saw the original wording.
@@ -172,7 +180,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
