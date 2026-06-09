@@ -3,6 +3,7 @@ import {
   closeDb,
   ensureIndexes,
   getDb,
+  getVoice,
   isContentSignalIngestDue,
   listScheduledContentSignals,
   getGmailOAuth,
@@ -19,6 +20,7 @@ import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
+import { ingestVoiceRssStyleExamples } from "./jobs/ingest-voice-rss-style-examples.js";
 import {
   isVoicePersonaGenerateInFlight,
   runVoicePersonaGenerateExclusive,
@@ -570,6 +572,32 @@ async function main(): Promise<void> {
       voice_id: voiceId,
       message: "Voice persona generation started.",
     });
+  });
+
+  app.post("/voices/sync-style-examples", async (req, reply) => {
+    if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    const q = req.query as { voice_id?: string };
+    const voiceId = q.voice_id?.trim();
+    if (!voiceId) {
+      return reply.code(400).send({ error: "voice_id is required" });
+    }
+
+    const db = await getDb();
+    await ensureIndexes(db);
+    const voice = await getVoice(db, voiceId);
+    if (!voice) {
+      return reply.code(404).send({ error: "voice_not_found" });
+    }
+
+    try {
+      const result = await ingestVoiceRssStyleExamples(db, voice);
+      return reply.send({ voice_id: voiceId, ...result });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: message });
+    }
   });
 
   const port = env.port;

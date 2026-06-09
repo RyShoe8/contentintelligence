@@ -51,6 +51,8 @@ export const env = {
   brandCorpusMaxChars: num("BRAND_CORPUS_MAX_CHARS", 24000),
   brandMemoryMaxItems: num("BRAND_MEMORY_MAX_ITEMS", 20),
   brandProfileForceRebuild: bool("BRAND_PROFILE_FORCE_REBUILD", false),
+  voiceRssMaxArticles: num("VOICE_RSS_MAX_ARTICLES", 15),
+  voiceRssArticleMaxChars: num("VOICE_RSS_ARTICLE_MAX_CHARS", 50_000),
   signalScheduleCron: process.env.SIGNAL_SCHEDULE_CRON ?? "* * * * *",
   /** Minimum lookback window (hours) when using gap since last ingest (avoids zero-width double-sync). */
   ingestMinGapHours: num("INGEST_MIN_GAP_HOURS", 5 / 60),

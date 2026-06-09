@@ -1,25 +1,22 @@
 "use server";
 
 import {
-  createWriterStyleExample,
+  addExcludedStyleSourceUrl,
   deleteVoice,
   deleteWriterStyleExample,
   ensureIndexes,
   getContentSignal,
   getVoice,
+  getWriterStyleExample,
   linkVoiceToSignals,
   normalizeDistributionPlatforms,
-  updateWriterStyleExample,
   upsertVoice,
-  WRITER_SOURCE_MIN_CHARS,
   type Voice,
 } from "@content-resourcer/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { connectMongo } from "@/lib/mongo";
 import { canAccessContentSignal, requireOrgMember } from "@/lib/org-auth";
-import { extractWriterFingerprints } from "@/lib/writer-fingerprints";
-import { writerStyleExampleHtmlFromPaste } from "@/lib/writer-style-example-html";
 
 function splitLines(s: string): string[] {
   return s
@@ -223,6 +220,25 @@ async function workerVoiceGenerate(voiceId: string, force = false) {
   return parsed;
 }
 
+async function workerVoiceSyncStyleExamples(voiceId: string): Promise<void> {
+  const base = process.env.WORKER_URL?.replace(/\/$/, "");
+  if (!base) return;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.INGEST_SECRET) {
+    headers["x-ingest-secret"] = process.env.INGEST_SECRET;
+  }
+
+  const url = new URL(`${base}/voices/sync-style-examples`);
+  url.searchParams.set("voice_id", voiceId);
+
+  await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ voice_id: voiceId }),
+  }).catch(() => {});
+}
+
 export async function saveVoiceAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
@@ -237,6 +253,10 @@ export async function saveVoiceAction(formData: FormData) {
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
 
   const existing = voiceId ? await getVoiceForSession(db, voiceId, orgId) : null;
+  const rssChanged =
+    !!existing &&
+    fields.rss_feed_url.trim() !== (existing.rss_feed_url ?? "").trim() &&
+    !!fields.rss_feed_url.trim();
 
   const voice = await upsertVoice(db, {
     id: voiceId || undefined,
@@ -251,6 +271,7 @@ export async function saveVoiceAction(formData: FormData) {
     preferred_phrases: fields.preferred_phrases,
     keywords: fields.keywords,
     content_signal_ids: signalIds,
+    excluded_style_source_urls: existing?.excluded_style_source_urls ?? [],
     distribution_platforms: fields.distribution_platforms,
     persona: fields.persona,
     persona_status: existing?.persona_status ?? "pending",
@@ -259,6 +280,10 @@ export async function saveVoiceAction(formData: FormData) {
   });
 
   await linkVoiceToSignals(db, voice.id, orgId, signalIds);
+
+  if (rssChanged) {
+    void workerVoiceSyncStyleExamples(voice.id);
+  }
 
   revalidatePath("/voices");
   redirect(`/voices?voice_id=${voice.id}&saved=1`);
@@ -392,71 +417,6 @@ function styleExampleRedirect(voiceId: string, query: string) {
   redirect(`/voices?voice_id=${encodeURIComponent(voiceId)}&${query}`);
 }
 
-export async function importVoiceStyleExampleAction(formData: FormData) {
-  const session = await requireOrgMember();
-  const orgId = session.user.organizationId;
-  const voiceId = String(formData.get("voice_id") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const content = String(formData.get("content") ?? "").trim();
-
-  if (!voiceId) redirect("/voices?error=missing_voice");
-
-  const db = await connectMongo();
-  await ensureIndexes(db);
-  const voice = await getVoiceForSession(db, voiceId, orgId);
-  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
-
-  const finalHtml = writerStyleExampleHtmlFromPaste(content);
-  if (finalHtml.length < WRITER_SOURCE_MIN_CHARS) {
-    styleExampleRedirect(voiceId, "error=style_example_too_short");
-  }
-
-  await createWriterStyleExample(db, {
-    organization_id: orgId,
-    voice_id: voiceId,
-    title: title || "Style example",
-    final_html: finalHtml,
-    created_by: session.user.email ?? "unknown",
-  });
-
-  void extractWriterFingerprints(voiceId, orgId, finalHtml).catch(() => {});
-
-  revalidatePath("/voices");
-  styleExampleRedirect(voiceId, "style_example_saved=1");
-}
-
-export async function updateVoiceStyleExampleAction(formData: FormData) {
-  const session = await requireOrgMember();
-  const orgId = session.user.organizationId;
-  const voiceId = String(formData.get("voice_id") ?? "").trim();
-  const exampleId = String(formData.get("example_id") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const content = String(formData.get("content") ?? "").trim();
-
-  if (!voiceId || !exampleId) redirect("/voices?error=missing_voice");
-
-  const finalHtml = writerStyleExampleHtmlFromPaste(content);
-  if (finalHtml.length < WRITER_SOURCE_MIN_CHARS) {
-    styleExampleRedirect(voiceId, "error=style_example_too_short");
-  }
-
-  const db = await connectMongo();
-  await ensureIndexes(db);
-  const voice = await getVoiceForSession(db, voiceId, orgId);
-  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
-
-  const updated = await updateWriterStyleExample(db, exampleId, orgId, voiceId, {
-    title: title || "Style example",
-    final_html: finalHtml,
-  });
-  if (!updated) styleExampleRedirect(voiceId, "error=style_example_not_found");
-
-  void extractWriterFingerprints(voiceId, orgId, finalHtml).catch(() => {});
-
-  revalidatePath("/voices");
-  styleExampleRedirect(voiceId, "style_example_saved=1");
-}
-
 export async function deleteVoiceStyleExampleAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
@@ -469,6 +429,14 @@ export async function deleteVoiceStyleExampleAction(formData: FormData) {
   await ensureIndexes(db);
   const voice = await getVoiceForSession(db, voiceId, orgId);
   if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  const example = await getWriterStyleExample(db, exampleId, orgId, voiceId);
+  if (!example) styleExampleRedirect(voiceId, "error=style_example_not_found");
+
+  const sourceUrl = example!.reference_urls?.[0]?.trim();
+  if (sourceUrl) {
+    await addExcludedStyleSourceUrl(db, voiceId, sourceUrl);
+  }
 
   await deleteWriterStyleExample(db, exampleId, orgId, voiceId);
 

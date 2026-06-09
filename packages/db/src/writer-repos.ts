@@ -98,6 +98,122 @@ export async function listWriterStyleExamplesForVoice(
   return docs.map((d) => writerArticleSchema.parse(d));
 }
 
+export function normalizeStyleSourceUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "https:") return null;
+    return u.href.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+export function isStyleSourceUrlExcluded(url: string, excluded: string[]): boolean {
+  const normalized = normalizeStyleSourceUrl(url);
+  if (!normalized) return false;
+  const blocked = new Set(excluded.map((x) => normalizeStyleSourceUrl(x)).filter(Boolean));
+  return blocked.has(normalized);
+}
+
+export async function findWriterStyleExampleBySourceUrl(
+  db: Db,
+  organizationId: string,
+  voiceId: string,
+  sourceUrl: string,
+): Promise<WriterArticle | null> {
+  const normalized = normalizeStyleSourceUrl(sourceUrl);
+  if (!normalized) return null;
+  const docs = await writerArticles(db)
+    .find({
+      organization_id: organizationId,
+      voice_id: voiceId,
+      mode: "style_example",
+      reference_urls: normalized,
+    })
+    .limit(1)
+    .toArray();
+  const doc = docs[0];
+  if (doc) return writerArticleSchema.parse(doc);
+
+  const legacy = await writerArticles(db)
+    .find({
+      organization_id: organizationId,
+      voice_id: voiceId,
+      mode: "style_example",
+      reference_urls: { $in: [normalized, `${normalized}/`] },
+    })
+    .limit(1)
+    .toArray();
+  return legacy[0] ? writerArticleSchema.parse(legacy[0]) : null;
+}
+
+export type UpsertWriterStyleExampleFromRssInput = {
+  organization_id: string;
+  voice_id: string;
+  title: string;
+  final_html: string;
+  source_url: string;
+  created_by: string;
+};
+
+export async function upsertWriterStyleExampleFromRss(
+  db: Db,
+  data: UpsertWriterStyleExampleFromRssInput,
+): Promise<{ article: WriterArticle; created: boolean }> {
+  const sourceUrl = normalizeStyleSourceUrl(data.source_url);
+  if (!sourceUrl) throw new Error("invalid_source_url");
+
+  const existing = await findWriterStyleExampleBySourceUrl(
+    db,
+    data.organization_id,
+    data.voice_id,
+    sourceUrl,
+  );
+  const now = new Date();
+
+  if (existing) {
+    const row = writerArticleSchema.parse({
+      ...existing,
+      title: data.title.trim() || existing.title,
+      final_html: data.final_html,
+      reference_urls: [sourceUrl],
+      status: "saved",
+      updated_at: now,
+    });
+    await writerArticles(db).replaceOne(
+      {
+        id: existing.id,
+        organization_id: data.organization_id,
+        voice_id: data.voice_id,
+        mode: "style_example",
+      },
+      row,
+    );
+    return { article: row, created: false };
+  }
+
+  const row: WriterArticle = writerArticleSchema.parse({
+    id: randomUUID(),
+    organization_id: data.organization_id,
+    voice_id: data.voice_id,
+    mode: "style_example",
+    title: data.title.trim() || "Style example",
+    reference_urls: [sourceUrl],
+    source_text: "",
+    links: [],
+    generated_html: "",
+    final_html: data.final_html,
+    status: "saved",
+    created_by: data.created_by,
+    created_at: now,
+    updated_at: now,
+  });
+  await writerArticles(db).insertOne(row);
+  return { article: row, created: true };
+}
+
 export type CreateWriterStyleExampleInput = {
   organization_id: string;
   voice_id: string;

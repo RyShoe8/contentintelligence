@@ -4,6 +4,7 @@ import { COLLECTIONS } from "./collections.js";
 import type { BrandProfile } from "./brand-profile.js";
 import type { Voice } from "./schemas.js";
 import { voiceSchema } from "./schemas.js";
+import { normalizeStyleSourceUrl } from "./writer-repos.js";
 
 function voices(db: Db): Collection<Voice> {
   return db.collection<Voice>(COLLECTIONS.voices);
@@ -72,6 +73,7 @@ export async function upsertVoice(
     keywords: data.keywords ?? [],
     preferred_phrases: data.preferred_phrases ?? [],
     content_signal_ids: data.content_signal_ids ?? [],
+    excluded_style_source_urls: data.excluded_style_source_urls ?? existing?.excluded_style_source_urls ?? [],
     distribution_platforms: data.distribution_platforms ?? [],
     persona: data.persona ?? "",
     persona_status: data.persona_status ?? existing?.persona_status ?? "pending",
@@ -233,4 +235,29 @@ export async function linkVoiceToSignals(
 export async function deleteVoice(db: Db, id: string): Promise<boolean> {
   const r = await voices(db).deleteOne({ id });
   return r.deletedCount > 0;
+}
+
+export async function addExcludedStyleSourceUrl(
+  db: Db,
+  voiceId: string,
+  sourceUrl: string,
+): Promise<Voice | null> {
+  const existing = await voices(db).findOne({ id: voiceId });
+  if (!existing) return null;
+
+  const normalized = normalizeStyleSourceUrl(sourceUrl);
+  if (!normalized) return voiceSchema.parse(existing);
+
+  const current = existing.excluded_style_source_urls ?? [];
+  const seen = new Set(current.map((u) => normalizeStyleSourceUrl(u)).filter(Boolean));
+  if (seen.has(normalized)) return voiceSchema.parse(existing);
+
+  const now = new Date();
+  const row = voiceSchema.parse({
+    ...existing,
+    excluded_style_source_urls: [...current, normalized],
+    updated_at: now,
+  });
+  await voices(db).replaceOne({ id: voiceId }, row);
+  return row;
 }

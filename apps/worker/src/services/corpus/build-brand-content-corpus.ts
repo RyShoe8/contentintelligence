@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto";
 import type { Db } from "mongodb";
-import type { Voice } from "@content-resourcer/db";
+import {
+  listWriterStyleExamplesForVoice,
+  writerArticleHtmlForLearning,
+  type Voice,
+} from "@content-resourcer/db";
 import { convert } from "html-to-text";
-import { XMLParser } from "fast-xml-parser";
 import { fetchSafeText } from "../../safe-fetch.js";
 import { env } from "../../env.js";
+import { parseRssFeed } from "../rss/parse-rss-feed.js";
 
 export type CorpusSourceType =
   | "landingPages"
@@ -37,7 +41,7 @@ export const DEFAULT_SOURCE_WEIGHTS: Record<CorpusSourceType, number> = {
 };
 
 const MAX_CHARS_PER_SOURCE = 20_000;
-const MAX_RSS_ITEMS = 10;
+const STYLE_EXAMPLE_CORPUS_CHARS = 8000;
 const BLOG_MIN_CHARS = 800;
 
 function stripHtmlToText(html: string): string {
@@ -53,49 +57,8 @@ function capText(text: string, max = MAX_CHARS_PER_SOURCE): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
 }
 
-function extractRssItems(xml: string): { title: string; description: string }[] {
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: "@_",
-    trimValues: true,
-  });
-  let parsed: unknown;
-  try {
-    parsed = parser.parse(xml);
-  } catch {
-    return [];
-  }
-  if (!parsed || typeof parsed !== "object") return [];
-
-  const root = parsed as Record<string, unknown>;
-  const channel =
-    (root.rss as Record<string, unknown> | undefined)?.channel ??
-    root.feed ??
-    root.channel;
-
-  if (!channel || typeof channel !== "object") return [];
-
-  const ch = channel as Record<string, unknown>;
-  const rawItems = ch.item ?? ch.entry;
-  const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
-
-  const out: { title: string; description: string }[] = [];
-  for (const item of items) {
-    if (out.length >= MAX_RSS_ITEMS) break;
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const title = String(row.title ?? "").trim();
-    const description = stripHtmlToText(
-      String(row.description ?? row.summary ?? row.content ?? row["content:encoded"] ?? ""),
-    );
-    if (title || description) out.push({ title, description });
-  }
-  return out;
-}
-
-function classifyRssItem(item: { title: string; description: string }): CorpusSourceType {
-  const len = item.description.length;
-  return len >= BLOG_MIN_CHARS ? "blogs" : "newsletters";
+function classifyBlogText(text: string): CorpusSourceType {
+  return text.length >= BLOG_MIN_CHARS ? "blogs" : "newsletters";
 }
 
 function extractReplyLikeBlocks(html: string): string[] {
@@ -109,12 +72,17 @@ function extractReplyLikeBlocks(html: string): string[] {
   return replies.slice(0, 5);
 }
 
-export function computeCorpusHash(chunks: WeightedChunk[], voice: Voice): string {
+export function computeCorpusHash(
+  chunks: WeightedChunk[],
+  voice: Voice,
+  styleExampleKeys: string[] = [],
+): string {
   const parts = [
     voice.website_url,
     voice.rss_feed_url,
     ...voice.social_links.map((l) => l.url),
     ...voice.keywords,
+    ...styleExampleKeys,
     ...chunks.map((c) => `${c.type}:${c.label}:${c.text.length}`),
   ];
   return createHash("sha256").update(parts.join("|")).digest("hex");
@@ -139,7 +107,7 @@ export function formatCorpusForPrompt(chunks: WeightedChunk[], maxChars = env.br
 }
 
 export async function buildBrandContentCorpus(
-  _db: Db,
+  db: Db,
   voice: Voice,
 ): Promise<BrandContentCorpus> {
   const chunks: WeightedChunk[] = [];
@@ -165,14 +133,39 @@ export async function buildBrandContentCorpus(
     }
   }
 
-  if (voice.rss_feed_url) {
+  const styleExamples = await listWriterStyleExamplesForVoice(
+    db,
+    voice.organization_id,
+    voice.id,
+  );
+  const styleExampleKeys: string[] = [];
+
+  for (const example of styleExamples) {
+    const html = writerArticleHtmlForLearning(example);
+    if (!html) continue;
+    const plain = capText(stripHtmlToText(html), STYLE_EXAMPLE_CORPUS_CHARS);
+    if (!plain) continue;
+    const sourceUrl = example.reference_urls?.[0]?.trim();
+    styleExampleKeys.push(`${example.id}:${sourceUrl ?? ""}:${example.updated_at.toISOString()}`);
+    chunks.push({
+      type: "blogs",
+      weight: DEFAULT_SOURCE_WEIGHTS.blogs,
+      label: sourceUrl ? `Style example: ${example.title} (${sourceUrl})` : `Style example: ${example.title}`,
+      text: `${example.title}\n${plain}`,
+    });
+  }
+
+  const hasIngestedStyleExamples = styleExamples.some((ex) => ex.reference_urls?.[0]?.trim());
+
+  if (voice.rss_feed_url && !hasIngestedStyleExamples) {
     const xml = await fetchSafeText(voice.rss_feed_url);
     if (xml) {
-      const items = extractRssItems(xml);
+      const items = parseRssFeed(xml, 10);
       if (items.length) {
         for (const item of items) {
-          const type = classifyRssItem(item);
-          const body = capText(`${item.title}\n${item.description}`);
+          const bodyText = item.summaryText || item.title;
+          const type = classifyBlogText(bodyText);
+          const body = capText(`${item.title}\n${bodyText}`);
           if (!body) continue;
           chunks.push({
             type,
@@ -214,7 +207,7 @@ export async function buildBrandContentCorpus(
     }
   }
 
-  const hash = computeCorpusHash(chunks, voice);
+  const hash = computeCorpusHash(chunks, voice, styleExampleKeys);
   const promptText = formatCorpusForPrompt(chunks);
 
   return { chunks, hash, promptText };
@@ -225,7 +218,8 @@ export function behaviorCorpusText(chunks: WeightedChunk[]): string {
     (c) =>
       c.type === "generatedPosts" ||
       c.type === "socialPosts" ||
-      c.type === "replies",
+      c.type === "replies" ||
+      c.type === "blogs",
   );
   return formatCorpusForPrompt(postLike, Math.min(env.brandCorpusMaxChars, 12000));
 }

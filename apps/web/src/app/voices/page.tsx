@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ensureIndexes,
-  getWriterArticle,
   listContentSignals,
   listVoices,
   getVoice,
@@ -98,9 +97,9 @@ export default async function VoicesPage({
         return {
           id: ex.id,
           title: ex.title,
+          source_url: ex.reference_urls?.[0],
           updated_at: ex.updated_at.toISOString(),
           char_count: html.length,
-          html,
         };
       })
     : [];
@@ -119,11 +118,9 @@ export default async function VoicesPage({
             })()
           : sp.error === "missing_voice"
             ? "Select a voice to generate."
-            : sp.error === "style_example_too_short"
-              ? `Style example must be at least 100 characters.`
-              : sp.error === "style_example_not_found"
-                ? "Style example not found."
-                : null;
+            : sp.error === "style_example_not_found"
+              ? "Style example not found."
+              : null;
 
   return (
     <div className="space-y-6">
@@ -142,14 +139,9 @@ export default async function VoicesPage({
           Voice deleted.
         </p>
       ) : null}
-      {sp.style_example_saved === "1" ? (
-        <p className="rounded border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-700">
-          Style example saved. Writer will use it when this voice writes an article.
-        </p>
-      ) : null}
       {sp.style_example_deleted === "1" ? (
         <p className="rounded border border-[var(--border)] px-3 py-2 text-sm text-[var(--muted)]">
-          Style example deleted.
+          Style example removed. It will not be re-imported from RSS.
         </p>
       ) : null}
       {activeVoice ? (
@@ -346,7 +338,7 @@ export default async function VoicesPage({
           <label className="flex flex-col gap-1 text-sm">
             Persona template
             <span className="text-xs text-[var(--muted)]">
-              Generated from your website, RSS, social links, voice keywords, and phrase settings — not from Feed emails. Editable after generation. Also used when building Posts. Generation usually takes 1–3 minutes.
+              Generated from your website, RSS articles, social links, voice keywords, and phrase settings — not from Feed emails. Editable after generation. Also used when building Posts. Generation usually takes 1–3 minutes.
             </span>
             <textarea
               name="persona"
@@ -368,7 +360,11 @@ export default async function VoicesPage({
           </label>
 
           {activeVoice ? (
-            <VoiceStyleExamplesEditor voiceId={activeVoice.id} examples={styleExamples} />
+            <VoiceStyleExamplesEditor
+              voiceId={activeVoice.id}
+              rssFeedUrl={activeVoice.rss_feed_url}
+              examples={styleExamples}
+            />
           ) : null}
 
           <div className="flex flex-wrap gap-2">

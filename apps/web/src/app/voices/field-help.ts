@@ -10,5 +10,5 @@ export const VOICE_FIELD_TIPS = {
   preferred_phrases:
     "Each row is one optional https link with comma-separated phrases (synonyms). Use the AI variations toggle to allow close paraphrases of those terms in posts, or leave off for exact wording. At most one phrase group is used per post; higher-frequency rows are preferred. Included in the generated persona template.",
   style_examples:
-    "Paste human-written blog articles you want Writer to match. Used as style examples when this voice writes an article — not during research or persona generation.",
+    "Articles imported from your RSS feed. Used for Writer style at write time and persona research. Remove any you do not want included.",
 } as const;

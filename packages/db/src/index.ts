@@ -16,5 +16,6 @@ export * from "./schemas.js";
 export * from "./gmail-oauth.js";
 export * from "./writer-validation.js";
 export * from "./writer-repos.js";
+export * from "./writer-style-example-html.js";
 export * from "./rewriter-types.js";
 export * from "./rewriter-blacklist.js";

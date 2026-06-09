@@ -378,6 +378,10 @@ export const voiceSchema = z.preprocess(
   keywords: z.preprocess(normalizeVoiceKeywords, z.array(z.string()).max(5).default([])),
   preferred_phrases: z.array(voicePreferredPhraseSchema).max(15).default([]),
   content_signal_ids: z.array(z.string().uuid()).default([]),
+  excluded_style_source_urls: z.preprocess(
+    (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []),
+    z.array(z.string().url()).max(200).default([]),
+  ),
   distribution_platforms: z.preprocess(
     (v) => normalizeDistributionPlatforms(v),
     z.array(socialPlatformIdSchema).max(SOCIAL_PLATFORM_IDS.length).default([]),

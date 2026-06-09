@@ -56,4 +56,21 @@ describe("buildBrandContentCorpus helpers", () => {
     const hashB = computeCorpusHash(chunks, withSignals as never);
     assert.equal(hashA, hashB);
   });
+
+  it("includes style example keys in corpus hash", () => {
+    const voice = {
+      website_url: "",
+      rss_feed_url: "",
+      social_links: [],
+      keywords: [],
+    } as const;
+    const chunks: WeightedChunk[] = [
+      { type: "blogs", weight: 0.8, label: "Style example: Post", text: "body" },
+    ];
+    const without = computeCorpusHash(chunks, voice as never);
+    const withExamples = computeCorpusHash(chunks, voice as never, [
+      "id:https://example.com/post:2026-01-01T00:00:00.000Z",
+    ]);
+    assert.notEqual(without, withExamples);
+  });
 });

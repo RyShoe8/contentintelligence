@@ -5,6 +5,7 @@ import {
   updateVoicePersonaStatus,
 } from "@content-resourcer/db";
 import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
+import { ingestVoiceRssStyleExamples } from "./jobs/ingest-voice-rss-style-examples.js";
 
 export const PERSONA_GENERATION_TIMEOUT_MS = 12 * 60 * 1000;
 
@@ -40,16 +41,19 @@ export async function runVoicePersonaGeneration(
   });
 
   try {
+    await ingestVoiceRssStyleExamples(db, voice);
+    const voiceForAnalysis = (await getVoice(db, voiceId)) ?? voice;
+
     const { profile, persona, corpusHash, cached } = await withTimeout(
-      analyzeBrandProfile(db, voice, {
+      analyzeBrandProfile(db, voiceForAnalysis, {
         forceRebuild: options?.forceRebuild,
       }),
       PERSONA_GENERATION_TIMEOUT_MS,
       "persona_generation_timeout",
     );
     const nextVersion = cached
-      ? (voice.brand_profile_version ?? 0)
-      : (voice.brand_profile_version ?? 0) + 1;
+      ? (voiceForAnalysis.brand_profile_version ?? 0)
+      : (voiceForAnalysis.brand_profile_version ?? 0) + 1;
 
     await updateVoiceBrandProfile(db, voiceId, {
       brand_profile: profile,
