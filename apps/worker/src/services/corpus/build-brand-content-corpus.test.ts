@@ -10,8 +10,18 @@ import {
 describe("buildBrandContentCorpus helpers", () => {
   it("assigns default weights by source type", () => {
     assert.equal(DEFAULT_SOURCE_WEIGHTS.replies, 1.3);
-    assert.equal(DEFAULT_SOURCE_WEIGHTS.socialPosts, 1.2);
+    assert.equal(DEFAULT_SOURCE_WEIGHTS.blogs, 1.2);
+    assert.equal(DEFAULT_SOURCE_WEIGHTS.socialPosts, 0.8);
     assert.equal(DEFAULT_SOURCE_WEIGHTS.landingPages, 0.4);
+  });
+
+  it("sorts blogs above social posts in prompt text", () => {
+    const chunks: WeightedChunk[] = [
+      { type: "socialPosts", weight: 0.8, label: "Social: twitter", text: "short social copy" },
+      { type: "blogs", weight: 1.2, label: "Style example: Post", text: "longer blog tone and voice" },
+    ];
+    const prompt = formatCorpusForPrompt(chunks, 5000);
+    assert.ok(prompt.indexOf("blogs") < prompt.indexOf("socialPosts"));
   });
 
   it("sorts higher-weight chunks first in prompt text", () => {
@@ -65,7 +75,7 @@ describe("buildBrandContentCorpus helpers", () => {
       keywords: [],
     } as const;
     const chunks: WeightedChunk[] = [
-      { type: "blogs", weight: 0.8, label: "Style example: Post", text: "body" },
+      { type: "blogs", weight: 1.2, label: "Style example: Post", text: "body" },
     ];
     const without = computeCorpusHash(chunks, voice as never);
     const withExamples = computeCorpusHash(chunks, voice as never, [
