@@ -12,6 +12,7 @@ import type { ArticleRewriteExample } from "./types.js";
 const EXAMPLE_EXCERPT_CHARS = 1200;
 const COMPOSE_EXAMPLE_EXCERPT_CHARS = 2800;
 const CANDIDATE_ARTICLE_LIMIT = 10;
+const COMPOSE_RANKED_EXAMPLE_LIMIT = 2;
 const RANKED_EXAMPLE_LIMIT = 5;
 
 type ExampleCandidate = {
@@ -58,7 +59,8 @@ function fallbackExamples(
   composeMode?: boolean,
 ): ArticleRewriteExample[] {
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
-  return candidates.slice(0, RANKED_EXAMPLE_LIMIT).map((c) => ({
+  const limit = composeMode ? COMPOSE_RANKED_EXAMPLE_LIMIT : RANKED_EXAMPLE_LIMIT;
+  return candidates.slice(0, limit).map((c) => ({
     title: c.title,
     html:
       c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
@@ -75,6 +77,7 @@ export async function retrieveRankedExamples(
 ): Promise<ArticleRewriteExample[]> {
   const composeMode = opts?.composeMode === true;
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
+  const rankedLimit = composeMode ? COMPOSE_RANKED_EXAMPLE_LIMIT : RANKED_EXAMPLE_LIMIT;
   const candidates = await loadExampleCandidates(
     db,
     organizationId,
@@ -84,7 +87,7 @@ export async function retrieveRankedExamples(
   );
   if (!candidates.length) return [];
 
-  if (candidates.length <= RANKED_EXAMPLE_LIMIT) {
+  if (candidates.length <= rankedLimit) {
     return fallbackExamples(candidates, composeMode);
   }
 
@@ -98,7 +101,7 @@ export async function retrieveRankedExamples(
 
   const raw = await completeJson<{ selected?: number[] }>({
     system: `Select the best brand writing examples for reconstructing an article from facts.
-Reply JSON only: {"selected": [index, ...]} with up to ${RANKED_EXAMPLE_LIMIT} indices (0-based).
+Reply JSON only: {"selected": [index, ...]} with up to ${rankedLimit} indices (0-based).
 Prefer topical relevance to the facts and stylistic match to a human brand operator — not generic AI tone.`,
     user: [
       "Facts (JSON):",
@@ -116,7 +119,7 @@ Prefer topical relevance to the facts and stylistic match to a human brand opera
   );
   if (!indices?.length) return fallbackExamples(candidates, composeMode);
 
-  const unique = [...new Set(indices)].slice(0, RANKED_EXAMPLE_LIMIT);
+  const unique = [...new Set(indices)].slice(0, rankedLimit);
   return unique.map((i) => {
     const c = candidates[i]!;
     return {

@@ -1,6 +1,8 @@
 import {
   mechanicalWriterLinksInHtml,
   postReviseWriterLinksInHtml,
+  writerComposeLinkIssues,
+  writerHasRelatedLinksBlock,
   type Voice,
   type WriterLink,
   writerLinksNeedRevision,
@@ -12,6 +14,8 @@ export type WriterLinkPipelineOpts = {
   links: WriterLink[];
   voice: Voice;
   exactAnchorLabels?: boolean;
+  /** When false, never append a Related links block; retry LLM revision instead. */
+  allowAppendedLinks?: boolean;
 };
 
 export type LinkPipelineResult = {
@@ -21,6 +25,22 @@ export type LinkPipelineResult = {
   linksAppended: number;
   linksRedistributed: number;
 };
+
+const COMPOSE_LINK_REVISE_MAX = 3;
+
+function needsLinkRevision(
+  html: string,
+  links: WriterLink[],
+  sourceText: string,
+  allowAppended: boolean,
+): boolean {
+  if (writerLinksNeedRevision(html, links, sourceText)) return true;
+  if (!allowAppended && writerHasRelatedLinksBlock(html)) return true;
+  if (!allowAppended && writerComposeLinkIssues(html, links, sourceText).length > 0) {
+    return true;
+  }
+  return false;
+}
 
 export async function applyWriterLinkPipeline(
   html: string,
@@ -37,6 +57,9 @@ export async function applyWriterLinkPipeline(
   }
 
   const source = opts.sourceText.trim();
+  const allowAppended = opts.allowAppendedLinks !== false;
+  const maxReviseAttempts = allowAppended ? 1 : COMPOSE_LINK_REVISE_MAX;
+
   const mechanical = mechanicalWriterLinksInHtml(out, opts.links, {
     exactAnchorLabels: opts.exactAnchorLabels,
   });
@@ -44,18 +67,30 @@ export async function applyWriterLinkPipeline(
   linksWoven += mechanical.linksWoven;
   linksRedistributed += mechanical.linksRedistributed;
 
-  if (writerLinksNeedRevision(out, opts.links, source)) {
+  let reviseAttempts = 0;
+  while (needsLinkRevision(out, opts.links, source, allowAppended) && reviseAttempts < maxReviseAttempts) {
     out = await reviseWriterLinksInHtml({
       html: out,
       links: opts.links,
       voice: opts.voice,
       sourceText: source,
       exactAnchorLabels: opts.exactAnchorLabels,
+      composeMode: !allowAppended,
     });
     linksRevised = true;
+    reviseAttempts++;
+
+    const reMech = mechanicalWriterLinksInHtml(out, opts.links, {
+      exactAnchorLabels: opts.exactAnchorLabels,
+    });
+    out = reMech.html;
+    linksWoven += reMech.linksWoven;
+    linksRedistributed += reMech.linksRedistributed;
   }
 
-  const post = postReviseWriterLinksInHtml(out, opts.links);
+  const post = postReviseWriterLinksInHtml(out, opts.links, {
+    allowAppendedLinks: allowAppended,
+  });
   out = post.html;
   linksAppended += post.linksAppended;
 

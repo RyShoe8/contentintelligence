@@ -14,7 +14,11 @@ import {
   writerArticleDisplayHtml,
   writerComposeResearchConfig,
   writerComposeBriefOutlineIssues,
+  writerComposeLinkIssues,
   writerComposeTopicDriftIssues,
+  writerComposeVoiceStyleIssues,
+  writerHasRelatedLinksBlock,
+  postReviseWriterLinksInHtml,
   writerLinkAnchorMatches,
   writerLinkParagraphIndices,
   writerLinkPresentInHtml,
@@ -777,6 +781,48 @@ describe("writerComposeBriefOutlineIssues", () => {
   it("passes editorial headings", () => {
     const html = "<h2>How taxes work on casino winnings</h2><p>Fact one</p>";
     assert.equal(writerComposeBriefOutlineIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeVoiceStyleIssues", () => {
+  it("flags textbook headings and generic guide phrases", () => {
+    const html =
+      "<h2>Understanding the Spectrum</h2><p>The landscape of senior living design plays a crucial role in outcomes. Designers and planners must remain mindful of every detail.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Understanding the Spectrum")));
+    assert.ok(issues.some((i) => i.includes("landscape of")));
+  });
+
+  it("passes short editorial paragraphs", () => {
+    const html =
+      "<h2>We sit in every chair</h2><p>We never specify seating we have not tested.</p><p>That rule sounds simple. We take it seriously.</p>";
+    assert.equal(writerComposeVoiceStyleIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeLinkIssues", () => {
+  it("flags Related links block and missing URLs", () => {
+    const html = "<p>Body copy.</p><h2>Related links</h2><ul><li><a href=\"https://one.example\">One</a></li></ul>";
+    const links = [
+      { url: "https://one.example" },
+      { url: "https://two.example", label: "our team" },
+    ];
+    const issues = writerComposeLinkIssues(html, links, "Body copy about design.");
+    assert.ok(issues.some((i) => i.includes("Related links")));
+    assert.ok(issues.some((i) => i.includes("missing")));
+  });
+});
+
+describe("postReviseWriterLinksInHtml allowAppendedLinks", () => {
+  it("does not append Related links when allowAppendedLinks is false", () => {
+    const html = "<p>Body without links.</p>";
+    const links = [{ url: "https://team.example", label: "our team" }];
+    const { html: out, linksAppended } = postReviseWriterLinksInHtml(html, links, {
+      allowAppendedLinks: false,
+    });
+    assert.equal(linksAppended, 0);
+    assert.equal(writerHasRelatedLinksBlock(out), false);
+    assert.equal(writerLinksMissingFromHtml(out, links).length, 1);
   });
 });
 

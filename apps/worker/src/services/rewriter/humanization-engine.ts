@@ -14,6 +14,7 @@ import {
   rewriterQualityGatePassed,
   writerComposeBriefOutlineIssues,
   writerComposeTopicDriftIssues,
+  writerComposeVoiceStyleIssues,
   type ContentFacts,
   type GenericityAnalysis,
   type SelfCritiqueResult,
@@ -31,7 +32,18 @@ import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import type { ArticleRewriteExample } from "./types.js";
 
-const COMPOSE_BRIEF_EXCERPT_CHARS = 6000;
+const COMPOSE_STYLE_EXCERPT_CHARS = 2000;
+
+function styleExampleExcerpt(examples: ArticleRewriteExample[]): string | undefined {
+  const first = examples[0];
+  if (!first?.html?.trim()) return undefined;
+  const header = first.title ? `### ${first.title}\n` : "";
+  const body =
+    first.html.length > COMPOSE_STYLE_EXCERPT_CHARS
+      ? `${first.html.slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}…`
+      : first.html;
+  return `${header}${body}`;
+}
 
 export type HumanizationEngineOpts = {
   db: Db;
@@ -144,10 +156,7 @@ export async function runHumanizationEngine(
     { composeMode },
   );
   const examples = allExamples;
-
-  const researchBriefExcerpt = composeMode
-    ? factsInput.slice(0, COMPOSE_BRIEF_EXCERPT_CHARS)
-    : undefined;
+  const composeStyleExcerpt = composeMode ? styleExampleExcerpt(examples) : undefined;
 
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
@@ -169,7 +178,6 @@ export async function runHumanizationEngine(
       exactLinkLabels: opts.exactLinkLabels,
       composeMode,
       topic: opts.topic,
-      researchBriefExcerpt,
       includeFaq: opts.includeFaq,
     });
     html = await humanizeArticleHtml({
@@ -181,12 +189,14 @@ export async function runHumanizationEngine(
       proceduralLock: hybrid,
       composeMode,
       topic: opts.topic,
+      styleExampleExcerpt: composeStyleExcerpt,
     });
 
     const genericity = await analyzeGenericity(html);
     const critique = await runSelfCritique(html, facts, ctx, {
       composeMode,
       topic: opts.topic,
+      styleExampleExcerpt: composeStyleExcerpt,
     });
     const completenessIssues = preserveMode
       ? composeMode && composeNarrative
@@ -198,13 +208,18 @@ export async function runHumanizationEngine(
         ? writerComposeTopicDriftIssues(html, opts.topic, ctx.brandName)
         : [];
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
+    const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
       genericity,
       critique,
       composite,
-      completenessIssueCount: completenessIssues.length + topicDriftIssues.length + briefOutlineIssues.length,
+      completenessIssueCount:
+        completenessIssues.length +
+        topicDriftIssues.length +
+        briefOutlineIssues.length +
+        voiceStyleIssues.length,
     };
 
     if (!best || snapshotScore(snapshot, preserveMode) > snapshotScore(best, preserveMode)) {
@@ -212,7 +227,10 @@ export async function runHumanizationEngine(
     }
 
     const gateOk = qualityGatePassed(facts, html, genericity, critique, composeMode);
-    const noDrift = topicDriftIssues.length === 0 && briefOutlineIssues.length === 0;
+    const noDrift =
+      topicDriftIssues.length === 0 &&
+      briefOutlineIssues.length === 0 &&
+      voiceStyleIssues.length === 0;
 
     if (gateOk && noDrift) {
       return {
@@ -232,6 +250,7 @@ export async function runHumanizationEngine(
       ...completenessIssues,
       ...topicDriftIssues,
       ...briefOutlineIssues,
+      ...voiceStyleIssues,
     ]);
   }
 

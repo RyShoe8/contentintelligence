@@ -5,6 +5,16 @@ import { env } from "../../env.js";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { buildVoiceStylePromptLines, type VoiceStylePromptOpts } from "../../voice-style-rules.js";
 
+const COMPOSE_STYLE_EXCERPT_CHARS = 2000;
+
+const COMPOSE_VOICE_HUMANIZE_RULES = `
+Compose editorial voice:
+- Short paragraphs (often 1–3 sentences); mix sentence length.
+- Punchy conversational headings — not textbook/guide titles.
+- First-person plural "we" with hands-on operator perspective.
+- Prefer flowing prose over bullet dumps; lists sparingly.
+- No generic filler closings ("Let's connect and explore").`;
+
 export type HumanizeArticleOpts = {
   voice: Voice;
   html: string;
@@ -14,6 +24,7 @@ export type HumanizeArticleOpts = {
   proceduralLock?: boolean;
   composeMode?: boolean;
   topic?: string;
+  styleExampleExcerpt?: string;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
@@ -44,7 +55,7 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
 
   const composeTopicBlock =
     opts.composeMode && opts.topic?.trim()
-      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.`
+      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${COMPOSE_VOICE_HUMANIZE_RULES}`
       : "";
 
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.
@@ -57,6 +68,13 @@ ${rewriterBlacklistPromptBlock()}
 - Keep every factual claim and every existing <a href> URL unchanged.${proceduralLockBlock}${composeTopicBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
+  const styleExampleBlock =
+    opts.composeMode && opts.styleExampleExcerpt?.trim()
+      ? `\n\nBrand style reference (match rhythm and paragraph length, not content):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}`
+      : "";
+
+  const userContent = `${opts.html.trim()}${styleExampleBlock}`;
+
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: env.openaiModel,
@@ -64,7 +82,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
     temperature: 0.5,
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: opts.html.trim() },
+      { role: "user", content: userContent },
     ],
   });
 

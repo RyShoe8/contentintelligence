@@ -264,7 +264,7 @@ describe("rewriterComposeQualityGatePassed", () => {
     assert.equal(
       rewriterComposeQualityGatePassed(composeResearchFacts, html, {
         humanAuthenticity: 85,
-        brandConsistency: 82,
+        brandConsistency: 86,
         genericity: 20,
         issues: [],
       }),

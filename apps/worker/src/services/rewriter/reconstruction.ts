@@ -64,6 +64,14 @@ function hasNarrativeSections(facts: ContentFacts): boolean {
   return (facts.narrativeSections?.length ?? 0) > 0;
 }
 
+const COMPOSE_VOICE_RULES = `
+Compose editorial voice (match brand examples — not a neutral industry guide):
+- Short paragraphs (often 1–3 sentences); mix sentence length and rhythm.
+- Punchy, conversational H2/H3 headings — not textbook titles (avoid "Understanding the…", "Challenges and Considerations", "Innovative Trends in…").
+- First-person plural "we" with operator perspective: hands-on, selective, principled.
+- Prefer flowing prose; use lists sparingly — never dump brief bullets as consecutive lists.
+- State principles and convictions directly; avoid generic guide filler ("Let's connect and explore").`;
+
 function hybridRulesBlock(facts: ContentFacts, composeMode?: boolean): string {
   if (composeMode && hasNarrativeSections(facts)) {
     return `
@@ -73,7 +81,7 @@ Compose article (editorial voice, not a research summary):
 - Write editorial <h2>/<h3> headings that fit the topic and match the brand examples below (structure, rhythm, openings).
 - Weave all facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
 - Include procedural sections with full ordered steps when present (see procedural rules above).
-- Do not add filler closings like "What are your thoughts?"`;
+- Do not add filler closings like "What are your thoughts?"${COMPOSE_VOICE_RULES}`;
   }
   if (!isHybridContentFacts(facts)) return "";
   return `
@@ -98,7 +106,8 @@ function formatSectionsForPrompt(facts: ContentFacts): string {
 function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?: boolean): string {
   if (!examples.length) return "";
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
-  const blocks = examples.map((ex, i) => {
+  const selected = composeMode ? examples.slice(0, 2) : examples;
+  const blocks = selected.map((ex, i) => {
     const html =
       ex.html.length > excerptChars ? `${ex.html.slice(0, excerptChars)}…` : ex.html;
     return `### Example ${i + 1}: ${ex.title}\n${html}`;
@@ -108,8 +117,6 @@ function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?
     : "";
   return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }
-
-const COMPOSE_BRIEF_EXCERPT_CHARS = 6000;
 
 export type ReconstructArticleOpts = {
   voice: Voice;
@@ -125,7 +132,6 @@ export type ReconstructArticleOpts = {
   exactLinkLabels?: boolean;
   composeMode?: boolean;
   topic?: string;
-  researchBriefExcerpt?: string;
   includeFaq?: boolean;
 };
 
@@ -170,7 +176,7 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
-Do not add sections about community engagement, creating content, or promoting the brand.`
+Do not add sections about community engagement, creating content, or promoting the brand.${COMPOSE_VOICE_RULES}`
       : "";
 
   const viewpointRule = opts.composeMode
@@ -182,7 +188,14 @@ Do not add sections about community engagement, creating content, or promoting t
       ? `\nRequired links:
 - Weave each URL into normal sentence grammar as inline <a href> anchors.
 - Never end a sentence with a parenthetical link like (anchor text) or a trailing See anchor.
-- Do not add sentences whose only purpose is to hold a link; wrap a phrase already in the sentence when possible.`
+- Do not add sentences whose only purpose is to hold a link; wrap a phrase already in the sentence when possible.${
+          opts.composeMode
+            ? `
+- Spread links across the middle of the article — not in the final paragraph.
+- Do NOT add a "Related links" section or link dump at the end.
+- Do not add closing CTA sentences whose only job is to hold a link.`
+            : ""
+        }`
       : "";
 
   return `Write a full blog article in HTML from structured facts and brand interpretation.
@@ -213,14 +226,8 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
       ? `\nFix these issues from the prior attempt:\n${opts.retryIssues.map((i) => `- ${i}`).join("\n")}`
       : "";
 
-  const briefBlock =
-    opts.composeMode && opts.researchBriefExcerpt?.trim()
-      ? `\nResearch brief (primary evidence):\n${opts.researchBriefExcerpt.trim()}`
-      : "";
-
   const userPrompt = [
     opts.composeMode && opts.topic?.trim() ? `Topic: ${opts.topic.trim()}` : "",
-    briefBlock,
     "Extracted facts (JSON):",
     JSON.stringify(opts.facts, null, 2),
     formatNarrativeSectionsForPrompt(opts.facts),

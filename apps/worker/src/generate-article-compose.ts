@@ -177,7 +177,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     preserveInstructions: false,
     articleDepth,
     subtopics,
-    exactLinkLabels: true,
+    exactLinkLabels: false,
     composeMode: true,
     topic: opts.topic,
     includeFaq,
@@ -187,7 +187,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     sourceText: researchBrief,
     links: opts.links,
     voice: opts.voice,
-    exactAnchorLabels: true,
+    exactAnchorLabels: false,
+    allowAppendedLinks: false,
   });
   let html = pipeline.html;
 
@@ -208,7 +209,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         sourceText: researchBrief,
         links: opts.links,
         voice: opts.voice,
-        exactAnchorLabels: true,
+        exactAnchorLabels: false,
+        allowAppendedLinks: false,
       });
       html = pipeline.html;
     } catch {

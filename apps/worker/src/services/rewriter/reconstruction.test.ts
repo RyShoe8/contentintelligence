@@ -209,4 +209,32 @@ describe("buildReconstructionSystemPrompt", () => {
 
     assert.match(prompt, /Do not include an FAQ, frequently asked questions, or Q&A section/);
   });
+
+  it("includes compose voice rhythm rules and inline link constraints", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [{ title: "Key facts", points: ["Fact"] }],
+        keyDetails: ["Detail"],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful",
+        qualityScore: 8,
+        bestFor: "readers",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [{ url: "https://example.com/team", label: "our team" }],
+      composeMode: true,
+      topic: "Senior living design guidelines",
+    });
+
+    assert.match(prompt, /Short paragraphs \(often 1–3 sentences\)/);
+    assert.match(prompt, /Do NOT add a "Related links" section/);
+    assert.match(prompt, /not in the final paragraph/i);
+  });
 });

@@ -22,7 +22,7 @@ export async function runSelfCritique(
   html: string,
   facts: ContentFacts,
   ctx: VoiceGenerationContext,
-  opts: { composeMode?: boolean; topic?: string } = {},
+  opts: { composeMode?: boolean; topic?: string; styleExampleExcerpt?: string } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
@@ -50,7 +50,7 @@ export async function runSelfCritique(
   const topic = opts.topic?.trim();
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions).`
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks).`
       : "";
 
   const raw = await completeJson<unknown>({
@@ -67,6 +67,9 @@ ${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
     user: [
       topic ? `Article topic: ${topic}` : "",
       personaBlock,
+      opts.styleExampleExcerpt?.trim()
+        ? `\nBrand style reference (compare rhythm and paragraph length):\n${opts.styleExampleExcerpt.trim().slice(0, 2000)}`
+        : "",
       "",
       "Facts the article should reflect (JSON):",
       JSON.stringify(facts, null, 2),

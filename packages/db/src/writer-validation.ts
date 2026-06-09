@@ -211,6 +211,115 @@ export function writerComposeBriefOutlineIssues(html: string): string[] {
   return [...new Set(issues)].slice(0, 6);
 }
 
+const COMPOSE_TEXTBOOK_HEADING_RES = [
+  /^understanding the\b/i,
+  /^exploring the\b/i,
+  /^challenges and considerations/i,
+  /^innovative trends in/i,
+  /^common questions addressed/i,
+  /^key features of/i,
+  /^design essentials/i,
+];
+
+const COMPOSE_GENERIC_GUIDE_PHRASES = [
+  "comprehensive guidelines",
+  "landscape of",
+  "designers and planners must",
+  "let's connect and explore",
+  "let us work together",
+  "in today's landscape",
+  "it is essential to",
+  "plays a crucial role",
+];
+
+const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 80;
+const COMPOSE_MAX_CONSECUTIVE_LIST_BLOCKS = 3;
+
+/** Flags generic guide tone vs brand editorial voice in compose output. */
+export function writerComposeVoiceStyleIssues(html: string): string[] {
+  const issues: string[] = [];
+  const plain = stripHtmlToPlainText(html).toLowerCase();
+
+  const headingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const text = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (text && COMPOSE_TEXTBOOK_HEADING_RES.some((re) => re.test(text))) {
+      issues.push(`Textbook-style heading "${text}" — use punchy editorial headings instead`);
+    }
+  }
+
+  const listParts = html.split(/(?=<(?:p|h[1-6]|ul|ol)\b)/i);
+  let consecutiveLists = 0;
+  let maxConsecutiveLists = 0;
+  for (const part of listParts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    if (/^<(ul|ol)\b/i.test(trimmed)) {
+      consecutiveLists++;
+      maxConsecutiveLists = Math.max(maxConsecutiveLists, consecutiveLists);
+    } else {
+      consecutiveLists = 0;
+    }
+  }
+  if (maxConsecutiveLists >= COMPOSE_MAX_CONSECUTIVE_LIST_BLOCKS) {
+    issues.push("Too many consecutive bullet/list blocks — convert to flowing prose");
+  }
+
+  const paragraphs = writerHtmlParagraphs(html);
+  if (paragraphs.length >= 4) {
+    const totalWords = paragraphs.reduce(
+      (sum, p) => sum + stripHtmlToPlainText(p).split(/\s+/).filter(Boolean).length,
+      0,
+    );
+    const avg = totalWords / paragraphs.length;
+    if (avg > COMPOSE_MAX_AVG_PARAGRAPH_WORDS) {
+      issues.push(
+        `Paragraphs average ${Math.round(avg)} words — shorten to match brand style (often 1–3 sentences)`,
+      );
+    }
+  }
+
+  for (const phrase of COMPOSE_GENERIC_GUIDE_PHRASES) {
+    if (plain.includes(phrase)) {
+      issues.push(`Generic guide phrase detected ("${phrase}")`);
+    }
+  }
+
+  return [...new Set(issues)].slice(0, 6);
+}
+
+export function writerHasRelatedLinksBlock(html: string): boolean {
+  return /<h2\b[^>]*>\s*Related links\s*<\/h2>/i.test(html);
+}
+
+/** Compose link quality: inline only, no Related links dump. */
+export function writerComposeLinkIssues(
+  html: string,
+  links: WriterLink[],
+  sourceText: string,
+): string[] {
+  if (!links.length) return [];
+  const issues: string[] = [];
+  if (writerHasRelatedLinksBlock(html)) {
+    issues.push("Article contains a Related links section — weave links inline instead");
+  }
+  const missing = writerLinksMissingFromHtml(html, links);
+  if (missing.length) {
+    issues.push(`${missing.length} requested link(s) missing from body`);
+  }
+  if (writerLinksClusteredAtEnd(html, links)) {
+    issues.push("Links clustered at end of article — spread into middle sections");
+  }
+  if (writerLinksUnnaturalPlacement(html, links)) {
+    issues.push("Unnatural link placement (parenthetical, See anchor, or link-only sentences)");
+  }
+  if (writerLinksShallowOrFabricated(sourceText, html, links)) {
+    issues.push("Shallow or fabricated link placement");
+  }
+  return [...new Set(issues)].slice(0, 6);
+}
+
 const httpsUrl = z
   .string()
   .trim()
@@ -1053,11 +1162,13 @@ export function mechanicalWriterLinksInHtml(
 export function postReviseWriterLinksInHtml(
   html: string,
   links: WriterLink[],
+  opts?: { allowAppendedLinks?: boolean },
 ): { html: string; linksAppended: number } {
   let out = html;
   const missing = writerLinksMissingFromHtml(out, links);
   let linksAppended = 0;
-  if (missing.length) {
+  const allowAppended = opts?.allowAppendedLinks !== false;
+  if (missing.length && allowAppended) {
     const before = out;
     out = ensureWriterLinksInHtml(out, missing);
     if (out !== before) linksAppended = missing.length;

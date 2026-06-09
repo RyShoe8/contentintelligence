@@ -72,6 +72,8 @@ export const REWRITER_HUMAN_AUTHENTICITY_MIN = 80;
 export const REWRITER_BRAND_CONSISTENCY_MIN = 80;
 export const REWRITER_SELF_CRITIQUE_GENERICITY_MAX = 30;
 export const REWRITER_MAX_HUMANIZATION_ATTEMPTS = 3;
+export const REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN = 85;
+export const REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN = 85;
 
 function normalizeForMatch(text: string): string {
   return text
@@ -276,7 +278,7 @@ export function rewriterComposeQualityGatePassed(
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;
-  if (critique.humanAuthenticity < REWRITER_HUMAN_AUTHENTICITY_MIN) return false;
-  if (critique.brandConsistency < REWRITER_BRAND_CONSISTENCY_MIN) return false;
+  if (critique.humanAuthenticity < REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN) return false;
+  if (critique.brandConsistency < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) return false;
   return true;
 }

@@ -10,6 +10,7 @@ export type ReviseWriterLinksOpts = {
   voice: Voice;
   sourceText: string;
   exactAnchorLabels?: boolean;
+  composeMode?: boolean;
 };
 
 const REVISE_SYSTEM = `You revise an existing HTML article fragment to integrate external links naturally.
@@ -27,6 +28,12 @@ Rules:
 - Never use parenthetical link stubs like (anchor text) or trailing See anchor patterns — rewrite them into inline sentence grammar.
 - Each listed URL must appear exactly once.
 - Do NOT add URLs that were not listed.`;
+
+const REVISE_COMPOSE_EXTRA = `
+Compose link integration (strict):
+- If preferred anchor text is not in the article, rewrite an existing sentence in a relevant section to include a natural inline link — do not add a standalone promo line.
+- Never place links only in the closing paragraph.
+- Remove any Related links section; weave every URL into body paragraphs.`;
 
 export async function reviseWriterLinksInHtml(opts: ReviseWriterLinksOpts): Promise<string> {
   if (!env.openaiApiKey) {
@@ -62,12 +69,15 @@ export async function reviseWriterLinksInHtml(opts: ReviseWriterLinksOpts): Prom
   ].join("\n");
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
+  const systemContent = opts.composeMode
+    ? `${REVISE_SYSTEM}${REVISE_COMPOSE_EXTRA}`
+    : REVISE_SYSTEM;
   const res = await client.chat.completions.create({
     model: env.openaiModel,
     max_tokens: env.maxTokensWriter,
     temperature: 0.35,
     messages: [
-      { role: "system", content: REVISE_SYSTEM },
+      { role: "system", content: systemContent },
       { role: "user", content: userPrompt },
     ],
   });
