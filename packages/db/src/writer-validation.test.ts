@@ -13,6 +13,7 @@ import {
   writerArticleDepthLabel,
   writerArticleDisplayHtml,
   writerComposeResearchConfig,
+  writerComposeBriefOutlineIssues,
   writerComposeTopicDriftIssues,
   writerLinkAnchorMatches,
   writerLinkParagraphIndices,
@@ -549,8 +550,8 @@ describe("writerComposeTopicDriftIssues", () => {
 });
 
 describe("enforceWriterLinkAnchorLabels", () => {
-  it("replaces wrong anchor text with user label", () => {
-    const html = '<p>See <a href="https://example.com/page">wrong text</a>.</p>';
+  it("replaces wrong anchor text with user label when label appears in paragraph", () => {
+    const html = '<p>See the Exact Label guide at <a href="https://example.com/page">wrong text</a>.</p>';
     const out = enforceWriterLinkAnchorLabels(html, [
       { url: "https://example.com/page", label: "Exact Label" },
     ]);
@@ -558,12 +559,31 @@ describe("enforceWriterLinkAnchorLabels", () => {
     assert.doesNotMatch(out, /wrong text/);
   });
 
-  it("escapes HTML in labels", () => {
-    const html = '<p><a href="https://example.com">old</a></p>';
+  it("escapes HTML in labels when label appears in paragraph", () => {
+    const html =
+      '<p>Read about A &amp; B products at <a href="https://example.com">old</a>.</p>';
     const out = enforceWriterLinkAnchorLabels(html, [
-      { url: "https://example.com", label: "A & B <script>" },
+      { url: "https://example.com", label: "A & B products" },
     ]);
-    assert.match(out, />A &amp; B &lt;script&gt;<\/a>/);
+    assert.match(out, />A &amp; B products<\/a>/);
+  });
+
+  it("does not force multi-word label when only a partial word was woven", () => {
+    const html = "<p>Thoughtfully chosen firm elements for your project.</p>";
+    const woven = weaveMissingWriterLinksInBody(
+      html,
+      [{ url: "https://firm.example", label: "our firm" }],
+      { exactAnchorLabels: false },
+    ).html;
+    const partialWoven =
+      woven !== html
+        ? woven
+        : '<p>Thoughtfully chosen <a href="https://firm.example">firm</a> elements for your project.</p>';
+    const out = enforceWriterLinkAnchorLabels(partialWoven, [
+      { url: "https://firm.example", label: "our firm" },
+    ]);
+    assert.doesNotMatch(out, /our firm elements/i);
+    assert.match(out, /<a href="https:\/\/firm\.example">firm<\/a>/);
   });
 });
 
@@ -703,6 +723,26 @@ describe("weaveMissingWriterLinksInBody", () => {
     assert.doesNotMatch(out, /\(\s*<a\b/i);
     assert.doesNotMatch(out, /\bSee\s+<a\b/i);
   });
+
+  it("does not partial-match multi-word labels when exactAnchorLabels is true", () => {
+    const html = "<p>Thoughtfully chosen firm elements for your project.</p>";
+    const { html: out, woven } = weaveMissingWriterLinksInBody(
+      html,
+      [{ url: "https://firm.example", label: "our firm" }],
+      { exactAnchorLabels: true },
+    );
+    assert.equal(woven, 0);
+    assert.equal(writerLinkPresentInHtml(out, "https://firm.example"), false);
+  });
+
+  it("does not match label inside a larger word", () => {
+    const html = "<p>MissingLink integration is documented here.</p>";
+    const { html: out, woven } = weaveMissingWriterLinksInBody(html, [
+      { url: "https://missing.example", label: "Missing" },
+    ]);
+    assert.equal(woven, 0);
+    assert.equal(writerLinkPresentInHtml(out, "https://missing.example"), false);
+  });
 });
 
 describe("writerLinksUnnaturalPlacement", () => {
@@ -722,6 +762,21 @@ describe("writerLinksUnnaturalPlacement", () => {
     const html = '<p>Contact <a href="https://firm.example">our firm</a> for a consultation.</p>';
     const links = [{ url: "https://firm.example", label: "our firm" }];
     assert.equal(writerLinksUnnaturalPlacement(html, links), false);
+  });
+});
+
+describe("writerComposeBriefOutlineIssues", () => {
+  it("flags research-brief section headings", () => {
+    const html =
+      "<h2>Topic overview</h2><p>Intro</p><h2>Key facts</h2><p>Fact one</p>";
+    const issues = writerComposeBriefOutlineIssues(html);
+    assert.ok(issues.some((i) => i.includes("Topic overview")));
+    assert.ok(issues.some((i) => i.includes("Key facts")));
+  });
+
+  it("passes editorial headings", () => {
+    const html = "<h2>How taxes work on casino winnings</h2><p>Fact one</p>";
+    assert.equal(writerComposeBriefOutlineIssues(html).length, 0);
   });
 });
 
@@ -778,7 +833,7 @@ describe("finalizeWriterLinksInHtml", () => {
       "<p>Opening paragraph one discusses Label A topics.</p>",
       "<p>Second paragraph two mentions Label B details.</p>",
       "<p>Third paragraph three covers Label C options.</p>",
-      '<p>Fourth with <a href="https://a.example">wrong A</a>, <a href="https://b.example">wrong B</a>, and <a href="https://c.example">wrong C</a>.</p>',
+      '<p>Fourth discusses Label A, Label B, and Label C with <a href="https://a.example">wrong A</a>, <a href="https://b.example">wrong B</a>, and <a href="https://c.example">wrong C</a>.</p>',
     ].join("\n");
     const links = [
       { url: "https://a.example", label: "Label A" },
@@ -805,6 +860,16 @@ describe("writerLinksNeedRevision", () => {
   it("triggers on parenthetical link placement", () => {
     const source = "x".repeat(WRITER_SOURCE_MIN_CHARS);
     const html = '<p>We can help (<a href="https://firm.example">our firm</a>).</p>';
+    assert.equal(
+      writerLinksNeedRevision(html, [{ url: "https://firm.example", label: "our firm" }], source),
+      true,
+    );
+  });
+
+  it("triggers on grafted partial multi-word labels", () => {
+    const source = "Thoughtfully chosen firm elements for your project. ".repeat(20);
+    const html =
+      '<p>Thoughtfully chosen <a href="https://firm.example">our firm</a> elements for your project.</p>';
     assert.equal(
       writerLinksNeedRevision(html, [{ url: "https://firm.example", label: "our firm" }], source),
       true,

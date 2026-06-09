@@ -1,6 +1,8 @@
 import {
+  isComposeNarrativeFacts,
   isHybridContentFacts,
   isProceduralContentFacts,
+  rewriterComposeCompletenessIssues,
   rewriterInstructionPreserveCompletenessIssues,
   rewriterProceduralCompletenessIssues,
   selfCritiqueResultSchema,
@@ -25,15 +27,21 @@ export async function runSelfCritique(
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
   const hybrid = isHybridContentFacts(facts);
+  const composeNarrative = isComposeNarrativeFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
-  const deterministicIssues = hybrid
-    ? rewriterInstructionPreserveCompletenessIssues(facts, html)
-    : proceduralOnly
-      ? rewriterProceduralCompletenessIssues(facts, html)
-      : [];
+  const deterministicIssues =
+    opts.composeMode && composeNarrative
+      ? rewriterComposeCompletenessIssues(facts, html)
+      : hybrid
+        ? rewriterInstructionPreserveCompletenessIssues(facts, html)
+        : proceduralOnly
+          ? rewriterProceduralCompletenessIssues(facts, html)
+          : [];
 
   let preserveBlock = "";
-  if (hybrid) {
+  if (opts.composeMode && composeNarrative) {
+    preserveBlock = `This is a topic-first compose article. Check that ALL research facts and keyDetails appear in editorial prose — but do NOT require research-brief section titles (Topic overview, Key facts, etc.) as headings. Fail if the article reads like a labeled research summary instead of brand-voice editorial.`;
+  } else if (hybrid) {
     preserveBlock = `This is a hybrid article with both narrative editorial blocks and procedural how-to sections. Check that EVERY narrative section title and key points appear, and EVERY procedural section has all steps. Missing blocks or merged sections are failures.`;
   } else if (proceduralOnly) {
     preserveBlock = `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`;
@@ -42,7 +50,7 @@ export async function runSelfCritique(
   const topic = opts.topic?.trim();
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic or ignores the stated persona and constraints — brand voice must shape perspective and framing, not just word choice.`
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions).`
       : "";
 
   const raw = await completeJson<unknown>({

@@ -1,14 +1,18 @@
 import type { Db } from "mongodb";
 import {
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  isComposeNarrativeFacts,
   isHybridContentFacts,
   isInstructionPreserveMode,
   isProceduralContentFacts,
+  rewriterComposeCompletenessIssues,
+  rewriterComposeQualityGatePassed,
   rewriterHybridQualityGatePassed,
   rewriterInstructionPreserveCompletenessIssues,
   rewriterProceduralQualityGatePassed,
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
+  writerComposeBriefOutlineIssues,
   writerComposeTopicDriftIssues,
   type ContentFacts,
   type GenericityAnalysis,
@@ -88,8 +92,8 @@ function qualityGatePassed(
   critique: SelfCritiqueResult,
   composeMode: boolean,
 ): boolean {
-  if (composeMode && isHybridContentFacts(facts)) {
-    return rewriterHybridQualityGatePassed(facts, html, critique);
+  if (composeMode && isComposeNarrativeFacts(facts)) {
+    return rewriterComposeQualityGatePassed(facts, html, critique);
   }
   if (isHybridContentFacts(facts)) {
     return rewriterHybridQualityGatePassed(facts, html, critique);
@@ -123,8 +127,9 @@ export async function runHumanizationEngine(
     includeFaq: opts.includeFaq,
   });
   const hybrid = isHybridContentFacts(facts);
+  const composeNarrative = isComposeNarrativeFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
-  const preserveMode = isInstructionPreserveMode(facts) || (composeMode && hybrid);
+  const preserveMode = isInstructionPreserveMode(facts) || (composeMode && composeNarrative);
   const ctx = resolveVoiceGenerationContext(opts.voice);
   const interpretation = await interpretBrand(facts, ctx, {
     composeMode,
@@ -136,6 +141,7 @@ export async function runHumanizationEngine(
     opts.voice,
     facts,
     opts.writerArticleId,
+    { composeMode },
   );
   const examples = allExamples;
 
@@ -183,19 +189,22 @@ export async function runHumanizationEngine(
       topic: opts.topic,
     });
     const completenessIssues = preserveMode
-      ? rewriterInstructionPreserveCompletenessIssues(facts, html)
+      ? composeMode && composeNarrative
+        ? rewriterComposeCompletenessIssues(facts, html)
+        : rewriterInstructionPreserveCompletenessIssues(facts, html)
       : [];
     const topicDriftIssues =
       composeMode && opts.topic
         ? writerComposeTopicDriftIssues(html, opts.topic, ctx.brandName)
         : [];
+    const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
       genericity,
       critique,
       composite,
-      completenessIssueCount: completenessIssues.length + topicDriftIssues.length,
+      completenessIssueCount: completenessIssues.length + topicDriftIssues.length + briefOutlineIssues.length,
     };
 
     if (!best || snapshotScore(snapshot, preserveMode) > snapshotScore(best, preserveMode)) {
@@ -203,7 +212,7 @@ export async function runHumanizationEngine(
     }
 
     const gateOk = qualityGatePassed(facts, html, genericity, critique, composeMode);
-    const noDrift = topicDriftIssues.length === 0;
+    const noDrift = topicDriftIssues.length === 0 && briefOutlineIssues.length === 0;
 
     if (gateOk && noDrift) {
       return {
@@ -222,6 +231,7 @@ export async function runHumanizationEngine(
     retryIssues = mergeRetryIssues(genericity, critique, [
       ...completenessIssues,
       ...topicDriftIssues,
+      ...briefOutlineIssues,
     ]);
   }
 

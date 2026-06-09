@@ -20,6 +20,7 @@ import {
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
+const COMPOSE_EXAMPLE_EXCERPT_CHARS = 2800;
 
 function fingerprintsBlock(memory?: BrandMemory): string {
   if (!memory) return "";
@@ -59,7 +60,21 @@ Procedural instructions (strict):
 - Rephrase for brand voice without omitting steps, menu paths, or settings names.`;
 }
 
-function hybridRulesBlock(facts: ContentFacts): string {
+function hasNarrativeSections(facts: ContentFacts): boolean {
+  return (facts.narrativeSections?.length ?? 0) > 0;
+}
+
+function hybridRulesBlock(facts: ContentFacts, composeMode?: boolean): string {
+  if (composeMode && hasNarrativeSections(facts)) {
+    return `
+Compose article (editorial voice, not a research summary):
+- Cover EVERY point in narrativeSections and EVERY keyDetails entry — nothing omitted.
+- Do NOT use research-brief section titles as headings (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence, FAQ).
+- Write editorial <h2>/<h3> headings that fit the topic and match the brand examples below (structure, rhythm, openings).
+- Weave all facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
+- Include procedural sections with full ordered steps when present (see procedural rules above).
+- Do not add filler closings like "What are your thoughts?"`;
+  }
   if (!isHybridContentFacts(facts)) return "";
   return `
 Hybrid article (full article, not a cheat sheet):
@@ -82,15 +97,14 @@ function formatSectionsForPrompt(facts: ContentFacts): string {
 
 function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?: boolean): string {
   if (!examples.length) return "";
+  const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
   const blocks = examples.map((ex, i) => {
     const html =
-      ex.html.length > EXAMPLE_EXCERPT_CHARS
-        ? `${ex.html.slice(0, EXAMPLE_EXCERPT_CHARS)}…`
-        : ex.html;
+      ex.html.length > excerptChars ? `${ex.html.slice(0, excerptChars)}…` : ex.html;
     return `### Example ${i + 1}: ${ex.title}\n${html}`;
   });
   const composeNote = composeMode
-    ? " Examples are saved Writer articles only — match voice, rhythm, and rhetorical patterns, not topic content."
+    ? " Imitate heading style, paragraph length, sentence rhythm, openings/closings, and rhetorical patterns from these examples. Facts come from research; prose comes from these examples plus persona — not from the research brief outline."
     : "";
   return `\n\nBrand examples (match voice and rhythm, not content):${composeNote}\n${blocks.join("\n\n")}`;
 }
@@ -180,7 +194,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 

@@ -192,6 +192,25 @@ export function writerComposeTopicDriftIssues(
   return [...new Set(issues)].slice(0, 6);
 }
 
+const COMPOSE_BRIEF_HEADING_RE =
+  /^(topic overview|key facts|angles to cover|angles|caveats|faq|open questions|weak evidence|caveats and counterpoints|frequently asked questions)$/i;
+
+/** Flags when compose output mirrors research-brief section labels as headings. */
+export function writerComposeBriefOutlineIssues(html: string): string[] {
+  const headingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  const issues: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const text = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (text && COMPOSE_BRIEF_HEADING_RE.test(text)) {
+      issues.push(
+        `Article uses research-brief section heading "${text}" instead of editorial headings`,
+      );
+    }
+  }
+  return [...new Set(issues)].slice(0, 6);
+}
+
 const httpsUrl = z
   .string()
   .trim()
@@ -758,6 +777,16 @@ function normalizedContains(haystack: string, needle: string): boolean {
   return n.length > 0 && h.includes(n);
 }
 
+function wordBoundaryRegex(phrase: string): RegExp {
+  return new RegExp(`\\b${escapeRegex(phrase.trim())}\\b`, "i");
+}
+
+function plainContainsPhrase(plain: string, phrase: string): boolean {
+  const trimmed = phrase.trim();
+  if (!trimmed) return false;
+  return wordBoundaryRegex(trimmed).test(plain);
+}
+
 function anchorWordsInParagraph(paragraphHtml: string, url: string): number {
   const re = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
@@ -811,40 +840,18 @@ function linkParagraphIndexInArray(paragraphs: string[], url: string): number | 
   return null;
 }
 
-const LINK_PHRASE_STOP_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "our",
-  "your",
-  "their",
-  "this",
-  "that",
-  "for",
-  "and",
-  "or",
-  "to",
-  "of",
-  "in",
-  "on",
-  "at",
-  "by",
-  "with",
-  "from",
-]);
-
-function linkablePhraseCandidates(anchor: string): string[] {
-  const words = anchor
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w.length >= 3 && !LINK_PHRASE_STOP_WORDS.has(w.toLowerCase()));
+function linkablePhraseCandidates(anchor: string, exactAnchorLabels?: boolean): string[] {
+  const words = anchor.trim().split(/\s+/).filter(Boolean);
+  if (exactAnchorLabels && words.length > 1) {
+    return [anchor.trim()];
+  }
   const candidates: string[] = [];
   for (let len = words.length; len >= 1; len--) {
     for (let start = 0; start <= words.length - len; start++) {
       candidates.push(words.slice(start, start + len).join(" "));
     }
   }
-  return candidates.sort((a, b) => b.length - a.length);
+  return [...new Set(candidates)].sort((a, b) => b.length - a.length);
 }
 
 function wrapFirstMatchingPhrase(
@@ -854,9 +861,9 @@ function wrapFirstMatchingPhrase(
   phrases: string[],
 ): string | null {
   for (const phrase of phrases) {
-    if (!normalizedContains(plain, phrase)) continue;
+    if (!plainContainsPhrase(plain, phrase)) continue;
     const phraseEsc = escapeHtmlText(phrase);
-    const phraseRe = new RegExp(escapeRegex(phrase), "i");
+    const phraseRe = wordBoundaryRegex(phrase);
     const updated = paragraph.replace(phraseRe, `<a href="${href}">${phraseEsc}</a>`);
     if (updated !== paragraph) return updated;
   }
@@ -867,6 +874,7 @@ function insertWriterLinkIntoParagraph(
   paragraph: string,
   link: WriterLink,
   preferredAnchorText?: string,
+  exactAnchorLabels?: boolean,
 ): string {
   if (writerLinkPresentInHtml(paragraph, link.url)) return paragraph;
 
@@ -875,8 +883,8 @@ function insertWriterLinkIntoParagraph(
   const anchorEsc = escapeHtmlText(anchor);
   const plain = stripHtmlToPlainText(paragraph);
 
-  if (normalizedContains(plain, anchor)) {
-    const anchorRe = new RegExp(escapeRegex(anchor), "i");
+  if (plainContainsPhrase(plain, anchor)) {
+    const anchorRe = wordBoundaryRegex(anchor);
     return paragraph.replace(anchorRe, `<a href="${href}">${anchorEsc}</a>`);
   }
 
@@ -884,7 +892,7 @@ function insertWriterLinkIntoParagraph(
     paragraph,
     plain,
     href,
-    linkablePhraseCandidates(anchor),
+    linkablePhraseCandidates(anchor, exactAnchorLabels),
   );
   if (phraseMatch) return phraseMatch;
 
@@ -960,6 +968,7 @@ export function redistributeWriterLinksInBody(
 export function weaveMissingWriterLinksInBody(
   html: string,
   missingLinks: WriterLink[],
+  opts?: { exactAnchorLabels?: boolean },
 ): { html: string; woven: number } {
   if (!missingLinks.length) return { html, woven: 0 };
 
@@ -982,7 +991,12 @@ export function weaveMissingWriterLinksInBody(
     ];
     for (const pIdx of tryOrder) {
       const paragraph = paragraphs[pIdx] ?? "";
-      const updated = insertWriterLinkIntoParagraph(paragraph, link);
+      const updated = insertWriterLinkIntoParagraph(
+        paragraph,
+        link,
+        undefined,
+        opts?.exactAnchorLabels,
+      );
       if (updated !== paragraph && writerLinkPresentInHtml(updated, link.url)) {
         paragraphs[pIdx] = updated;
         woven++;
@@ -1007,12 +1021,13 @@ export function weaveMissingWriterLinksInBody(
 export function mechanicalWriterLinksInHtml(
   html: string,
   links: WriterLink[],
+  opts?: { exactAnchorLabels?: boolean },
 ): { html: string; linksWoven: number; linksRedistributed: number } {
   let out = html;
   let missing = writerLinksMissingFromHtml(out, links);
   let linksWoven = 0;
   if (missing.length) {
-    const woven = weaveMissingWriterLinksInBody(out, missing);
+    const woven = weaveMissingWriterLinksInBody(out, missing, opts);
     out = woven.html;
     linksWoven = woven.woven;
     missing = writerLinksMissingFromHtml(out, links);
@@ -1025,7 +1040,7 @@ export function mechanicalWriterLinksInHtml(
     linksRedistributed = redistributed.redistributed;
     missing = writerLinksMissingFromHtml(out, links);
     if (missing.length) {
-      const reWoven = weaveMissingWriterLinksInBody(out, missing);
+      const reWoven = weaveMissingWriterLinksInBody(out, missing, opts);
       out = reWoven.html;
       linksWoven += reWoven.woven;
     }
@@ -1085,20 +1100,24 @@ export function writerLinkAnchorMatches(html: string, link: WriterLink): boolean
 
 /** Replace anchor inner text with user-provided labels for matching URLs. */
 export function enforceWriterLinkAnchorLabels(html: string, links: WriterLink[]): string {
-  let out = html;
-  for (const link of links) {
-    const label = link.label?.trim();
-    if (!label) continue;
+  const paragraphRe = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  return html.replace(paragraphRe, (paragraph) => {
+    const plain = stripHtmlToPlainText(paragraph);
+    let updated = paragraph;
+    for (const link of links) {
+      const label = link.label?.trim();
+      if (!label || !plainContainsPhrase(plain, label)) continue;
 
-    const re = /<a\b([^>]*?)href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
-    out = out.replace(re, (full, pre, href, post, _inner) => {
-      if (!hrefMatchesWriterUrl(String(href).trim(), link.url)) return full;
-      const hrefEsc = escapeHtmlText(String(href).trim());
-      const labelEsc = escapeHtmlText(label);
-      return `<a${pre}href="${hrefEsc}"${post}>${labelEsc}</a>`;
-    });
-  }
-  return out;
+      const re = /<a\b([^>]*?)href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
+      updated = updated.replace(re, (full, pre, href, post, _inner) => {
+        if (!hrefMatchesWriterUrl(String(href).trim(), link.url)) return full;
+        const hrefEsc = escapeHtmlText(String(href).trim());
+        const labelEsc = escapeHtmlText(label);
+        return `<a${pre}href="${hrefEsc}"${post}>${labelEsc}</a>`;
+      });
+    }
+    return updated;
+  });
 }
 
 export function writerLinkAnchorText(link: WriterLink): string {

@@ -8,6 +8,8 @@ import {
   rewriterProceduralQualityGatePassed,
   rewriterNarrativeCompletenessIssues,
   rewriterHybridQualityGatePassed,
+  rewriterComposeCompletenessIssues,
+  rewriterComposeQualityGatePassed,
   contentFactsSchema,
   brandInterpretationSchema,
 } from "./rewriter-types.js";
@@ -218,6 +220,52 @@ describe("rewriterHybridQualityGatePassed", () => {
         humanAuthenticity: 85,
         brandConsistency: 82,
         genericity: 75,
+        issues: [],
+      }),
+      true,
+    );
+  });
+});
+
+const composeResearchFacts = contentFactsSchema.parse({
+  contentType: "hybrid",
+  narrativeSections: [
+    { title: "Topic overview", points: ["Online winnings are taxable income"] },
+    { title: "Key facts", points: ["Federal withholding may apply", "State rules vary"] },
+  ],
+  keyDetails: ["Report all gambling winnings", "Keep records of wins and losses"],
+});
+
+describe("rewriterComposeCompletenessIssues", () => {
+  it("requires facts but not research-brief section titles", () => {
+    const html = [
+      "<h2>What winners owe at tax time</h2>",
+      "<p>Online winnings are taxable income. Federal withholding may apply and state rules vary.</p>",
+      "<p>Report all gambling winnings and keep records of wins and losses.</p>",
+    ].join("");
+    assert.equal(rewriterComposeCompletenessIssues(composeResearchFacts, html).length, 0);
+  });
+
+  it("flags missing research facts", () => {
+    const html = "<h2>Tax basics</h2><p>Online winnings are taxable income.</p>";
+    const issues = rewriterComposeCompletenessIssues(composeResearchFacts, html);
+    assert.ok(issues.length > 0);
+    assert.ok(!issues.some((i) => i.includes("Topic overview")));
+  });
+});
+
+describe("rewriterComposeQualityGatePassed", () => {
+  it("passes compose articles with facts covered in editorial voice", () => {
+    const html = [
+      "<h2>What winners owe at tax time</h2>",
+      "<p>Online winnings are taxable income. Federal withholding may apply and state rules vary.</p>",
+      "<p>Report all gambling winnings and keep records of wins and losses.</p>",
+    ].join("");
+    assert.equal(
+      rewriterComposeQualityGatePassed(composeResearchFacts, html, {
+        humanAuthenticity: 85,
+        brandConsistency: 82,
+        genericity: 20,
         issues: [],
       }),
       true,

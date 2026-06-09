@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   COMPOSE_STALE_MS,
+  composeProgressLabel,
   isComposePendingStale,
   shouldPollCompose,
 } from "./compose-poll.js";
@@ -60,5 +61,15 @@ describe("isComposePendingStale", () => {
       }),
       true,
     );
+  });
+});
+
+describe("composeProgressLabel", () => {
+  it("returns Writing for write_only mode", () => {
+    assert.equal(composeProgressLabel("write_only"), "Writing…");
+  });
+
+  it("returns Researching and writing for full mode", () => {
+    assert.equal(composeProgressLabel("full"), "Researching and writing…");
   });
 });

@@ -1,6 +1,7 @@
 import type { Db } from "mongodb";
 import {
   listSavedWriterExamplesForVoice,
+  listWriterStyleExamplesForVoice,
   type ContentFacts,
   writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
@@ -9,6 +10,7 @@ import { completeJson } from "../llm/json-completion.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1200;
+const COMPOSE_EXAMPLE_EXCERPT_CHARS = 2800;
 const CANDIDATE_ARTICLE_LIMIT = 10;
 const RANKED_EXAMPLE_LIMIT = 5;
 
@@ -24,15 +26,24 @@ export async function loadExampleCandidates(
   organizationId: string,
   voice: Voice,
   excludeArticleId?: string,
+  composeMode?: boolean,
 ): Promise<ExampleCandidate[]> {
-  const articles = await listSavedWriterExamplesForVoice(
-    db,
-    organizationId,
-    voice.id,
-    CANDIDATE_ARTICLE_LIMIT,
-  );
+  const articles = composeMode
+    ? [
+        ...(await listWriterStyleExamplesForVoice(db, organizationId, voice.id)),
+        ...(await listSavedWriterExamplesForVoice(db, organizationId, voice.id, CANDIDATE_ARTICLE_LIMIT)),
+      ]
+    : await listSavedWriterExamplesForVoice(db, organizationId, voice.id, CANDIDATE_ARTICLE_LIMIT);
+
+  const seen = new Set<string>();
   return articles
     .filter((a) => a.id !== excludeArticleId)
+    .filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    })
+    .slice(0, CANDIDATE_ARTICLE_LIMIT)
     .map((a) => ({
       id: a.id,
       title: a.title,
@@ -42,13 +53,15 @@ export async function loadExampleCandidates(
     .filter((c) => c.content.length > 0);
 }
 
-function fallbackExamples(candidates: ExampleCandidate[]): ArticleRewriteExample[] {
+function fallbackExamples(
+  candidates: ExampleCandidate[],
+  composeMode?: boolean,
+): ArticleRewriteExample[] {
+  const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
   return candidates.slice(0, RANKED_EXAMPLE_LIMIT).map((c) => ({
     title: c.title,
     html:
-      c.content.length > EXAMPLE_EXCERPT_CHARS
-        ? `${c.content.slice(0, EXAMPLE_EXCERPT_CHARS)}…`
-        : c.content,
+      c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
   }));
 }
 
@@ -58,12 +71,21 @@ export async function retrieveRankedExamples(
   voice: Voice,
   facts: ContentFacts,
   excludeArticleId?: string,
+  opts?: { composeMode?: boolean },
 ): Promise<ArticleRewriteExample[]> {
-  const candidates = await loadExampleCandidates(db, organizationId, voice, excludeArticleId);
+  const composeMode = opts?.composeMode === true;
+  const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
+  const candidates = await loadExampleCandidates(
+    db,
+    organizationId,
+    voice,
+    excludeArticleId,
+    composeMode,
+  );
   if (!candidates.length) return [];
 
   if (candidates.length <= RANKED_EXAMPLE_LIMIT) {
-    return fallbackExamples(candidates);
+    return fallbackExamples(candidates, composeMode);
   }
 
   const catalog = candidates.map((c, i) => ({
@@ -92,7 +114,7 @@ Prefer topical relevance to the facts and stylistic match to a human brand opera
   const indices = raw?.selected?.filter(
     (i) => Number.isInteger(i) && i >= 0 && i < candidates.length,
   );
-  if (!indices?.length) return fallbackExamples(candidates);
+  if (!indices?.length) return fallbackExamples(candidates, composeMode);
 
   const unique = [...new Set(indices)].slice(0, RANKED_EXAMPLE_LIMIT);
   return unique.map((i) => {
@@ -100,9 +122,7 @@ Prefer topical relevance to the facts and stylistic match to a human brand opera
     return {
       title: c.title,
       html:
-        c.content.length > EXAMPLE_EXCERPT_CHARS
-          ? `${c.content.slice(0, EXAMPLE_EXCERPT_CHARS)}…`
-          : c.content,
+        c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
     };
   });
 }

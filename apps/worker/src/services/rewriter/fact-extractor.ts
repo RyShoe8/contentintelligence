@@ -34,7 +34,7 @@ function buildComposeExtractSystemPrompt(includeFaq?: boolean): string {
 Schema:
 {"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"keyDetails":string[]}
 Rules:
-- narrativeSections: one object per labeled brief section (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence). Skip empty sections.
+- narrativeSections: one object per labeled brief section (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence). Skip empty sections. Section titles are internal grouping labels only — not article headings.
 ${faqRules}
 - points: preserve factual bullets with source URLs/citations where present in the brief.
 - keyDetails: 8–20 atomic factual statements with source URLs when available.

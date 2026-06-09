@@ -37,7 +37,9 @@ export async function applyWriterLinkPipeline(
   }
 
   const source = opts.sourceText.trim();
-  const mechanical = mechanicalWriterLinksInHtml(out, opts.links);
+  const mechanical = mechanicalWriterLinksInHtml(out, opts.links, {
+    exactAnchorLabels: opts.exactAnchorLabels,
+  });
   out = mechanical.html;
   linksWoven += mechanical.linksWoven;
   linksRedistributed += mechanical.linksRedistributed;

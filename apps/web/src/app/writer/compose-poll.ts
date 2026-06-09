@@ -38,3 +38,7 @@ export function shouldPollCompose(article: ComposePollArticleFields): boolean {
   if (started == null) return false;
   return Date.now() - started <= COMPOSE_STALE_MS;
 }
+
+export function composeProgressLabel(mode: "full" | "write_only"): string {
+  return mode === "write_only" ? "Writing…" : "Researching and writing…";
+}

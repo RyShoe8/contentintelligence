@@ -150,6 +150,8 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /do not make the brand, community, or content strategy the subject/i);
     assert.match(prompt, /Apply full brand voice/);
     assert.match(prompt, /Mention "Frugal Gambler" at least once when it fits naturally/);
+    assert.match(prompt, /Compose article \(editorial voice, not a research summary\)/i);
+    assert.match(prompt, /Do NOT use research-brief section titles as headings/i);
   });
 
   it("requires structured FAQ HTML in compose mode when includeFaq is true", () => {

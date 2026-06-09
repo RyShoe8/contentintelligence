@@ -105,6 +105,11 @@ export function isHybridContentFacts(facts: ContentFacts): boolean {
   );
 }
 
+/** Compose research briefs: hybrid contentType with narrative blocks (may lack procedural sections). */
+export function isComposeNarrativeFacts(facts: ContentFacts): boolean {
+  return facts.contentType === "hybrid" && (facts.narrativeSections?.length ?? 0) > 0;
+}
+
 export function isInstructionPreserveMode(facts: ContentFacts): boolean {
   return isHybridContentFacts(facts) || isProceduralContentFacts(facts);
 }
@@ -170,6 +175,48 @@ export function rewriterNarrativeCompletenessIssues(
   return issues;
 }
 
+/** Compose completeness: all facts present, but research-brief section titles are not required as headings. */
+export function writerComposeNarrativeCompletenessIssues(
+  facts: ContentFacts,
+  html: string,
+): string[] {
+  if (!isComposeNarrativeFacts(facts) || !facts.narrativeSections) return [];
+
+  const plain = stripHtmlToPlainText(html);
+  const issues: string[] = [];
+
+  for (const section of facts.narrativeSections) {
+    let missingPoints = 0;
+    for (const point of section.points) {
+      if (!textPresentInPlain(point, plain)) missingPoints++;
+    }
+    if (missingPoints > 0) {
+      issues.push(
+        `Missing ${missingPoints}/${section.points.length} research facts from "${section.title}"`,
+      );
+    }
+  }
+
+  let missingKeyDetails = 0;
+  for (const detail of facts.keyDetails) {
+    if (!textPresentInPlain(detail, plain)) missingKeyDetails++;
+  }
+  if (missingKeyDetails > 0) {
+    issues.push(
+      `Missing ${missingKeyDetails}/${facts.keyDetails.length} key detail facts`,
+    );
+  }
+
+  return [...issues, ...rewriterProceduralCompletenessIssues(facts, html)];
+}
+
+export function rewriterComposeCompletenessIssues(
+  facts: ContentFacts,
+  html: string,
+): string[] {
+  return writerComposeNarrativeCompletenessIssues(facts, html);
+}
+
 export function rewriterInstructionPreserveCompletenessIssues(
   facts: ContentFacts,
   html: string,
@@ -216,6 +263,18 @@ export function rewriterHybridQualityGatePassed(
   critique: SelfCritiqueResult,
 ): boolean {
   const completenessIssues = rewriterInstructionPreserveCompletenessIssues(facts, html);
+  if (completenessIssues.length > 0) return false;
+  if (critique.humanAuthenticity < REWRITER_HUMAN_AUTHENTICITY_MIN) return false;
+  if (critique.brandConsistency < REWRITER_BRAND_CONSISTENCY_MIN) return false;
+  return true;
+}
+
+export function rewriterComposeQualityGatePassed(
+  facts: ContentFacts,
+  html: string,
+  critique: SelfCritiqueResult,
+): boolean {
+  const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;
   if (critique.humanAuthenticity < REWRITER_HUMAN_AUTHENTICITY_MIN) return false;
   if (critique.brandConsistency < REWRITER_BRAND_CONSISTENCY_MIN) return false;

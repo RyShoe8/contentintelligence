@@ -23,6 +23,7 @@ import {
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
 import {
+  composeProgressLabel,
   isComposePendingStale,
   shouldPollCompose,
 } from "@/app/writer/compose-poll";
@@ -270,10 +271,11 @@ export function WriterComposeForm({
   }, []);
 
   const startComposePolling = useCallback(
-    (pollArticleId: string) => {
+    (pollArticleId: string, mode: "full" | "write_only" = "full") => {
       stopComposePolling();
       setWriting(true);
-      setComposeProgress("Researching and writing…");
+      setComposeWriteMode(mode);
+      setComposeProgress(composeProgressLabel(mode));
       setWriteError(null);
       composePollStartedRef.current = Date.now();
 
@@ -513,7 +515,7 @@ export function WriterComposeForm({
     setWriting(true);
     setWriteError(null);
     setComposeWriteMode(skipResearch ? "write_only" : "full");
-    setComposeProgress(skipResearch ? "Writing…" : "Researching and writing…");
+    setComposeProgress(composeProgressLabel(skipResearch ? "write_only" : "full"));
     setReferencesFetched(null);
     setReferencesFailed([]);
     setLinksPresent(null);
@@ -574,7 +576,7 @@ export function WriterComposeForm({
           if (nextId !== articleId) {
             router.push(`/writer?article_id=${encodeURIComponent(nextId)}`);
           }
-          startComposePolling(nextId);
+          startComposePolling(nextId, skipResearch ? "write_only" : "full");
         } else {
           setWriting(false);
           setComposeProgress(null);
