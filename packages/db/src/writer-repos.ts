@@ -537,6 +537,7 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     compose_error: article.compose_error,
     compose_phase: article.compose_phase,
     compose_requested_at: article.compose_requested_at?.toISOString(),
+    server_now: new Date().toISOString(),
     generated_html: article.generated_html,
     research_brief: article.source_text,
     references_fetched: meta?.references_fetched,

@@ -20,6 +20,7 @@ export type StartWriterComposeJobResult = {
   accepted: true;
   writer_article_id: string;
   compose_status: "pending";
+  compose_requested_at: string;
 };
 
 function resultToComposeMeta(
@@ -190,6 +191,7 @@ export async function startWriterComposeJob(
     throw new Error("compose_already_running");
   }
 
+  const jobStartedAtMs = Date.now();
   void runWriterComposeJobExclusive(pending.id, async () => {
     console.log(
       JSON.stringify({ msg: "compose_job_start", writer_article_id: pending.id }),
@@ -197,7 +199,11 @@ export async function startWriterComposeJob(
     try {
       await runComposeGeneration(db, body, pending.id, existingComposeMeta);
       console.log(
-        JSON.stringify({ msg: "compose_job_done", writer_article_id: pending.id }),
+        JSON.stringify({
+          msg: "compose_job_done",
+          writer_article_id: pending.id,
+          duration_ms: Date.now() - jobStartedAtMs,
+        }),
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -206,6 +212,7 @@ export async function startWriterComposeJob(
           msg: "compose_job_failed",
           writer_article_id: pending.id,
           error: message,
+          duration_ms: Date.now() - jobStartedAtMs,
         }),
       );
       await updateWriterComposeFailed(db, pending.id, organizationId, message);
@@ -216,5 +223,6 @@ export async function startWriterComposeJob(
     accepted: true,
     writer_article_id: pending.id,
     compose_status: "pending",
+    compose_requested_at: pending.compose_requested_at!.toISOString(),
   };
 }

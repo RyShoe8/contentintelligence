@@ -25,14 +25,18 @@ import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer
 import {
   COMPOSE_STALL_MESSAGE,
   composeGenerationStartedAt,
+  composeJoinProgressLabel,
   composeProgressLabel,
-  isComposePendingOrphan,
-  isComposePendingStale,
+  clearComposePollMode,
+  clearComposePollSession,
+  loadComposePollSession,
+  parseServerNowMs,
   resolveComposePollMode,
   saveComposePollMode,
-  clearComposePollMode,
+  saveComposePollSession,
   shouldAcceptComposePollReady,
   shouldPollCompose,
+  shouldStallComposePoll,
 } from "@/app/writer/compose-poll";
 import { Button } from "@/components/ui/button";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
@@ -72,6 +76,8 @@ type ComposeStatusResponse = {
   compose_error?: string;
   compose_phase?: "full" | "write_only";
   compose_requested_at?: string;
+  server_now?: string;
+  accepted?: boolean;
   generated_html?: string;
   research_brief?: string;
   references_fetched?: number;
@@ -95,7 +101,20 @@ type ComposeStatusResponse = {
 };
 
 const COMPOSE_POLL_INTERVAL_MS = 3000;
-const COMPOSE_POLL_TIMEOUT_MS = 15 * 60 * 1000;
+
+async function fetchComposeReadyGate(articleId: string): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `/api/writer/articles/${encodeURIComponent(articleId)}/compose-status`,
+      { cache: "no-store" },
+    );
+    const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse;
+    if (!r.ok) return null;
+    return composeGenerationStartedAt({ compose_requested_at: data.compose_requested_at });
+  } catch {
+    return null;
+  }
+}
 
 type LinkRow = { url: string; label: string };
 
@@ -249,7 +268,7 @@ export function WriterComposeForm({
   );
   const composePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const composePollArticleIdRef = useRef<string | null>(null);
-  const composePollStartedRef = useRef(0);
+  const composePollReadyGateRef = useRef(0);
   const composePollJoinedExistingJobRef = useRef(false);
 
   const clearComposePollInterval = useCallback(() => {
@@ -264,7 +283,10 @@ export function WriterComposeForm({
     clearComposePollInterval();
     composePollArticleIdRef.current = null;
     composePollJoinedExistingJobRef.current = false;
-    if (pollArticleId) clearComposePollMode(pollArticleId);
+    if (pollArticleId) {
+      clearComposePollMode(pollArticleId);
+      clearComposePollSession(pollArticleId);
+    }
     setWriting(false);
     setComposeProgress(null);
     setComposeWriteMode(null);
@@ -322,14 +344,19 @@ export function WriterComposeForm({
     (
       pollArticleId: string,
       mode: "full" | "write_only" = "full",
-      opts?: { pollStartedAtMs?: number; joinedExistingJob?: boolean },
+      opts?: { readyGateAtMs?: number; joinedExistingJob?: boolean },
     ) => {
+      const joinedExistingJob = opts?.joinedExistingJob === true;
+      const progressLabel = joinedExistingJob
+        ? composeJoinProgressLabel(mode)
+        : composeProgressLabel(mode);
+
       if (composePollArticleIdRef.current === pollArticleId && composePollRef.current) {
         setWriting(true);
         setComposeWriteMode(mode);
-        setComposeProgress(composeProgressLabel(mode));
+        setComposeProgress(progressLabel);
         saveComposePollMode(pollArticleId, mode);
-        if (opts?.joinedExistingJob) {
+        if (joinedExistingJob) {
           composePollJoinedExistingJobRef.current = true;
         }
         return;
@@ -340,10 +367,16 @@ export function WriterComposeForm({
       saveComposePollMode(pollArticleId, mode);
       setWriting(true);
       setComposeWriteMode(mode);
-      setComposeProgress(composeProgressLabel(mode));
+      setComposeProgress(progressLabel);
       setWriteError(null);
-      composePollStartedRef.current = opts?.pollStartedAtMs ?? Date.now();
-      composePollJoinedExistingJobRef.current = opts?.joinedExistingJob === true;
+      composePollReadyGateRef.current = opts?.readyGateAtMs ?? Date.now();
+      composePollJoinedExistingJobRef.current = joinedExistingJob;
+      saveComposePollSession({
+        articleId: pollArticleId,
+        readyGateAtMs: composePollReadyGateRef.current,
+        mode,
+        joinedExistingJob,
+      });
 
       const handleStale = () => {
         stopComposePolling();
@@ -351,10 +384,6 @@ export function WriterComposeForm({
       };
 
       const tick = async () => {
-        if (Date.now() - composePollStartedRef.current > COMPOSE_POLL_TIMEOUT_MS) {
-          handleStale();
-          return;
-        }
         try {
           const r = await fetch(
             `/api/writer/articles/${encodeURIComponent(pollArticleId)}/compose-status`,
@@ -372,7 +401,7 @@ export function WriterComposeForm({
                 compose_status: data.compose_status,
                 compose_requested_at: data.compose_requested_at,
               },
-              composePollStartedRef.current,
+              composePollReadyGateRef.current,
               { joinedExistingJob: composePollJoinedExistingJobRef.current },
             )
           ) {
@@ -400,25 +429,22 @@ export function WriterComposeForm({
               serverPhase: data.compose_phase,
             });
             setComposeWriteMode(polledMode);
-            setComposeProgress(composeProgressLabel(polledMode));
+            setComposeProgress(
+              composePollJoinedExistingJobRef.current
+                ? composeJoinProgressLabel(polledMode)
+                : composeProgressLabel(polledMode),
+            );
             saveComposePollMode(pollArticleId, polledMode);
           }
           if (
             data.compose_status === "pending" &&
-            isComposePendingOrphan({
-              compose_status: "pending",
-              compose_requested_at: data.compose_requested_at,
-            })
-          ) {
-            handleStale();
-            return;
-          }
-          if (
-            data.compose_status === "pending" &&
-            isComposePendingStale({
-              compose_status: "pending",
-              compose_requested_at: data.compose_requested_at,
-            })
+            shouldStallComposePoll(
+              {
+                compose_status: "pending",
+                compose_requested_at: data.compose_requested_at,
+              },
+              parseServerNowMs(data.server_now),
+            )
           ) {
             handleStale();
           }
@@ -439,8 +465,21 @@ export function WriterComposeForm({
   const resumeComposePhase = selectedArticle?.compose_phase;
 
   useEffect(() => {
+    if (!resumeArticleId) return;
+
+    const session = loadComposePollSession(resumeArticleId);
+    if (session) {
+      if (composePollArticleIdRef.current === resumeArticleId && composePollRef.current) {
+        return;
+      }
+      startComposePolling(session.articleId, session.mode, {
+        readyGateAtMs: session.readyGateAtMs,
+        joinedExistingJob: session.joinedExistingJob,
+      });
+      return;
+    }
+
     if (
-      resumeArticleId &&
       shouldPollCompose({
         compose_status: resumeComposeStatus,
         compose_requested_at: resumeRequestedAt,
@@ -452,25 +491,32 @@ export function WriterComposeForm({
       const mode = resolveComposePollMode(resumeArticleId, {
         serverPhase: resumeComposePhase,
       });
-      const resumeStartedAt =
+      const readyGateAtMs =
         composeGenerationStartedAt({ compose_requested_at: resumeRequestedAt }) ??
         Date.now();
-      startComposePolling(resumeArticleId, mode, { pollStartedAtMs: resumeStartedAt });
+      startComposePolling(resumeArticleId, mode, { readyGateAtMs });
     }
-    return () => {
-      if (composePollArticleIdRef.current === resumeArticleId) {
-        clearComposePollInterval();
-        composePollArticleIdRef.current = null;
-      }
-    };
   }, [
     resumeArticleId,
     resumeComposeStatus,
     resumeRequestedAt,
     resumeComposePhase,
     startComposePolling,
-    clearComposePollInterval,
   ]);
+
+  useEffect(() => {
+    if (
+      composePollArticleIdRef.current &&
+      resumeArticleId &&
+      composePollArticleIdRef.current !== resumeArticleId
+    ) {
+      stopComposePolling();
+    }
+  }, [resumeArticleId, stopComposePolling]);
+
+  useEffect(() => {
+    return () => clearComposePollInterval();
+  }, [clearComposePollInterval]);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterComposeArticleListItem[]>();
@@ -640,7 +686,6 @@ export function WriterComposeForm({
     const mode = skipResearch ? "write_only" : "full";
 
     setWriteError(null);
-    composePollStartedRef.current = Date.now();
     composePollJoinedExistingJobRef.current = false;
     setOutputHtml("");
     setWriting(true);
@@ -696,26 +741,10 @@ export function WriterComposeForm({
         if (r.status === 409 && data.error === "compose_already_running") {
           const nextId = articleId || data.writer_article_id;
           if (nextId) {
-            let pollStartedAtMs = composePollStartedRef.current;
-            try {
-              const statusR = await fetch(
-                `/api/writer/articles/${encodeURIComponent(nextId)}/compose-status`,
-                { cache: "no-store" },
-              );
-              const statusData = (await statusR.json().catch(() => ({}))) as ComposeStatusResponse;
-              if (statusR.ok) {
-                const jobStartedAt = composeGenerationStartedAt({
-                  compose_requested_at: statusData.compose_requested_at,
-                });
-                if (jobStartedAt != null) {
-                  pollStartedAtMs = jobStartedAt;
-                }
-              }
-            } catch {
-              // keep pollStartedAtMs from Write click
-            }
+            const readyGateAtMs =
+              (await fetchComposeReadyGate(nextId)) ?? Date.now();
             startComposePolling(nextId, mode, {
-              pollStartedAtMs,
+              readyGateAtMs,
               joinedExistingJob: true,
             });
             return;
@@ -729,12 +758,16 @@ export function WriterComposeForm({
         const nextId = data.writer_article_id ?? articleId;
         if (nextId) {
           setArticleId(nextId);
-          if (nextId !== articleId) {
-            router.push(`/writer?article_id=${encodeURIComponent(nextId)}`);
-          }
-          startComposePolling(nextId, mode, {
-            pollStartedAtMs: composePollStartedRef.current,
+          let readyGateAtMs = composeGenerationStartedAt({
+            compose_requested_at: data.compose_requested_at,
           });
+          if (readyGateAtMs == null) {
+            readyGateAtMs = (await fetchComposeReadyGate(nextId)) ?? Date.now();
+          }
+          startComposePolling(nextId, mode, { readyGateAtMs });
+          if (nextId !== articleId) {
+            router.replace(`/writer?article_id=${encodeURIComponent(nextId)}`);
+          }
         } else {
           stopComposePolling();
           setWriteError("Generation accepted but no article id returned");

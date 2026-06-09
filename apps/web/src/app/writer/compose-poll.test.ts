@@ -6,15 +6,22 @@ import {
   COMPOSE_STALE_MS,
   COMPOSE_STALL_MESSAGE,
   clearComposePollMode,
+  clearComposePollSession,
+  composeJoinProgressLabel,
   composePollModeStorageKey,
+  composePollSessionStorageKey,
   composeProgressLabel,
   isComposePendingOrphan,
   isComposePendingStale,
   isComposeReadyForPoll,
+  loadComposePollSession,
+  parseServerNowMs,
   resolveComposePollMode,
   saveComposePollMode,
+  saveComposePollSession,
   shouldAcceptComposePollReady,
   shouldPollCompose,
+  shouldStallComposePoll,
   storedComposePollMode,
 } from "./compose-poll.js";
 
@@ -75,6 +82,53 @@ describe("isComposePendingStale", () => {
   });
 });
 
+describe("shouldStallComposePoll", () => {
+  it("uses server_now instead of client clock", () => {
+    const requestedAt = Date.parse("2026-05-27T12:00:00.000Z");
+    const serverNow = requestedAt + COMPOSE_STALE_MS + 1000;
+    assert.equal(
+      shouldStallComposePoll(
+        {
+          compose_status: "pending",
+          compose_requested_at: new Date(requestedAt).toISOString(),
+        },
+        serverNow,
+      ),
+      true,
+    );
+    assert.equal(
+      shouldStallComposePoll(
+        {
+          compose_status: "pending",
+          compose_requested_at: new Date(requestedAt).toISOString(),
+        },
+        requestedAt + 60_000,
+      ),
+      false,
+    );
+  });
+
+  it("does not stall ready status", () => {
+    assert.equal(
+      shouldStallComposePoll(
+        {
+          compose_status: "ready",
+          compose_requested_at: new Date(Date.now() - COMPOSE_STALE_MS - 1000).toISOString(),
+        },
+        Date.now(),
+      ),
+      false,
+    );
+  });
+});
+
+describe("parseServerNowMs", () => {
+  it("parses ISO server_now", () => {
+    const iso = "2026-05-27T12:00:00.000Z";
+    assert.equal(parseServerNowMs(iso), Date.parse(iso));
+  });
+});
+
 describe("isComposePendingOrphan", () => {
   it("is orphan when pending exceeds orphan window", () => {
     const old = new Date(Date.now() - COMPOSE_ORPHAN_MS - 1000);
@@ -119,6 +173,12 @@ describe("composeProgressLabel", () => {
 
   it("returns Researching and writing for full mode", () => {
     assert.equal(composeProgressLabel("full"), "Researching and writing…");
+  });
+});
+
+describe("composeJoinProgressLabel", () => {
+  it("returns join message for write_only mode", () => {
+    assert.match(composeJoinProgressLabel("write_only"), /Joining in-progress/i);
   });
 });
 
@@ -185,10 +245,34 @@ describe("compose poll mode sessionStorage", () => {
       `writer-compose-poll-mode:${articleId}`,
     );
   });
+
+  it("persists and loads poll session", () => {
+    saveComposePollSession({
+      articleId,
+      readyGateAtMs: 1_700_000_000_000,
+      mode: "write_only",
+      joinedExistingJob: true,
+    });
+    assert.deepEqual(loadComposePollSession(articleId), {
+      articleId,
+      readyGateAtMs: 1_700_000_000_000,
+      mode: "write_only",
+      joinedExistingJob: true,
+    });
+    clearComposePollSession(articleId);
+    assert.equal(loadComposePollSession(articleId), null);
+  });
+
+  it("uses stable poll session storage key", () => {
+    assert.equal(
+      composePollSessionStorageKey(articleId),
+      `writer-compose-poll-session:${articleId}`,
+    );
+  });
 });
 
 describe("isComposeReadyForPoll", () => {
-  const pollStartedAt = Date.parse("2026-05-27T12:00:00.000Z");
+  const readyGateAt = Date.parse("2026-05-27T12:00:00.000Z");
 
   it("accepts ready when compose_requested_at is after poll start", () => {
     assert.equal(
@@ -197,7 +281,7 @@ describe("isComposeReadyForPoll", () => {
           compose_status: "ready",
           compose_requested_at: "2026-05-27T12:00:01.000Z",
         },
-        pollStartedAt,
+        readyGateAt,
       ),
       true,
     );
@@ -210,7 +294,7 @@ describe("isComposeReadyForPoll", () => {
           compose_status: "ready",
           compose_requested_at: "2026-05-27T11:00:00.000Z",
         },
-        pollStartedAt,
+        readyGateAt,
       ),
       false,
     );
@@ -222,10 +306,10 @@ describe("isComposeReadyForPoll", () => {
         {
           compose_status: "ready",
           compose_requested_at: new Date(
-            pollStartedAt - COMPOSE_READY_CLOCK_BUFFER_MS + 1000,
+            readyGateAt - COMPOSE_READY_CLOCK_BUFFER_MS + 1000,
           ).toISOString(),
         },
-        pollStartedAt,
+        readyGateAt,
       ),
       true,
     );
@@ -238,7 +322,7 @@ describe("isComposeReadyForPoll", () => {
           compose_status: "pending",
           compose_requested_at: "2026-05-27T12:00:01.000Z",
         },
-        pollStartedAt,
+        readyGateAt,
       ),
       false,
     );
@@ -246,7 +330,7 @@ describe("isComposeReadyForPoll", () => {
 });
 
 describe("shouldAcceptComposePollReady", () => {
-  const pollStartedAt = Date.parse("2026-05-27T12:00:00.000Z");
+  const readyGateAt = Date.parse("2026-05-27T12:00:00.000Z");
 
   it("accepts ready for joined existing job when compose_requested_at predates poll start", () => {
     assert.equal(
@@ -255,7 +339,7 @@ describe("shouldAcceptComposePollReady", () => {
           compose_status: "ready",
           compose_requested_at: "2026-05-27T11:58:00.000Z",
         },
-        pollStartedAt,
+        readyGateAt,
         { joinedExistingJob: true },
       ),
       true,
@@ -269,7 +353,7 @@ describe("shouldAcceptComposePollReady", () => {
           compose_status: "ready",
           compose_requested_at: "2026-05-27T11:00:00.000Z",
         },
-        pollStartedAt,
+        readyGateAt,
         { joinedExistingJob: false },
       ),
       false,
