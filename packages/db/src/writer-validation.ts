@@ -251,6 +251,25 @@ export const writerComposeInputSchema = z.object({
     .max(WRITER_SUBTOPIC_MAX)
     .default([]),
   include_faq: z.boolean().default(false),
+  skip_research: z.boolean().default(false),
+  research_brief: z.string().trim().optional(),
+}).superRefine((data, ctx) => {
+  if (!data.skip_research) return;
+  if (!data.writer_article_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "writer_article_id is required when skip_research is true",
+      path: ["writer_article_id"],
+    });
+  }
+  const brief = data.research_brief?.trim() ?? "";
+  if (brief.length < WRITER_SOURCE_MIN_CHARS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Research brief must be at least ${WRITER_SOURCE_MIN_CHARS} characters when skip_research is true`,
+      path: ["research_brief"],
+    });
+  }
 });
 
 export type WriterComposeInput = z.infer<typeof writerComposeInputSchema>;

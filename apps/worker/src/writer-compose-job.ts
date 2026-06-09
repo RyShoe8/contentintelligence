@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import {
   getVoice,
   getWriterArticle,
+  mergeComposeMeta,
   updateWriterComposeFailed,
   updateWriterComposeResult,
   upsertWriterComposePending,
@@ -50,13 +51,13 @@ function resultToComposeMeta(
   };
 }
 
-async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArticleId: string) {
-  const parsed = writerComposeInputSchema.safeParse({
+function parseComposeBody(body: WriterComposeBody) {
+  return writerComposeInputSchema.safeParse({
     voice_id: body.voice_id,
     topic: body.topic,
     reference_urls: body.reference_urls ?? [],
     links: body.links ?? [],
-    writer_article_id: writerArticleId,
+    writer_article_id: body.writer_article_id,
     deep_research: body.deep_research,
     web_search: body.web_search,
     web_search_max_queries: body.web_search_max_queries,
@@ -64,7 +65,18 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
     include_faq: body.include_faq,
+    skip_research: body.skip_research,
+    research_brief: body.research_brief,
   });
+}
+
+async function runComposeGeneration(
+  db: Db,
+  body: WriterComposeBody,
+  writerArticleId: string,
+  existingComposeMeta?: WriterComposeMeta,
+) {
+  const parsed = parseComposeBody(body);
   if (!parsed.success) {
     throw new Error(
       parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input",
@@ -90,6 +102,8 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     article_depth,
     subtopics,
     include_faq,
+    skip_research,
+    research_brief,
   } = parsed.data;
 
   const result = await generateArticleComposeHtml({
@@ -107,12 +121,20 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     articleDepth: article_depth,
     subtopics,
     includeFaq: include_faq,
+    skipResearch: skip_research,
+    existingResearchBrief: research_brief,
   });
+
+  const composeMeta = mergeComposeMeta(
+    existingComposeMeta,
+    resultToComposeMeta(result),
+    skip_research ? "write_only" : "full",
+  );
 
   await updateWriterComposeResult(db, writerArticleId, organizationId, {
     generated_html: result.html,
     research_brief: result.researchBrief,
-    compose_meta: resultToComposeMeta(result),
+    compose_meta: composeMeta,
   });
 }
 
@@ -120,20 +142,7 @@ export async function startWriterComposeJob(
   db: Db,
   body: WriterComposeBody,
 ): Promise<StartWriterComposeJobResult> {
-  const parsed = writerComposeInputSchema.safeParse({
-    voice_id: body.voice_id,
-    topic: body.topic,
-    reference_urls: body.reference_urls ?? [],
-    links: body.links ?? [],
-    writer_article_id: body.writer_article_id,
-    deep_research: body.deep_research,
-    web_search: body.web_search,
-    web_search_max_queries: body.web_search_max_queries,
-    web_search_max_results: body.web_search_max_results,
-    article_depth: body.article_depth,
-    subtopics: body.subtopics ?? [],
-    include_faq: body.include_faq,
-  });
+  const parsed = parseComposeBody(body);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
     throw new Error(msg);
@@ -150,11 +159,15 @@ export async function startWriterComposeJob(
     throw new Error("voice_not_found");
   }
 
+  let existingComposeMeta: WriterComposeMeta | undefined;
   if (parsed.data.writer_article_id) {
     const existing = await getWriterArticle(db, parsed.data.writer_article_id, organizationId);
     if (!existing || existing.voice_id !== parsed.data.voice_id || existing.mode !== "compose") {
       throw new Error("writer_article_not_found");
     }
+    existingComposeMeta = existing.compose_meta;
+  } else if (parsed.data.skip_research) {
+    throw new Error("writer_article_not_found");
   }
 
   if (parsed.data.writer_article_id && isWriterComposeJobInFlight(parsed.data.writer_article_id)) {
@@ -169,6 +182,7 @@ export async function startWriterComposeJob(
     reference_urls: parsed.data.reference_urls,
     links: parsed.data.links,
     created_by: createdBy,
+    preserve_compose_meta: parsed.data.skip_research,
   });
 
   if (isWriterComposeJobInFlight(pending.id)) {
@@ -177,7 +191,7 @@ export async function startWriterComposeJob(
 
   void runWriterComposeJobExclusive(pending.id, async () => {
     try {
-      await runComposeGeneration(db, body, pending.id);
+      await runComposeGeneration(db, body, pending.id, existingComposeMeta);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       await updateWriterComposeFailed(db, pending.id, organizationId, message);

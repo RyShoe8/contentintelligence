@@ -11,6 +11,7 @@ import {
   WRITER_ARTICLE_DEPTH_DEFAULT,
   WRITER_LINK_MAX,
   WRITER_REFERENCE_URL_MAX,
+  WRITER_SOURCE_MIN_CHARS,
   WRITER_SUBTOPIC_MAX,
   WRITER_TOPIC_MIN_CHARS,
   WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
@@ -211,6 +212,7 @@ export function WriterComposeForm({
   const [articleDepth, setArticleDepth] = useState(WRITER_ARTICLE_DEPTH_DEFAULT);
   const [subtopicsText, setSubtopicsText] = useState("");
   const [composeProgress, setComposeProgress] = useState<string | null>(null);
+  const [composeWriteMode, setComposeWriteMode] = useState<"full" | "write_only" | null>(null);
   const composePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const composePollStartedRef = useRef(0);
 
@@ -221,6 +223,7 @@ export function WriterComposeForm({
     }
     setWriting(false);
     setComposeProgress(null);
+    setComposeWriteMode(null);
   }, []);
 
   const applyComposeStatusData = useCallback((data: ComposeStatusResponse) => {
@@ -370,6 +373,12 @@ export function WriterComposeForm({
 
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
+  const trimmedResearchBrief = researchBrief.trim();
+  const canWriteFromBrief = Boolean(
+    canWrite &&
+      articleId &&
+      trimmedResearchBrief.length >= WRITER_SOURCE_MIN_CHARS,
+  );
   const showOutputColumn = Boolean(outputHtml.trim() || articleId);
 
   const resetComposer = useCallback(() => {
@@ -467,12 +476,23 @@ export function WriterComposeForm({
     });
   }
 
-  async function handleWrite() {
+  async function handleWrite({ skipResearch = false }: { skipResearch?: boolean } = {}) {
     if (!canWrite) return;
     const trimmedTopic = topic.trim();
     if (trimmedTopic.length < WRITER_TOPIC_MIN_CHARS) {
       setWriteError(`Enter a topic of at least ${WRITER_TOPIC_MIN_CHARS} characters.`);
       return;
+    }
+
+    if (skipResearch) {
+      if (!articleId) {
+        setWriteError("Run Research and Write first to generate a research brief.");
+        return;
+      }
+      if (trimmedResearchBrief.length < WRITER_SOURCE_MIN_CHARS) {
+        setWriteError(`Research brief must be at least ${WRITER_SOURCE_MIN_CHARS} characters.`);
+        return;
+      }
     }
 
     const filledReferenceRows = referenceUrlRows.filter((r) => r.trim());
@@ -497,7 +517,8 @@ export function WriterComposeForm({
 
     setWriting(true);
     setWriteError(null);
-    setComposeProgress("Researching and writing…");
+    setComposeWriteMode(skipResearch ? "write_only" : "full");
+    setComposeProgress(skipResearch ? "Writing…" : "Researching and writing…");
     setReferencesFetched(null);
     setReferencesFailed([]);
     setLinksPresent(null);
@@ -537,6 +558,8 @@ export function WriterComposeForm({
           article_depth: articleDepth,
           subtopics: parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
           include_faq: includeFaq,
+          skip_research: skipResearch,
+          ...(skipResearch ? { research_brief: trimmedResearchBrief } : {}),
         }),
       });
       const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse & {
@@ -545,6 +568,7 @@ export function WriterComposeForm({
       if (!r.ok) {
         setWriting(false);
         setComposeProgress(null);
+        setComposeWriteMode(null);
         setWriteError(data.error ?? "Generation failed");
         return;
       }
@@ -559,6 +583,7 @@ export function WriterComposeForm({
         } else {
           setWriting(false);
           setComposeProgress(null);
+          setComposeWriteMode(null);
           setWriteError("Generation accepted but no article id returned");
         }
         return;
@@ -571,9 +596,11 @@ export function WriterComposeForm({
       }
       setWriting(false);
       setComposeProgress(null);
+      setComposeWriteMode(null);
     } catch {
       setWriting(false);
       setComposeProgress(null);
+      setComposeWriteMode(null);
       setWriteError("Generation failed");
     }
   }
@@ -958,8 +985,20 @@ export function WriterComposeForm({
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
-          <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
-            {writing ? "Researching and writing…" : "Write"}
+          <Button
+            type="button"
+            disabled={writing || !canWrite}
+            onClick={() => void handleWrite({ skipResearch: false })}
+          >
+            {writing && composeWriteMode === "full" ? "Researching and writing…" : "Research and Write"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={writing || !canWriteFromBrief}
+            onClick={() => void handleWrite({ skipResearch: true })}
+          >
+            {writing && composeWriteMode === "write_only" ? "Writing…" : "Write"}
           </Button>
         </div>
         {composeProgress ? (
@@ -1039,7 +1078,7 @@ export function WriterComposeForm({
             onChange={(e) => setResearchBrief(e.target.value)}
             rows={16}
             readOnly={!researchBrief.trim()}
-            placeholder="Generated research brief appears here after Write."
+            placeholder="Generated research brief appears here after Research and Write."
             className={cn(
               articlePaneClass,
               "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]",

@@ -471,6 +471,12 @@ async function main(): Promise<void> {
         body.include_faq === true ||
         body.include_faq === "true" ||
         body.include_faq === 1,
+      skip_research:
+        body.skip_research === true ||
+        body.skip_research === "true" ||
+        body.skip_research === 1,
+      research_brief:
+        body.research_brief != null ? String(body.research_brief) : undefined,
     };
     try {
       const db = await getDb();
@@ -479,13 +485,15 @@ async function main(): Promise<void> {
       return reply.code(202).send(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      const skipResearch = composeBody.skip_research === true;
       const status =
         message === "compose_already_running"
           ? 409
           : message === "voice_not_found" ||
               message === "writer_article_not_found" ||
               message.includes("at least") ||
-              message.includes("Topic must")
+              message.includes("Topic must") ||
+              (message === "research_brief_empty" && skipResearch)
             ? 400
             : message === "openai_not_configured" ||
                 message === "voice_persona_not_ready" ||

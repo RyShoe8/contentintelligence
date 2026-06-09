@@ -40,6 +40,8 @@ export type GenerateArticleComposeOpts = {
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
+  skipResearch?: boolean;
+  existingResearchBrief?: string;
 };
 
 export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpts): Promise<{
@@ -72,71 +74,102 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     throw new Error("voice_persona_not_ready");
   }
 
+  const skipResearch = opts.skipResearch === true;
+  if (skipResearch) {
+    const brief = opts.existingResearchBrief?.trim() ?? "";
+    if (brief.length === 0) {
+      throw new Error("research_brief_empty");
+    }
+  }
+
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
   }
 
-  const deepResearch = opts.deepResearch !== false;
-  const webSearchEnabled =
-    opts.webSearch !== false && isWebSearchConfigured();
   const articleDepth = opts.articleDepth ?? 50;
   const depthGuidance = writerArticleDepthGuidance(articleDepth);
   const subtopics = opts.subtopics ?? [];
   const includeFaq = opts.includeFaq === true;
 
-  const webSearchLimits = resolveWebSearchLimits({
-    maxQueries: opts.webSearchMaxQueries,
-    maxResults: opts.webSearchMaxResults,
-  });
-
-  const needPlan = deepResearch || webSearchEnabled || subtopics.length > 0;
-  const researchConfig = writerComposeResearchConfig(articleDepth);
-  const plan = needPlan
-    ? await planTopicResearch({
-        topic: opts.topic,
-        voiceKeywords: opts.voice.keywords,
-        hasUserReferences: opts.referenceUrls.length > 0,
-        maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
-        userSubtopics: subtopics,
-        articleDepth,
-      })
-    : null;
-
+  let researchBrief: string;
+  let referencesFetched = 0;
+  let referencesFailed: string[] = [];
+  let userReferencesFetched = 0;
+  let webReferencesFetched = 0;
   let webSearchUrls: string[] = [];
-  if (webSearchEnabled && plan) {
-    const search = await searchWebForTopic(plan.search_queries, opts.referenceUrls, fetch, {
-      maxQueries: webSearchLimits.maxQueries,
-      maxResults: webSearchLimits.maxResults,
+  let researchQuestions = 0;
+  let researchMode: "deep" | "standard" = "standard";
+  let sourceTruncated = false;
+
+  if (skipResearch) {
+    researchBrief = opts.existingResearchBrief!.trim();
+    sourceTruncated = researchBrief.length > env.maxWriterInputChars;
+  } else {
+    const deepResearch = opts.deepResearch !== false;
+    const webSearchEnabled =
+      opts.webSearch !== false && isWebSearchConfigured();
+
+    const webSearchLimits = resolveWebSearchLimits({
+      maxQueries: opts.webSearchMaxQueries,
+      maxResults: opts.webSearchMaxResults,
     });
-    webSearchUrls = search.urls;
+
+    const needPlan = deepResearch || webSearchEnabled || subtopics.length > 0;
+    const researchConfig = writerComposeResearchConfig(articleDepth);
+    const plan = needPlan
+      ? await planTopicResearch({
+          topic: opts.topic,
+          voiceKeywords: opts.voice.keywords,
+          hasUserReferences: opts.referenceUrls.length > 0,
+          maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
+          userSubtopics: subtopics,
+          articleDepth,
+        })
+      : null;
+
+    if (webSearchEnabled && plan) {
+      const search = await searchWebForTopic(plan.search_queries, opts.referenceUrls, fetch, {
+        maxQueries: webSearchLimits.maxQueries,
+        maxResults: webSearchLimits.maxResults,
+      });
+      webSearchUrls = search.urls;
+    }
+
+    const corpus = await buildReferenceCorpusPrioritized({
+      userUrls: opts.referenceUrls,
+      webUrls: webSearchUrls,
+    });
+
+    researchBrief =
+      deepResearch && plan
+        ? await runDeepTopicResearch({
+            topic: opts.topic,
+            plan,
+            corpusSections: corpus.sections,
+            voiceKeywords: opts.voice.keywords,
+            articleDepth,
+            subtopics,
+            includeFaq,
+          })
+        : await synthesizeResearchBrief({
+            topic: opts.topic,
+            corpusSections: corpus.sections,
+            voiceKeywords: opts.voice.keywords,
+            articleDepth,
+            subtopics,
+            includeFaq,
+          });
+
+    referencesFetched = corpus.fetched;
+    referencesFailed = corpus.failed;
+    userReferencesFetched = corpus.userFetched;
+    webReferencesFetched = corpus.webFetched;
+    researchQuestions = plan?.research_questions.length ?? 0;
+    researchMode = deepResearch ? "deep" : "standard";
+    sourceTruncated = researchBrief.length > env.maxWriterInputChars;
   }
 
-  const corpus = await buildReferenceCorpusPrioritized({
-    userUrls: opts.referenceUrls,
-    webUrls: webSearchUrls,
-  });
-
-  const researchBrief =
-    deepResearch && plan
-      ? await runDeepTopicResearch({
-          topic: opts.topic,
-          plan,
-          corpusSections: corpus.sections,
-          voiceKeywords: opts.voice.keywords,
-          articleDepth,
-          subtopics,
-          includeFaq,
-        })
-      : await synthesizeResearchBrief({
-          topic: opts.topic,
-          corpusSections: corpus.sections,
-          voiceKeywords: opts.voice.keywords,
-          articleDepth,
-          subtopics,
-          includeFaq,
-        });
-
-  const sourceTruncated = researchBrief.length > env.maxWriterInputChars;
+  const sourceTruncatedFinal = sourceTruncated;
   let humanized = await runHumanizationEngine({
     db: opts.db,
     voice: opts.voice,
@@ -191,14 +224,14 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   return {
     html,
     researchBrief,
-    referencesFetched: corpus.fetched,
-    referencesFailed: corpus.failed,
-    userReferencesFetched: corpus.userFetched,
-    webReferencesFetched: corpus.webFetched,
+    referencesFetched,
+    referencesFailed,
+    userReferencesFetched,
+    webReferencesFetched,
     webSearchUrls,
-    researchQuestions: plan?.research_questions.length ?? 0,
-    researchMode: deepResearch ? "deep" : "standard",
-    sourceTruncated,
+    researchQuestions,
+    researchMode,
+    sourceTruncated: sourceTruncatedFinal,
     linksRequested: opts.links.length,
     linksPresent: writerLinksPresentCount(html, opts.links),
     linksCarriedFromSource: writerRequestedLinksCarriedFromSource(sourceTrimmed, html, opts.links),

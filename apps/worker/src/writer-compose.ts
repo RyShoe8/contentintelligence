@@ -22,6 +22,8 @@ export type WriterComposeBody = {
   article_depth?: number;
   subtopics?: string[];
   include_faq?: boolean;
+  skip_research?: boolean;
+  research_brief?: string;
 };
 
 export async function runWriterCompose(db: Db, body: WriterComposeBody) {

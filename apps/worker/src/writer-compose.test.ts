@@ -67,4 +67,21 @@ describe("generateArticleComposeHtml", () => {
       /voice_persona_not_ready/,
     );
   });
+
+  it("rejects write-only compose when research brief is empty", async () => {
+    await assert.rejects(
+      () =>
+        generateArticleComposeHtml({
+          db: {} as Db,
+          organizationId: "00000000-0000-4000-8000-000000000020",
+          voice: minimalVoice(),
+          topic: "Topic with enough characters for validation",
+          referenceUrls: [],
+          links: [],
+          skipResearch: true,
+          existingResearchBrief: "   ",
+        }),
+      /research_brief_empty/,
+    );
+  });
 });

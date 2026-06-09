@@ -140,7 +140,29 @@ export type UpsertWriterComposePendingInput = {
   reference_urls: string[];
   links: WriterLink[];
   created_by: string;
+  preserve_compose_meta?: boolean;
 };
+
+export function mergeComposeMeta(
+  existing: WriterComposeMeta | undefined,
+  next: WriterComposeMeta,
+  mode: "full" | "write_only",
+): WriterComposeMeta {
+  if (mode === "full" || !existing) return next;
+  return {
+    ...next,
+    references_fetched: existing.references_fetched ?? next.references_fetched,
+    references_failed: existing.references_failed ?? next.references_failed,
+    user_references_fetched:
+      existing.user_references_fetched ?? next.user_references_fetched,
+    web_references_fetched:
+      existing.web_references_fetched ?? next.web_references_fetched,
+    web_search_urls: existing.web_search_urls ?? next.web_search_urls,
+    research_questions: existing.research_questions ?? next.research_questions,
+    research_mode: existing.research_mode ?? next.research_mode,
+    source_truncated: existing.source_truncated ?? next.source_truncated,
+  };
+}
 
 export async function upsertWriterComposePending(
   db: Db,
@@ -171,7 +193,7 @@ export async function upsertWriterComposePending(
     compose_status: "pending",
     compose_error: undefined,
     compose_requested_at: now,
-    compose_meta: undefined,
+    compose_meta: data.preserve_compose_meta ? existing?.compose_meta : undefined,
     created_by: existing?.created_by ?? data.created_by,
     created_at: existing?.created_at ?? now,
     updated_at: now,

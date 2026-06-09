@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
     include_faq: body.include_faq,
+    skip_research: body.skip_research,
+    research_brief: body.research_brief,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";

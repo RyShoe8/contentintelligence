@@ -385,6 +385,43 @@ describe("writerComposeInputSchema", () => {
     assert.equal(enabled.success, true);
     assert.equal(enabled.data?.include_faq, true);
   });
+
+  it("defaults skip_research to false", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.skip_research, false);
+  });
+
+  it("requires writer_article_id and research_brief when skip_research is true", () => {
+    const missingArticle = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      skip_research: true,
+      research_brief: "x".repeat(WRITER_SOURCE_MIN_CHARS),
+    });
+    assert.equal(missingArticle.success, false);
+
+    const missingBrief = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      writer_article_id: "00000000-0000-4000-8000-000000000002",
+      skip_research: true,
+    });
+    assert.equal(missingBrief.success, false);
+
+    const valid = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      writer_article_id: "00000000-0000-4000-8000-000000000002",
+      skip_research: true,
+      research_brief: "x".repeat(WRITER_SOURCE_MIN_CHARS),
+    });
+    assert.equal(valid.success, true);
+    assert.equal(valid.data?.skip_research, true);
+  });
 });
 
 describe("parseWriterReferenceUrls", () => {
