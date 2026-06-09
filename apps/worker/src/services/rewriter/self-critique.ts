@@ -1,4 +1,5 @@
 import {
+  REWRITER_COMPOSE_GENERICITY_MAX,
   isComposeNarrativeFacts,
   isHybridContentFacts,
   isProceduralContentFacts,
@@ -22,7 +23,12 @@ export async function runSelfCritique(
   html: string,
   facts: ContentFacts,
   ctx: VoiceGenerationContext,
-  opts: { composeMode?: boolean; topic?: string; styleExampleExcerpt?: string } = {},
+  opts: {
+    composeMode?: boolean;
+    topic?: string;
+    styleExampleExcerpt?: string;
+    includeFaq?: boolean;
+  } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
   const personaBlock = ctx.persona?.trim() ? `Persona: ${ctx.persona.trim()}` : "";
@@ -48,9 +54,13 @@ export async function runSelfCritique(
   }
 
   const topic = opts.topic?.trim();
+  const faqCritiqueBlock =
+    opts.composeMode && opts.includeFaq
+      ? " Fail if FAQ reads like an industry guide Q&A dump (many long answers, boilerplate titles like Your Questions Answered) instead of short editorial FAQ with punchy section title."
+      : "";
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks).`
+      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks). Fail if genericity would exceed ${REWRITER_COMPOSE_GENERICITY_MAX} even when humanAuthenticity/brandConsistency look acceptable.${faqCritiqueBlock}`
       : "";
 
   const raw = await completeJson<unknown>({
@@ -61,14 +71,14 @@ Scores 0–100. Answer these internally:
 1. Marketing copy? 2. AI-generated? 3. Affiliate spam? 4. LinkedIn fluff? 5. Opinions or just info?
 humanAuthenticity: reads like a real operator wrote it.
 brandConsistency: matches the stated persona/constraints.
-genericity: template/AI feel (high = bad).
+genericity: template/AI feel (high = bad). For compose articles, score genericity above ${REWRITER_COMPOSE_GENERICITY_MAX} when copy reads like a neutral industry guide.
 issues: short bullets for failures.
 ${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
     user: [
       topic ? `Article topic: ${topic}` : "",
       personaBlock,
       opts.styleExampleExcerpt?.trim()
-        ? `\nBrand style reference (compare rhythm and paragraph length):\n${opts.styleExampleExcerpt.trim().slice(0, 2000)}`
+        ? `\nBrand style reference (compare rhythm and paragraph length):\n${opts.styleExampleExcerpt.trim().slice(0, 2800)}`
         : "",
       "",
       "Facts the article should reflect (JSON):",

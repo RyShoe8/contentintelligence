@@ -4,16 +4,13 @@ import OpenAI from "openai";
 import { env } from "../../env.js";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { buildVoiceStylePromptLines, type VoiceStylePromptOpts } from "../../voice-style-rules.js";
+import {
+  COMPOSE_SBD_RHETORIC_RULES,
+  COMPOSE_VOICE_RULES,
+  composeFaqPromptRules,
+} from "./compose-voice-rules.js";
 
-const COMPOSE_STYLE_EXCERPT_CHARS = 2000;
-
-const COMPOSE_VOICE_HUMANIZE_RULES = `
-Compose editorial voice:
-- Short paragraphs (often 1–3 sentences); mix sentence length.
-- Punchy conversational headings — not textbook/guide titles.
-- First-person plural "we" with hands-on operator perspective.
-- Prefer flowing prose over bullet dumps; lists sparingly.
-- No generic filler closings ("Let's connect and explore").`;
+const COMPOSE_STYLE_EXCERPT_CHARS = 2800;
 
 export type HumanizeArticleOpts = {
   voice: Voice;
@@ -25,6 +22,7 @@ export type HumanizeArticleOpts = {
   composeMode?: boolean;
   topic?: string;
   styleExampleExcerpt?: string;
+  includeFaq?: boolean;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
@@ -53,9 +51,11 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
 - You may polish narrative paragraphs and lists outside procedural step blocks.`
     : "";
 
+  const composeFaqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq) : "";
+
   const composeTopicBlock =
     opts.composeMode && opts.topic?.trim()
-      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${COMPOSE_VOICE_HUMANIZE_RULES}`
+      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${composeFaqBlock}`
       : "";
 
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.

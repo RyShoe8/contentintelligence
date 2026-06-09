@@ -10,6 +10,8 @@ import {
   rewriterHybridQualityGatePassed,
   rewriterComposeCompletenessIssues,
   rewriterComposeQualityGatePassed,
+  REWRITER_COMPOSE_GENERICITY_MAX,
+  composeGenericityScore,
   contentFactsSchema,
   brandInterpretationSchema,
 } from "./rewriter-types.js";
@@ -262,13 +264,46 @@ describe("rewriterComposeQualityGatePassed", () => {
       "<p>Report all gambling winnings and keep records of wins and losses.</p>",
     ].join("");
     assert.equal(
-      rewriterComposeQualityGatePassed(composeResearchFacts, html, {
-        humanAuthenticity: 85,
-        brandConsistency: 86,
-        genericity: 20,
-        issues: [],
-      }),
+      rewriterComposeQualityGatePassed(
+        composeResearchFacts,
+        html,
+        {
+          humanAuthenticity: 85,
+          brandConsistency: 86,
+          genericity: 20,
+          issues: [],
+        },
+        { score: 18, issues: [] },
+      ),
       true,
     );
+  });
+
+  it("fails when genericity exceeds compose max", () => {
+    const html = "<h2>Tax basics</h2><p>Online winnings are taxable income.</p>";
+    assert.equal(
+      rewriterComposeQualityGatePassed(
+        composeResearchFacts,
+        html,
+        {
+          humanAuthenticity: 90,
+          brandConsistency: 90,
+          genericity: 65,
+          issues: [],
+        },
+        { score: 65, issues: [] },
+      ),
+      false,
+    );
+    assert.equal(
+      composeGenericityScore({ score: 65, issues: [] }, {
+        humanAuthenticity: 90,
+        brandConsistency: 90,
+        genericity: 40,
+        issues: [],
+      }),
+      65,
+    );
+    assert.equal(REWRITER_COMPOSE_GENERICITY_MAX, 45);
   });
 });

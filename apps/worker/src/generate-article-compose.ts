@@ -2,15 +2,23 @@ import type { Db } from "mongodb";
 import {
   type Voice,
   type WriterLink,
+  REWRITER_COMPOSE_GENERICITY_MAX,
   writerArticleDepthGuidance,
   writerComposeResearchConfig,
+  writerComposeFaqStyleIssues,
+  writerComposeVoiceStyleIssues,
   writerLinksPresentCount,
   writerNonRequestedLinksInHtml,
   writerRequestedLinksAdded,
   writerRequestedLinksCarriedFromSource,
 } from "@content-resourcer/db";
 import { env } from "./env.js";
-import { runHumanizationEngine } from "./services/rewriter/humanization-engine.js";
+import {
+  buildComposeStyleExampleExcerpt,
+  polishComposeHtmlVoice,
+  runHumanizationEngine,
+} from "./services/rewriter/humanization-engine.js";
+import { analyzeGenericity } from "./services/rewriter/generic-detector.js";
 import { buildReferenceCorpusPrioritized } from "./writer-reference-corpus.js";
 import {
   runDeepTopicResearch,
@@ -43,6 +51,48 @@ export type GenerateArticleComposeOpts = {
   skipResearch?: boolean;
   existingResearchBrief?: string;
 };
+
+async function postExpandComposeVoicePolish(opts: {
+  voice: Voice;
+  html: string;
+  topic: string;
+  includeFaq: boolean;
+  styleExampleExcerpt?: string;
+}): Promise<string> {
+  let html = await polishComposeHtmlVoice({
+    voice: opts.voice,
+    html: opts.html,
+    topic: opts.topic,
+    includeFaq: opts.includeFaq,
+    styleExampleExcerpt: opts.styleExampleExcerpt,
+  });
+
+  const voiceIssues = [
+    ...writerComposeVoiceStyleIssues(html),
+    ...(opts.includeFaq ? writerComposeFaqStyleIssues(html) : []),
+  ];
+  const genericity = await analyzeGenericity(html);
+  const genericityHigh = genericity.score > REWRITER_COMPOSE_GENERICITY_MAX;
+
+  if (voiceIssues.length || genericityHigh) {
+    const retryIssues = [
+      ...voiceIssues,
+      ...(genericityHigh
+        ? [`Genericity score ${genericity.score} — reduce neutral industry-guide tone`]
+        : []),
+    ];
+    html = await polishComposeHtmlVoice({
+      voice: opts.voice,
+      html,
+      topic: opts.topic,
+      includeFaq: opts.includeFaq,
+      styleExampleExcerpt: opts.styleExampleExcerpt,
+      retryIssues,
+    });
+  }
+
+  return html;
+}
 
 export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpts): Promise<{
   html: string;
@@ -183,6 +233,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     includeFaq,
   });
 
+  const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);
+
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
     sourceText: researchBrief,
     links: opts.links,
@@ -191,13 +243,14 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     allowAppendedLinks: false,
   });
   let html = pipeline.html;
+  let expanded = false;
 
   const wordCount = writerHtmlWordCount(html);
   if (wordCount < depthGuidance.minWords * 0.85) {
     try {
-      const expanded = await expandArticleComposeDepth({
+      const expandedHtml = await expandArticleComposeDepth({
         html,
-        researchBrief,
+        facts: humanized.facts,
         links: opts.links,
         minWords: depthGuidance.minWords,
         maxWords: depthGuidance.maxWords,
@@ -205,7 +258,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         topic: opts.topic,
         includeFaq,
       });
-      pipeline = await applyWriterLinkPipeline(expanded, {
+      pipeline = await applyWriterLinkPipeline(expandedHtml, {
         sourceText: researchBrief,
         links: opts.links,
         voice: opts.voice,
@@ -213,9 +266,20 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         allowAppendedLinks: false,
       });
       html = pipeline.html;
+      expanded = true;
     } catch {
       // keep pre-expand html if expansion fails
     }
+  }
+
+  if (expanded) {
+    html = await postExpandComposeVoicePolish({
+      voice: opts.voice,
+      html,
+      topic: opts.topic,
+      includeFaq,
+      styleExampleExcerpt,
+    });
   }
 
   const sourceTrimmed = researchBrief.trim();

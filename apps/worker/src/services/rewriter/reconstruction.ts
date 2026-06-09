@@ -17,6 +17,11 @@ import {
   buildVoiceStylePromptLines,
   type VoiceStylePromptOpts,
 } from "../../voice-style-rules.js";
+import {
+  COMPOSE_SBD_RHETORIC_RULES,
+  COMPOSE_VOICE_RULES,
+  composeFaqPromptRules,
+} from "./compose-voice-rules.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
@@ -64,14 +69,6 @@ function hasNarrativeSections(facts: ContentFacts): boolean {
   return (facts.narrativeSections?.length ?? 0) > 0;
 }
 
-const COMPOSE_VOICE_RULES = `
-Compose editorial voice (match brand examples — not a neutral industry guide):
-- Short paragraphs (often 1–3 sentences); mix sentence length and rhythm.
-- Punchy, conversational H2/H3 headings — not textbook titles (avoid "Understanding the…", "Challenges and Considerations", "Innovative Trends in…").
-- First-person plural "we" with operator perspective: hands-on, selective, principled.
-- Prefer flowing prose; use lists sparingly — never dump brief bullets as consecutive lists.
-- State principles and convictions directly; avoid generic guide filler ("Let's connect and explore").`;
-
 function hybridRulesBlock(facts: ContentFacts, composeMode?: boolean): string {
   if (composeMode && hasNarrativeSections(facts)) {
     return `
@@ -81,7 +78,8 @@ Compose article (editorial voice, not a research summary):
 - Write editorial <h2>/<h3> headings that fit the topic and match the brand examples below (structure, rhythm, openings).
 - Weave all facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
 - Include procedural sections with full ordered steps when present (see procedural rules above).
-- Do not add filler closings like "What are your thoughts?"${COMPOSE_VOICE_RULES}`;
+- Do not add filler closings like "What are your thoughts?"
+- No duplicate H2 topics; no meta "open questions remain" endings.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
   }
   if (!isHybridContentFacts(facts)) return "";
   return `
@@ -160,15 +158,7 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
       : "";
 
-  const faqBlock =
-    opts.composeMode && opts.includeFaq
-      ? `\nFAQ section (required):
-- Include <h2>Frequently Asked Questions</h2> near the end of the article (before any appended links).
-- Format each item as <h3>Question?</h3><p>Answer paragraph.</p>.
-- Use only FAQ facts from extracted narrative sections; do not invent answers.`
-      : opts.composeMode
-        ? `\nDo not include an FAQ, frequently asked questions, or Q&A section.`
-        : "";
+  const faqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq) : "";
 
   const topic = opts.topic?.trim();
   const composeTopicBlock =
@@ -176,7 +166,7 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
-Do not add sections about community engagement, creating content, or promoting the brand.${COMPOSE_VOICE_RULES}`
+Do not add sections about community engagement, creating content, or promoting the brand.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
       : "";
 
   const viewpointRule = opts.composeMode

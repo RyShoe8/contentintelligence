@@ -14,6 +14,7 @@ import {
   writerArticleDisplayHtml,
   writerComposeResearchConfig,
   writerComposeBriefOutlineIssues,
+  writerComposeFaqStyleIssues,
   writerComposeLinkIssues,
   writerComposeTopicDriftIssues,
   writerComposeVoiceStyleIssues,
@@ -793,10 +794,39 @@ describe("writerComposeVoiceStyleIssues", () => {
     assert.ok(issues.some((i) => i.includes("landscape of")));
   });
 
+  it("flags innovative design trends heading variant", () => {
+    const html =
+      "<h2>Innovative Design Trends in Senior Living</h2><p>We take a selective approach.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Innovative Design Trends")));
+  });
+
+  it("flags long paragraphs", () => {
+    const words = Array.from({ length: 70 }, (_, i) => `word${i}`).join(" ");
+    const html = `<h2>We test chairs</h2><p>${words}</p>`;
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("70 words")));
+  });
+
   it("passes short editorial paragraphs", () => {
     const html =
       "<h2>We sit in every chair</h2><p>We never specify seating we have not tested.</p><p>That rule sounds simple. We take it seriously.</p>";
     assert.equal(writerComposeVoiceStyleIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeFaqStyleIssues", () => {
+  it("flags boilerplate FAQ title and long answers", () => {
+    const longAnswer = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const html = [
+      "<h2>Your Questions Answered</h2>",
+      "<h3>What is design?</h3><p>" + longAnswer + "</p>",
+      "<h3>Why chairs?</h3><p>" + longAnswer + "</p>",
+      "<h3>Who decides?</h3><p>" + longAnswer + "</p>",
+    ].join("");
+    const issues = writerComposeFaqStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Your Questions Answered")));
+    assert.ok(issues.some((i) => i.includes("FAQ answers average")));
   });
 });
 

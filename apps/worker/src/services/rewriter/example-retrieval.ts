@@ -14,12 +14,14 @@ const COMPOSE_EXAMPLE_EXCERPT_CHARS = 2800;
 const CANDIDATE_ARTICLE_LIMIT = 10;
 const COMPOSE_RANKED_EXAMPLE_LIMIT = 2;
 const RANKED_EXAMPLE_LIMIT = 5;
+const COMPOSE_RANKING_EXCERPT_CHARS = 800;
 
 type ExampleCandidate = {
   id: string;
   title: string;
   content: string;
   source: "article";
+  styleExample: boolean;
 };
 
 export async function loadExampleCandidates(
@@ -29,12 +31,18 @@ export async function loadExampleCandidates(
   excludeArticleId?: string,
   composeMode?: boolean,
 ): Promise<ExampleCandidate[]> {
-  const articles = composeMode
-    ? [
-        ...(await listWriterStyleExamplesForVoice(db, organizationId, voice.id)),
-        ...(await listSavedWriterExamplesForVoice(db, organizationId, voice.id, CANDIDATE_ARTICLE_LIMIT)),
-      ]
-    : await listSavedWriterExamplesForVoice(db, organizationId, voice.id, CANDIDATE_ARTICLE_LIMIT);
+  const styleArticles = composeMode
+    ? await listWriterStyleExamplesForVoice(db, organizationId, voice.id)
+    : [];
+  const savedArticles = await listSavedWriterExamplesForVoice(
+    db,
+    organizationId,
+    voice.id,
+    CANDIDATE_ARTICLE_LIMIT,
+  );
+
+  const articles = composeMode ? [...styleArticles, ...savedArticles] : savedArticles;
+  const styleIds = new Set(styleArticles.map((a) => a.id));
 
   const seen = new Set<string>();
   return articles
@@ -50,6 +58,7 @@ export async function loadExampleCandidates(
       title: a.title,
       content: writerArticleHtmlForLearning(a),
       source: "article" as const,
+      styleExample: styleIds.has(a.id),
     }))
     .filter((c) => c.content.length > 0);
 }
@@ -60,7 +69,10 @@ function fallbackExamples(
 ): ArticleRewriteExample[] {
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
   const limit = composeMode ? COMPOSE_RANKED_EXAMPLE_LIMIT : RANKED_EXAMPLE_LIMIT;
-  return candidates.slice(0, limit).map((c) => ({
+  const ordered = composeMode
+    ? [...candidates].sort((a, b) => Number(b.styleExample) - Number(a.styleExample))
+    : candidates;
+  return ordered.slice(0, limit).map((c) => ({
     title: c.title,
     html:
       c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
@@ -95,14 +107,21 @@ export async function retrieveRankedExamples(
     index: i,
     title: c.title,
     source: c.source,
+    styleExample: c.styleExample,
     excerpt:
-      c.content.length > 400 ? `${c.content.slice(0, 400)}…` : c.content,
+      c.content.length > COMPOSE_RANKING_EXCERPT_CHARS
+        ? `${c.content.slice(0, COMPOSE_RANKING_EXCERPT_CHARS)}…`
+        : c.content,
   }));
+
+  const composeRankingNote = composeMode
+    ? " Strongly prefer candidates with styleExample=true for voice/rhythm match — topical fit alone is not enough."
+    : "";
 
   const raw = await completeJson<{ selected?: number[] }>({
     system: `Select the best brand writing examples for reconstructing an article from facts.
 Reply JSON only: {"selected": [index, ...]} with up to ${rankedLimit} indices (0-based).
-Prefer topical relevance to the facts and stylistic match to a human brand operator — not generic AI tone.`,
+Prefer topical relevance to the facts and stylistic match to a human brand operator — not generic AI tone.${composeRankingNote}`,
     user: [
       "Facts (JSON):",
       JSON.stringify(facts, null, 2),

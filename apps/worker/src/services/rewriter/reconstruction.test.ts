@@ -178,9 +178,9 @@ describe("buildReconstructionSystemPrompt", () => {
       includeFaq: true,
     });
 
-    assert.match(prompt, /FAQ section \(required\)/);
-    assert.match(prompt, /Frequently Asked Questions/);
-    assert.match(prompt, /<h3>Question\?<\/h3><p>Answer paragraph/);
+    assert.match(prompt, /FAQ section \(required — editorial format/);
+    assert.match(prompt, /NOT "Your Questions Answered"/);
+    assert.match(prompt, /<h3>Question\?<\/h3><p>Answer/);
   });
 
   it("forbids FAQ section in compose mode when includeFaq is false", () => {

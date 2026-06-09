@@ -1,6 +1,8 @@
 import type { Db } from "mongodb";
 import {
+  REWRITER_COMPOSE_GENERICITY_MAX,
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  composeGenericityScore,
   isComposeNarrativeFacts,
   isHybridContentFacts,
   isInstructionPreserveMode,
@@ -13,6 +15,7 @@ import {
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
   writerComposeBriefOutlineIssues,
+  writerComposeFaqStyleIssues,
   writerComposeTopicDriftIssues,
   writerComposeVoiceStyleIssues,
   type ContentFacts,
@@ -27,23 +30,13 @@ import { interpretBrand } from "./brand-interpreter.js";
 import { extractContentFacts } from "./fact-extractor.js";
 import { retrieveRankedExamples } from "./example-retrieval.js";
 import { analyzeGenericity } from "./generic-detector.js";
+import { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
 import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import type { ArticleRewriteExample } from "./types.js";
 
-const COMPOSE_STYLE_EXCERPT_CHARS = 2000;
-
-function styleExampleExcerpt(examples: ArticleRewriteExample[]): string | undefined {
-  const first = examples[0];
-  if (!first?.html?.trim()) return undefined;
-  const header = first.title ? `### ${first.title}\n` : "";
-  const body =
-    first.html.length > COMPOSE_STYLE_EXCERPT_CHARS
-      ? `${first.html.slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}…`
-      : first.html;
-  return `${header}${body}`;
-}
+export { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
 
 export type HumanizationEngineOpts = {
   db: Db;
@@ -86,10 +79,18 @@ function mergeRetryIssues(
   critique: SelfCritiqueResult,
   completenessIssues: string[],
 ): string[] {
-  return [...new Set([...completenessIssues, ...genericity.issues, ...critique.issues])].slice(
-    0,
-    12,
-  );
+  const genericityIssue =
+    composeGenericityScore(genericity, critique) > REWRITER_COMPOSE_GENERICITY_MAX
+      ? [`Genericity score ${composeGenericityScore(genericity, critique)} exceeds max ${REWRITER_COMPOSE_GENERICITY_MAX}`]
+      : [];
+  return [
+    ...new Set([
+      ...completenessIssues,
+      ...genericityIssue,
+      ...genericity.issues,
+      ...critique.issues,
+    ]),
+  ].slice(0, 12);
 }
 
 function factsExtracted(facts: ContentFacts): boolean {
@@ -105,7 +106,7 @@ function qualityGatePassed(
   composeMode: boolean,
 ): boolean {
   if (composeMode && isComposeNarrativeFacts(facts)) {
-    return rewriterComposeQualityGatePassed(facts, html, critique);
+    return rewriterComposeQualityGatePassed(facts, html, critique, genericity);
   }
   if (isHybridContentFacts(facts)) {
     return rewriterHybridQualityGatePassed(facts, html, critique);
@@ -156,7 +157,7 @@ export async function runHumanizationEngine(
     { composeMode },
   );
   const examples = allExamples;
-  const composeStyleExcerpt = composeMode ? styleExampleExcerpt(examples) : undefined;
+  const composeStyleExcerpt = composeMode ? buildComposeStyleExampleExcerpt(examples) : undefined;
 
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
@@ -190,6 +191,7 @@ export async function runHumanizationEngine(
       composeMode,
       topic: opts.topic,
       styleExampleExcerpt: composeStyleExcerpt,
+      includeFaq: opts.includeFaq,
     });
 
     const genericity = await analyzeGenericity(html);
@@ -197,6 +199,7 @@ export async function runHumanizationEngine(
       composeMode,
       topic: opts.topic,
       styleExampleExcerpt: composeStyleExcerpt,
+      includeFaq: opts.includeFaq,
     });
     const completenessIssues = preserveMode
       ? composeMode && composeNarrative
@@ -209,6 +212,8 @@ export async function runHumanizationEngine(
         : [];
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
+    const faqStyleIssues =
+      composeMode && opts.includeFaq ? writerComposeFaqStyleIssues(html) : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
@@ -219,7 +224,8 @@ export async function runHumanizationEngine(
         completenessIssues.length +
         topicDriftIssues.length +
         briefOutlineIssues.length +
-        voiceStyleIssues.length,
+        voiceStyleIssues.length +
+        faqStyleIssues.length,
     };
 
     if (!best || snapshotScore(snapshot, preserveMode) > snapshotScore(best, preserveMode)) {
@@ -227,10 +233,15 @@ export async function runHumanizationEngine(
     }
 
     const gateOk = qualityGatePassed(facts, html, genericity, critique, composeMode);
+    const genericityOk =
+      !composeMode ||
+      composeGenericityScore(genericity, critique) <= REWRITER_COMPOSE_GENERICITY_MAX;
     const noDrift =
       topicDriftIssues.length === 0 &&
       briefOutlineIssues.length === 0 &&
-      voiceStyleIssues.length === 0;
+      voiceStyleIssues.length === 0 &&
+      faqStyleIssues.length === 0 &&
+      genericityOk;
 
     if (gateOk && noDrift) {
       return {
@@ -240,7 +251,7 @@ export async function runHumanizationEngine(
         examples,
         humanAuthenticityScore: critique.humanAuthenticity,
         brandConsistencyScore: critique.brandConsistency,
-        genericityScore: Math.max(genericity.score, critique.genericity),
+        genericityScore: composeGenericityScore(genericity, critique),
         humanizationAttempts: attempts,
         factsExtracted: factsExtracted(facts),
       };
@@ -251,6 +262,7 @@ export async function runHumanizationEngine(
       ...topicDriftIssues,
       ...briefOutlineIssues,
       ...voiceStyleIssues,
+      ...faqStyleIssues,
     ]);
   }
 
@@ -262,8 +274,28 @@ export async function runHumanizationEngine(
     examples,
     humanAuthenticityScore: final.critique.humanAuthenticity,
     brandConsistencyScore: final.critique.brandConsistency,
-    genericityScore: Math.max(final.genericity.score, final.critique.genericity),
+    genericityScore: composeGenericityScore(final.genericity, final.critique),
     humanizationAttempts: attempts,
     factsExtracted: factsExtracted(facts),
   };
+}
+
+export async function polishComposeHtmlVoice(opts: {
+  voice: Voice;
+  html: string;
+  topic?: string;
+  includeFaq?: boolean;
+  styleExampleExcerpt?: string;
+  retryIssues?: string[];
+}): Promise<string> {
+  return humanizeArticleHtml({
+    voice: opts.voice,
+    html: opts.html,
+    composeMode: true,
+    topic: opts.topic,
+    styleExampleExcerpt: opts.styleExampleExcerpt,
+    includeFaq: opts.includeFaq,
+    retryIssues: opts.retryIssues,
+    attempt: opts.retryIssues?.length ? 2 : 1,
+  });
 }

@@ -215,9 +215,14 @@ const COMPOSE_TEXTBOOK_HEADING_RES = [
   /^understanding the\b/i,
   /^exploring the\b/i,
   /^challenges and considerations/i,
-  /^innovative trends in/i,
+  /\binnovative\b.*\btrends\b/i,
+  /^looking ahead\b/i,
+  /^your questions answered\b/i,
+  /\bimpact of\b/i,
+  /^finding the right balance\b/i,
+  /^designing for\b/i,
   /^common questions addressed/i,
-  /^key features of/i,
+  /^key features of\b/i,
   /^design essentials/i,
 ];
 
@@ -230,10 +235,30 @@ const COMPOSE_GENERIC_GUIDE_PHRASES = [
   "in today's landscape",
   "it is essential to",
   "plays a crucial role",
+  "research has shown",
+  "it is important to",
+  "we invite you to",
+  "several questions remain",
+  "as we think about the future",
+  "enhance comfort and safety",
+  "significantly enhances",
+  "notable trend is",
+  "when designing for",
 ];
 
-const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 80;
+const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 55;
+const COMPOSE_MAX_PARAGRAPH_WORDS = 65;
+const COMPOSE_MAX_PARAGRAPH_SENTENCES = 4;
 const COMPOSE_MAX_CONSECUTIVE_LIST_BLOCKS = 3;
+const COMPOSE_FAQ_MIN_QUESTION_BLOCKS = 5;
+const COMPOSE_FAQ_MAX_ANSWER_WORDS = 35;
+
+function countSentences(text: string): number {
+  const plain = stripHtmlToPlainText(text).trim();
+  if (!plain) return 0;
+  const parts = plain.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  return Math.max(1, parts.length);
+}
 
 /** Flags generic guide tone vs brand editorial voice in compose output. */
 export function writerComposeVoiceStyleIssues(html: string): string[] {
@@ -267,6 +292,21 @@ export function writerComposeVoiceStyleIssues(html: string): string[] {
   }
 
   const paragraphs = writerHtmlParagraphs(html);
+  for (const p of paragraphs) {
+    const words = stripHtmlToPlainText(p).split(/\s+/).filter(Boolean).length;
+    const sentences = countSentences(p);
+    if (words > COMPOSE_MAX_PARAGRAPH_WORDS) {
+      issues.push(`Paragraph has ${words} words — shorten to 1–3 sentences (max ${COMPOSE_MAX_PARAGRAPH_WORDS} words)`);
+      break;
+    }
+    if (sentences > COMPOSE_MAX_PARAGRAPH_SENTENCES) {
+      issues.push(
+        `Paragraph has ${sentences} sentences — shorten to match brand style (often 1–3 sentences)`,
+      );
+      break;
+    }
+  }
+
   if (paragraphs.length >= 4) {
     const totalWords = paragraphs.reduce(
       (sum, p) => sum + stripHtmlToPlainText(p).split(/\s+/).filter(Boolean).length,
@@ -287,6 +327,49 @@ export function writerComposeVoiceStyleIssues(html: string): string[] {
   }
 
   return [...new Set(issues)].slice(0, 6);
+}
+
+/** Flags industry-guide FAQ shape vs short editorial FAQ answers. */
+export function writerComposeFaqStyleIssues(html: string): string[] {
+  const issues: string[] = [];
+  const faqHeadingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  let faqMatch: RegExpExecArray | null;
+  while ((faqMatch = faqHeadingRe.exec(html)) !== null) {
+    const title = stripHtmlToPlainText(faqMatch[1] ?? "").trim();
+    if (/^(your questions answered|common questions|frequently asked questions)$/i.test(title)) {
+      issues.push(`FAQ section title "${title}" — use a punchy editorial title from brand examples`);
+    }
+  }
+
+  const qaBlockRe = /<h3\b[^>]*>([\s\S]*?)<\/h3>\s*<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  const answers: string[] = [];
+  let qaCount = 0;
+  let qaMatch: RegExpExecArray | null;
+  while ((qaMatch = qaBlockRe.exec(html)) !== null) {
+    const question = stripHtmlToPlainText(qaMatch[1] ?? "").trim();
+    if (!question.endsWith("?")) continue;
+    qaCount++;
+    answers.push(stripHtmlToPlainText(qaMatch[2] ?? ""));
+  }
+
+  if (qaCount >= COMPOSE_FAQ_MIN_QUESTION_BLOCKS) {
+    issues.push(
+      `FAQ has ${qaCount} Q&A blocks — use fewer items with shorter editorial answers (max ~4 unless facts require more)`,
+    );
+  }
+
+  if (answers.length >= 3) {
+    const avgAnswerWords =
+      answers.reduce((sum, a) => sum + a.split(/\s+/).filter(Boolean).length, 0) /
+      answers.length;
+    if (avgAnswerWords > COMPOSE_FAQ_MAX_ANSWER_WORDS) {
+      issues.push(
+        `FAQ answers average ${Math.round(avgAnswerWords)} words — keep answers to 1–2 sentences`,
+      );
+    }
+  }
+
+  return [...new Set(issues)].slice(0, 4);
 }
 
 export function writerHasRelatedLinksBlock(html: string): boolean {

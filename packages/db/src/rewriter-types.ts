@@ -74,6 +74,7 @@ export const REWRITER_SELF_CRITIQUE_GENERICITY_MAX = 30;
 export const REWRITER_MAX_HUMANIZATION_ATTEMPTS = 3;
 export const REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN = 85;
 export const REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN = 85;
+export const REWRITER_COMPOSE_GENERICITY_MAX = 45;
 
 function normalizeForMatch(text: string): string {
   return text
@@ -271,14 +272,25 @@ export function rewriterHybridQualityGatePassed(
   return true;
 }
 
+export function composeGenericityScore(
+  genericity: GenericityAnalysis,
+  critique: SelfCritiqueResult,
+): number {
+  return Math.max(genericity.score, critique.genericity);
+}
+
 export function rewriterComposeQualityGatePassed(
   facts: ContentFacts,
   html: string,
   critique: SelfCritiqueResult,
+  genericity: GenericityAnalysis,
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
   if (completenessIssues.length > 0) return false;
   if (critique.humanAuthenticity < REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN) return false;
   if (critique.brandConsistency < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) return false;
+  if (composeGenericityScore(genericity, critique) > REWRITER_COMPOSE_GENERICITY_MAX) {
+    return false;
+  }
   return true;
 }
