@@ -474,6 +474,51 @@ export async function updateWriterComposeFailed(
   return row;
 }
 
+export const COMPOSE_ORPHAN_RECOVERY_GRACE_MS = 2 * 60 * 1000;
+
+export const COMPOSE_ORPHAN_RECOVERY_MESSAGE =
+  "Generation was interrupted when the worker restarted. Click Write again to retry.";
+
+export type RecoverOrphanedComposeJobsOptions = {
+  /** Only fail pending jobs older than this grace window. Ignored when failAllPending is true. */
+  graceMs?: number;
+  now?: Date;
+  /** Fail every pending compose job (used on worker startup when in-memory jobs cannot survive). */
+  failAllPending?: boolean;
+};
+
+export async function recoverOrphanedComposeJobs(
+  db: Db,
+  opts: RecoverOrphanedComposeJobsOptions = {},
+): Promise<{ recovered: number; articleIds: string[] }> {
+  const now = opts.now ?? new Date();
+  const graceMs = opts.graceMs ?? COMPOSE_ORPHAN_RECOVERY_GRACE_MS;
+  const failAllPending = opts.failAllPending ?? true;
+  const cutoff = new Date(now.getTime() - graceMs);
+
+  const filter: Record<string, unknown> = {
+    mode: "compose",
+    compose_status: "pending",
+  };
+  if (!failAllPending) {
+    filter.compose_requested_at = { $lt: cutoff };
+  }
+
+  const articleIds: string[] = [];
+  const cursor = writerArticles(db).find(filter);
+  for await (const doc of cursor) {
+    const article = writerArticleSchema.parse(doc);
+    await updateWriterComposeFailed(
+      db,
+      article.id,
+      article.organization_id,
+      COMPOSE_ORPHAN_RECOVERY_MESSAGE,
+    );
+    articleIds.push(article.id);
+  }
+  return { recovered: articleIds.length, articleIds };
+}
+
 export function resolveWriterComposeStatus(article: WriterArticle): WriterComposeJobStatus | undefined {
   if (article.mode !== "compose") return undefined;
   if (article.compose_status) return article.compose_status;

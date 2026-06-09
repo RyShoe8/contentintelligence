@@ -190,10 +190,23 @@ export async function startWriterComposeJob(
   }
 
   void runWriterComposeJobExclusive(pending.id, async () => {
+    console.log(
+      JSON.stringify({ msg: "compose_job_start", writer_article_id: pending.id }),
+    );
     try {
       await runComposeGeneration(db, body, pending.id, existingComposeMeta);
+      console.log(
+        JSON.stringify({ msg: "compose_job_done", writer_article_id: pending.id }),
+      );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      console.log(
+        JSON.stringify({
+          msg: "compose_job_failed",
+          writer_article_id: pending.id,
+          error: message,
+        }),
+      );
       await updateWriterComposeFailed(db, pending.id, organizationId, message);
     }
   });

@@ -23,8 +23,13 @@ import {
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
 import {
+  COMPOSE_STALL_MESSAGE,
   composeProgressLabel,
+  isComposePendingOrphan,
   isComposePendingStale,
+  resolveComposePollMode,
+  saveComposePollMode,
+  clearComposePollMode,
   shouldPollCompose,
 } from "@/app/writer/compose-poll";
 import { Button } from "@/components/ui/button";
@@ -210,17 +215,25 @@ export function WriterComposeForm({
   const [composeProgress, setComposeProgress] = useState<string | null>(null);
   const [composeWriteMode, setComposeWriteMode] = useState<"full" | "write_only" | null>(null);
   const composePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const composePollArticleIdRef = useRef<string | null>(null);
   const composePollStartedRef = useRef(0);
 
-  const stopComposePolling = useCallback(() => {
+  const clearComposePollInterval = useCallback(() => {
     if (composePollRef.current) {
       clearInterval(composePollRef.current);
       composePollRef.current = null;
     }
+  }, []);
+
+  const stopComposePolling = useCallback(() => {
+    const pollArticleId = composePollArticleIdRef.current;
+    clearComposePollInterval();
+    composePollArticleIdRef.current = null;
+    if (pollArticleId) clearComposePollMode(pollArticleId);
     setWriting(false);
     setComposeProgress(null);
     setComposeWriteMode(null);
-  }, []);
+  }, [clearComposePollInterval]);
 
   const applyComposeStatusData = useCallback((data: ComposeStatusResponse) => {
     if (data.generated_html) setOutputHtml(data.generated_html);
@@ -272,7 +285,17 @@ export function WriterComposeForm({
 
   const startComposePolling = useCallback(
     (pollArticleId: string, mode: "full" | "write_only" = "full") => {
-      stopComposePolling();
+      if (composePollArticleIdRef.current === pollArticleId && composePollRef.current) {
+        setWriting(true);
+        setComposeWriteMode(mode);
+        setComposeProgress(composeProgressLabel(mode));
+        saveComposePollMode(pollArticleId, mode);
+        return;
+      }
+
+      clearComposePollInterval();
+      composePollArticleIdRef.current = pollArticleId;
+      saveComposePollMode(pollArticleId, mode);
       setWriting(true);
       setComposeWriteMode(mode);
       setComposeProgress(composeProgressLabel(mode));
@@ -281,9 +304,7 @@ export function WriterComposeForm({
 
       const handleStale = () => {
         stopComposePolling();
-        setWriteError(
-          "Article generation may have stalled on the worker. Try Write again or check Render logs.",
-        );
+        setWriteError(COMPOSE_STALL_MESSAGE);
       };
 
       const tick = async () => {
@@ -316,6 +337,17 @@ export function WriterComposeForm({
           }
           if (
             data.compose_status === "pending" &&
+            isComposePendingOrphan({
+              compose_status: "pending",
+              compose_requested_at: data.compose_requested_at,
+              generated_html: data.generated_html,
+            })
+          ) {
+            handleStale();
+            return;
+          }
+          if (
+            data.compose_status === "pending" &&
             isComposePendingStale({
               compose_status: "pending",
               compose_requested_at: data.compose_requested_at,
@@ -331,21 +363,40 @@ export function WriterComposeForm({
       void tick();
       composePollRef.current = setInterval(() => void tick(), COMPOSE_POLL_INTERVAL_MS);
     },
-    [applyComposeStatusData, router, stopComposePolling],
+    [applyComposeStatusData, clearComposePollInterval, router, stopComposePolling],
   );
+
+  const resumeArticleId = selectedArticle?.id;
+  const resumeComposeStatus = selectedArticle?.compose_status;
+  const resumeRequestedAt = selectedArticle?.compose_requested_at;
 
   useEffect(() => {
     if (
-      selectedArticle &&
+      resumeArticleId &&
       shouldPollCompose({
-        compose_status: selectedArticle.compose_status,
-        compose_requested_at: selectedArticle.compose_requested_at,
+        compose_status: resumeComposeStatus,
+        compose_requested_at: resumeRequestedAt,
       })
     ) {
-      startComposePolling(selectedArticle.id);
+      if (composePollArticleIdRef.current === resumeArticleId && composePollRef.current) {
+        return;
+      }
+      const mode = resolveComposePollMode(resumeArticleId);
+      startComposePolling(resumeArticleId, mode);
     }
-    return () => stopComposePolling();
-  }, [selectedArticle, startComposePolling, stopComposePolling]);
+    return () => {
+      if (composePollArticleIdRef.current === resumeArticleId) {
+        clearComposePollInterval();
+        composePollArticleIdRef.current = null;
+      }
+    };
+  }, [
+    resumeArticleId,
+    resumeComposeStatus,
+    resumeRequestedAt,
+    startComposePolling,
+    clearComposePollInterval,
+  ]);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterComposeArticleListItem[]>();
@@ -512,10 +563,17 @@ export function WriterComposeForm({
       return;
     }
 
-    setWriting(true);
+    const mode = skipResearch ? "write_only" : "full";
+    const optimisticPollId = skipResearch && articleId ? articleId : null;
+
     setWriteError(null);
-    setComposeWriteMode(skipResearch ? "write_only" : "full");
-    setComposeProgress(composeProgressLabel(skipResearch ? "write_only" : "full"));
+    if (optimisticPollId) {
+      startComposePolling(optimisticPollId, "write_only");
+    } else {
+      setWriting(true);
+      setComposeWriteMode(mode);
+      setComposeProgress(composeProgressLabel(mode));
+    }
     setReferencesFetched(null);
     setReferencesFailed([]);
     setLinksPresent(null);
@@ -563,9 +621,14 @@ export function WriterComposeForm({
         accepted?: boolean;
       };
       if (!r.ok) {
-        setWriting(false);
-        setComposeProgress(null);
-        setComposeWriteMode(null);
+        if (r.status === 409 && data.error === "compose_already_running") {
+          const nextId = articleId || data.writer_article_id;
+          if (nextId) {
+            startComposePolling(nextId, mode);
+            return;
+          }
+        }
+        stopComposePolling();
         setWriteError(data.error ?? "Generation failed");
         return;
       }
@@ -576,28 +639,24 @@ export function WriterComposeForm({
           if (nextId !== articleId) {
             router.push(`/writer?article_id=${encodeURIComponent(nextId)}`);
           }
-          startComposePolling(nextId, skipResearch ? "write_only" : "full");
+          if (!optimisticPollId || nextId !== optimisticPollId) {
+            startComposePolling(nextId, mode);
+          }
         } else {
-          setWriting(false);
-          setComposeProgress(null);
-          setComposeWriteMode(null);
+          stopComposePolling();
           setWriteError("Generation accepted but no article id returned");
         }
         return;
       }
+      stopComposePolling();
       applyComposeStatusData(data);
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
         router.push(`/writer?article_id=${encodeURIComponent(data.writer_article_id)}`);
         router.refresh();
       }
-      setWriting(false);
-      setComposeProgress(null);
-      setComposeWriteMode(null);
     } catch {
-      setWriting(false);
-      setComposeProgress(null);
-      setComposeWriteMode(null);
+      stopComposePolling();
       setWriteError("Generation failed");
     }
   }

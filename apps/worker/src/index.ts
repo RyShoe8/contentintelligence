@@ -9,6 +9,7 @@ import {
   getGmailOAuth,
   saveGmailOAuth,
   updateVoicePersonaStatus,
+  recoverOrphanedComposeJobs,
 } from "@content-resourcer/db";
 import Fastify from "fastify";
 import { google } from "googleapis";
@@ -617,6 +618,18 @@ async function main(): Promise<void> {
   });
 
   const port = env.port;
+
+  try {
+    const db = await getDb();
+    await ensureIndexes(db);
+    const { recovered, articleIds } = await recoverOrphanedComposeJobs(db);
+    if (recovered > 0) {
+      app.log.info({ recovered, articleIds }, "compose_job_recovered");
+    }
+  } catch (e) {
+    app.log.error({ err: e }, "compose_job_recovery_failed");
+  }
+
   await app.listen({ port, host: "0.0.0.0" });
 
   cron.schedule(env.ingestCron, () => {
