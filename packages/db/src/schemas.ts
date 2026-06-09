@@ -691,9 +691,18 @@ export const writerArticleSchema = z.object({
   ),
   status: writerArticleStatusSchema.default("draft"),
   compose_status: writerComposeJobStatusSchema.optional(),
-  compose_error: z.string().max(2000).optional(),
-  compose_requested_at: z.coerce.date().optional(),
-  compose_meta: writerComposeMetaSchema.optional(),
+  compose_error: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().max(2000).optional(),
+  ),
+  compose_requested_at: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.coerce.date().optional(),
+  ),
+  compose_meta: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    writerComposeMetaSchema.optional(),
+  ),
   created_by: z.string().email(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),

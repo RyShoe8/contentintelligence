@@ -53,6 +53,21 @@ describe("writerArticleSchema", () => {
     assert.equal(parsed.compose_status, "pending");
     assert.equal(parsed.mode, "compose");
   });
+
+  it("coerces null compose_error and compose_meta to undefined", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+      compose_status: "pending",
+      compose_error: null,
+      compose_meta: null,
+      compose_requested_at: null,
+    });
+    assert.equal(parsed.compose_error, undefined);
+    assert.equal(parsed.compose_meta, undefined);
+    assert.equal(parsed.compose_requested_at, undefined);
+  });
 });
 
 describe("resolveWriterComposeStatus", () => {
