@@ -21,6 +21,7 @@ export type WriterComposeBody = {
   web_search_max_results?: number;
   article_depth?: number;
   subtopics?: string[];
+  include_faq?: boolean;
 };
 
 export async function runWriterCompose(db: Db, body: WriterComposeBody) {
@@ -36,6 +37,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     web_search_max_results: body.web_search_max_results,
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
+    include_faq: body.include_faq,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -60,6 +62,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     web_search_max_results,
     article_depth,
     subtopics,
+    include_faq,
   } = parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
@@ -87,6 +90,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     webSearchMaxResults: web_search_max_results,
     articleDepth: article_depth,
     subtopics,
+    includeFaq: include_faq,
   });
 
   const article = await upsertWriterArticleDraft(db, {

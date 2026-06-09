@@ -43,6 +43,7 @@ export type HumanizationEngineOpts = {
   exactLinkLabels?: boolean;
   composeMode?: boolean;
   topic?: string;
+  includeFaq?: boolean;
 };
 
 export type HumanizationEngineResult = {
@@ -120,6 +121,7 @@ export async function runHumanizationEngine(
   const facts = await extractContentFacts(factsInput, {
     preserveInstructions: opts.preserveInstructions,
     composeMode,
+    includeFaq: opts.includeFaq,
   });
   const hybrid = isHybridContentFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
@@ -163,6 +165,7 @@ export async function runHumanizationEngine(
       composeMode,
       topic: opts.topic,
       researchBriefExcerpt,
+      includeFaq: opts.includeFaq,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,

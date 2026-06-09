@@ -467,6 +467,10 @@ async function main(): Promise<void> {
           : undefined,
       article_depth: body.article_depth != null ? Number(body.article_depth) : undefined,
       subtopics: Array.isArray(body.subtopics) ? (body.subtopics as string[]) : [],
+      include_faq:
+        body.include_faq === true ||
+        body.include_faq === "true" ||
+        body.include_faq === 1,
     };
     try {
       const db = await getDb();

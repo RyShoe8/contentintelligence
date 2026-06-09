@@ -150,4 +150,60 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Mention "Frugal Gambler" at least once when it fits naturally/);
     assert.doesNotMatch(prompt, /Include the brand's viewpoint and caveats where relevant/);
   });
+
+  it("requires structured FAQ HTML in compose mode when includeFaq is true", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [{ title: "FAQ", points: ["Q: Who pays? A: The player."] }],
+        keyDetails: [],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful",
+        qualityScore: 8,
+        bestFor: "readers",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+      composeMode: true,
+      topic: "Tax implications of online casino winnings",
+      includeFaq: true,
+    });
+
+    assert.match(prompt, /FAQ section \(required\)/);
+    assert.match(prompt, /Frequently Asked Questions/);
+    assert.match(prompt, /<h3>Question\?<\/h3><p>Answer paragraph/);
+  });
+
+  it("forbids FAQ section in compose mode when includeFaq is false", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [{ title: "Key facts", points: ["Fact"] }],
+        keyDetails: [],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful",
+        qualityScore: 8,
+        bestFor: "readers",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+      composeMode: true,
+      topic: "Tax implications of online casino winnings",
+      includeFaq: false,
+    });
+
+    assert.match(prompt, /Do not include an FAQ, frequently asked questions, or Q&A section/);
+  });
 });

@@ -18,6 +18,7 @@ export async function expandArticleComposeDepth(opts: {
   maxWords: number;
   subtopics?: string[];
   topic?: string;
+  includeFaq?: boolean;
 }): Promise<string> {
   if (!env.openaiApiKey) {
     throw new Error("openai_not_configured");
@@ -34,7 +35,7 @@ export async function expandArticleComposeDepth(opts: {
     : "";
 
   const topicBlock = opts.topic?.trim()
-    ? `\nArticle subject: ${opts.topic.trim()}. Expand topic depth (examples, jurisdiction nuance, FAQ answers) — not brand/community sections.`
+    ? `\nArticle subject: ${opts.topic.trim()}. Expand topic depth (examples, jurisdiction nuance${opts.includeFaq ? ", FAQ answers" : ""}) — not brand/community sections.`
     : "";
 
   const systemPrompt = `You expand an HTML article to meet a target word count while preserving facts and links.

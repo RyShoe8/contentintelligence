@@ -80,6 +80,14 @@ export function writerArticleDepthLabel(depth: number): string {
   return writerArticleDepthGuidance(depth).label;
 }
 
+export function writerComposeFaqCountGuidance(depth: number): { min: number; max: number } {
+  const d = Math.min(100, Math.max(0, Math.round(depth)));
+  if (d <= 25) return { min: 3, max: 4 };
+  if (d <= 50) return { min: 4, max: 6 };
+  if (d <= 75) return { min: 5, max: 7 };
+  return { min: 6, max: 8 };
+}
+
 export type WriterComposeResearchConfig = {
   maxResearchQuestions: number;
   sectionBatchSize: number;
@@ -242,6 +250,7 @@ export const writerComposeInputSchema = z.object({
     .array(z.string().trim().min(WRITER_SUBTOPIC_MIN_CHARS).max(WRITER_SUBTOPIC_MAX_CHARS))
     .max(WRITER_SUBTOPIC_MAX)
     .default([]),
+  include_faq: z.boolean().default(false),
 });
 
 export type WriterComposeInput = z.infer<typeof writerComposeInputSchema>;

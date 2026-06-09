@@ -63,6 +63,7 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     web_search_max_results: body.web_search_max_results,
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
+    include_faq: body.include_faq,
   });
   if (!parsed.success) {
     throw new Error(
@@ -88,6 +89,7 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     web_search_max_results,
     article_depth,
     subtopics,
+    include_faq,
   } = parsed.data;
 
   const result = await generateArticleComposeHtml({
@@ -104,6 +106,7 @@ async function runComposeGeneration(db: Db, body: WriterComposeBody, writerArtic
     webSearchMaxResults: web_search_max_results,
     articleDepth: article_depth,
     subtopics,
+    includeFaq: include_faq,
   });
 
   await updateWriterComposeResult(db, writerArticleId, organizationId, {
@@ -129,6 +132,7 @@ export async function startWriterComposeJob(
     web_search_max_results: body.web_search_max_results,
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
+    include_faq: body.include_faq,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";

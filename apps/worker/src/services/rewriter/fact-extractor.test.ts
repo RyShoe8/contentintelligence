@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseBriefSectionsByHeaders, parseContentFacts } from "./fact-extractor.js";
+import {
+  filterFaqNarrativeSections,
+  parseBriefSectionsByHeaders,
+  parseContentFacts,
+} from "./fact-extractor.js";
 
 describe("parseContentFacts", () => {
   it("parses valid LLM JSON", () => {
@@ -88,5 +92,17 @@ describe("parseBriefSectionsByHeaders", () => {
     assert.ok(sections.length >= 2);
     assert.equal(sections[0]?.title, "Topic Overview");
     assert.match(sections[1]?.points.join(" "), /taxable under federal law/);
+  });
+});
+
+describe("filterFaqNarrativeSections", () => {
+  it("removes FAQ-titled narrative sections", () => {
+    const filtered = filterFaqNarrativeSections([
+      { title: "Key facts", points: ["Fact one"] },
+      { title: "FAQ ideas", points: ["Q: Who pays? A: The player."] },
+      { title: "Frequently Asked Questions", points: ["Q: When? A: Annually."] },
+    ]);
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0]?.title, "Key facts");
   });
 });

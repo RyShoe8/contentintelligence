@@ -112,6 +112,7 @@ export type ReconstructArticleOpts = {
   composeMode?: boolean;
   topic?: string;
   researchBriefExcerpt?: string;
+  includeFaq?: boolean;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -139,6 +140,16 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
       : "";
 
+  const faqBlock =
+    opts.composeMode && opts.includeFaq
+      ? `\nFAQ section (required):
+- Include <h2>Frequently Asked Questions</h2> near the end of the article (before any appended links).
+- Format each item as <h3>Question?</h3><p>Answer paragraph.</p>.
+- Use only FAQ facts from extracted narrative sections; do not invent answers.`
+      : opts.composeMode
+        ? `\nDo not include an FAQ, frequently asked questions, or Q&A section.`
+        : "";
+
   const topic = opts.topic?.trim();
   const composeTopicBlock =
     opts.composeMode && topic
@@ -160,7 +171,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${hybridRulesBlock(opts.facts)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 

@@ -45,6 +45,22 @@ describe("buildDeepResearchConsolidationPrompts", () => {
     assert.match(userPrompt, /Attribution is hard/);
     assert.match(userPrompt, /Q1 notes with https:\/\/ref\.example citation/);
   });
+
+  it("omits FAQ from deep consolidation when includeFaq is false", () => {
+    const { systemPrompt } = buildDeepResearchConsolidationPrompts({
+      topic: "Measuring content marketing ROI",
+      plan: {
+        research_questions: ["Q1"],
+        angles: ["Practical ROI frameworks"],
+        caveats_to_investigate: ["Attribution is hard"],
+        search_queries: ["content ROI"],
+      },
+      sectionNotes: "Notes",
+      includeFaq: false,
+    });
+    assert.match(systemPrompt, /Do not include FAQ or Q&A content/);
+    assert.doesNotMatch(systemPrompt, /, FAQ,/);
+  });
 });
 
 describe("buildResearchBriefPrompts with source labels", () => {
@@ -71,6 +87,26 @@ describe("buildResearchBriefPrompts with source labels", () => {
     assert.match(userPrompt, /Required subtopics to cover in the brief/);
     assert.match(userPrompt, /Pricing models/);
     assert.match(userPrompt, /ROI frameworks/);
+  });
+
+  it("omits FAQ from standard brief prompts when includeFaq is false", () => {
+    const { systemPrompt } = buildResearchBriefPrompts({
+      topic: "Topic here with enough context",
+      corpusSections: [],
+      includeFaq: false,
+    });
+    assert.match(systemPrompt, /Do not include FAQ or Q&A content/);
+    assert.doesNotMatch(systemPrompt, /Include a labeled FAQ section/);
+  });
+
+  it("requires FAQ Q/A pairs when includeFaq is true", () => {
+    const { systemPrompt } = buildResearchBriefPrompts({
+      topic: "Topic here with enough context",
+      corpusSections: [],
+      articleDepth: 50,
+      includeFaq: true,
+    });
+    assert.match(systemPrompt, /Include a labeled FAQ section with 4–6 question-and-answer pairs/);
   });
 });
 

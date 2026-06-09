@@ -1,5 +1,9 @@
 import OpenAI from "openai";
-import { writerArticleDepthGuidance, writerComposeResearchConfig } from "@content-resourcer/db";
+import {
+  writerArticleDepthGuidance,
+  writerComposeFaqCountGuidance,
+  writerComposeResearchConfig,
+} from "@content-resourcer/db";
 import { env } from "./env.js";
 import {
   formatReferenceCorpusForPrompt,
@@ -13,11 +17,36 @@ export type SynthesizeResearchBriefOpts = {
   voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
+  includeFaq?: boolean;
 };
 
 function subtopicsBlock(subtopics?: string[]): string {
   if (!subtopics?.length) return "";
   return `\nRequired subtopics to cover in the brief:\n${subtopics.map((s) => `- ${s}`).join("\n")}`;
+}
+
+function briefStructureLine(includeFaq?: boolean): string {
+  if (includeFaq) {
+    return "- Structure with short labeled sections: Key facts, Angles to cover, Caveats.";
+  }
+  return "- Structure with short labeled sections: Key facts, Angles to cover, Caveats. Do not include FAQ or Q&A content.";
+}
+
+function faqBriefRules(includeFaq?: boolean, articleDepth?: number): string {
+  if (!includeFaq) {
+    return "- Do not include an FAQ, frequently asked questions, or Q&A section in the brief.";
+  }
+  const faqCount = writerComposeFaqCountGuidance(articleDepth ?? 50);
+  return `- Include a labeled FAQ section with ${faqCount.min}–${faqCount.max} question-and-answer pairs.
+- Format each pair as "Q: ...?" on one line and "A: ..." on the next (or numbered pairs).
+- Ground answers in reference excerpts when available; mark uncertain answers explicitly.`;
+}
+
+function deepConsolidationStructureLine(includeFaq?: boolean): string {
+  if (includeFaq) {
+    return "- Structure with labeled sections: Topic overview, Key facts, Angles to cover, Caveats and counterpoints, FAQ, Open questions and weak evidence.";
+  }
+  return "- Structure with labeled sections: Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence. Do not include FAQ or Q&A content.";
 }
 
 export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
@@ -38,7 +67,8 @@ export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
   const systemPrompt = `You synthesize research briefs for editorial article writing.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
-- Structure with short labeled sections: Key facts, Angles to cover, Caveats, FAQ ideas (if relevant).
+${briefStructureLine(opts.includeFaq)}
+${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 - When reference excerpts are provided, treat them as primary evidence. Do not invent specific facts, stats, or quotes not supported by the references.
 - When no references are provided, use general knowledge but mark uncertain claims with phrasing like "may" or "often".
 - Write enough detail for a full article (${depth.researchBriefPrompt}).
@@ -92,6 +122,7 @@ export type RunDeepTopicResearchOpts = {
   voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
+  includeFaq?: boolean;
 };
 
 function chunkQuestions(questions: string[], size: number): string[][] {
@@ -150,6 +181,7 @@ export function buildDeepResearchConsolidationPrompts(opts: {
   voiceKeywords?: string[];
   articleDepth?: number;
   subtopics?: string[];
+  includeFaq?: boolean;
 }): { systemPrompt: string; userPrompt: string } {
   const keywords =
     opts.voiceKeywords?.filter(Boolean).join(", ") || "(none specified)";
@@ -161,7 +193,8 @@ export function buildDeepResearchConsolidationPrompts(opts: {
   const systemPrompt = `You consolidate editorial research notes into one deep research brief.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
-- Structure with labeled sections: Topic overview, Key facts, Angles to cover, Caveats and counterpoints, FAQ ideas, Open questions and weak evidence.
+${deepConsolidationStructureLine(opts.includeFaq)}
+${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 - Preserve evidence-backed facts and source URL citations from the notes.
 - Target ${depth.researchBriefPrompt}.
 - Do not write the finished article; only the research brief.`;
@@ -270,6 +303,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       voiceKeywords: opts.voiceKeywords,
       articleDepth: opts.articleDepth,
       subtopics: opts.subtopics,
+      includeFaq: opts.includeFaq,
     });
   }
 
@@ -280,6 +314,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     voiceKeywords: opts.voiceKeywords,
     articleDepth: opts.articleDepth,
     subtopics: opts.subtopics,
+    includeFaq: opts.includeFaq,
   });
   let brief = await callOpenAiText(
     systemPrompt,

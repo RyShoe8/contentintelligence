@@ -11,7 +11,84 @@ import { completeJson } from "../llm/json-completion.js";
 export type ExtractContentFactsOpts = {
   preserveInstructions?: boolean;
   composeMode?: boolean;
+  includeFaq?: boolean;
 };
+
+const FAQ_SECTION_TITLE_RE = /^(faq|frequently asked questions)/i;
+
+function filterFaqNarrativeSections(sections: NarrativeSection[]): NarrativeSection[] {
+  return sections.filter((s) => !FAQ_SECTION_TITLE_RE.test(s.title.trim()));
+}
+
+export { filterFaqNarrativeSections };
+
+function buildComposeExtractSystemPrompt(includeFaq?: boolean): string {
+  const faqRules = includeFaq
+    ? `- Include a narrativeSections entry titled "FAQ" when the brief has FAQ content.
+- points: preserve each Q/A as one string in "Q: ...? A: ..." form.
+- Do NOT drop FAQ content.`
+    : `- Omit FAQ, frequently asked questions, and Q&A content entirely.
+- Do NOT create a narrativeSections entry whose title matches FAQ.`;
+
+  return `Extract structured facts from an editorial research brief as JSON only.
+Schema:
+{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"keyDetails":string[]}
+Rules:
+- narrativeSections: one object per labeled brief section (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, Open questions and weak evidence). Skip empty sections.
+${faqRules}
+- points: preserve factual bullets with source URLs/citations where present in the brief.
+- keyDetails: 8–20 atomic factual statements with source URLs when available.
+- Do NOT drop angles, caveats, or open questions.
+- Omit promotional tone and brand/community commentary.`;
+}
+
+async function extractComposeResearchFacts(
+  trimmed: string,
+  includeFaq?: boolean,
+): Promise<ContentFacts> {
+  const raw = await completeJson<unknown>({
+    system: buildComposeExtractSystemPrompt(includeFaq),
+    user: trimmed,
+    temperature: 0.15,
+    maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
+  });
+
+  const parsed = parseContentFacts(raw);
+  let narrativeSections = parseNarrativeSections(
+    raw && typeof raw === "object" && "narrativeSections" in raw
+      ? (raw as { narrativeSections?: unknown }).narrativeSections
+      : parsed?.narrativeSections,
+  );
+  if (!includeFaq) {
+    narrativeSections = filterFaqNarrativeSections(narrativeSections);
+  }
+
+  if (narrativeSections.length > 0) {
+    return contentFactsSchema.parse({
+      contentType: "hybrid",
+      narrativeSections,
+      keyDetails: parsed?.keyDetails?.length ? parsed.keyDetails : [],
+    });
+  }
+
+  let fallbackSections = parseBriefSectionsByHeaders(trimmed);
+  if (!includeFaq) {
+    fallbackSections = filterFaqNarrativeSections(fallbackSections);
+  }
+  if (fallbackSections.length > 0) {
+    return contentFactsSchema.parse({
+      contentType: "hybrid",
+      narrativeSections: fallbackSections,
+      keyDetails: fallbackSections.flatMap((s) => s.points).slice(0, 20),
+    });
+  }
+
+  return contentFactsSchema.parse({
+    contentType: "hybrid",
+    narrativeSections: [{ title: "Research brief", points: [trimmed.slice(0, 2000)] }],
+    keyDetails: trimmed.length > 400 ? [trimmed.slice(0, 400)] : [trimmed],
+  });
+}
 
 const HYBRID_EXTRACT_MAX_TOKENS = 6000;
 const COMPOSE_BRIEF_HEADER_RE =
@@ -51,53 +128,6 @@ export function parseBriefSectionsByHeaders(brief: string): NarrativeSection[] {
   }
   flush();
   return sections;
-}
-
-async function extractComposeResearchFacts(trimmed: string): Promise<ContentFacts> {
-  const raw = await completeJson<unknown>({
-    system: `Extract structured facts from an editorial research brief as JSON only.
-Schema:
-{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"keyDetails":string[]}
-Rules:
-- narrativeSections: one object per labeled brief section (Topic overview, Key facts, Angles to cover, Caveats and counterpoints, FAQ ideas, Open questions and weak evidence). Skip empty sections.
-- points: preserve factual bullets with source URLs/citations where present in the brief.
-- keyDetails: 8–20 atomic factual statements with source URLs when available.
-- Do NOT drop angles, caveats, FAQ, or open questions.
-- Omit promotional tone and brand/community commentary.`,
-    user: trimmed,
-    temperature: 0.15,
-    maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
-  });
-
-  const parsed = parseContentFacts(raw);
-  const narrativeSections = parseNarrativeSections(
-    raw && typeof raw === "object" && "narrativeSections" in raw
-      ? (raw as { narrativeSections?: unknown }).narrativeSections
-      : parsed?.narrativeSections,
-  );
-
-  if (narrativeSections.length > 0) {
-    return contentFactsSchema.parse({
-      contentType: "hybrid",
-      narrativeSections,
-      keyDetails: parsed?.keyDetails?.length ? parsed.keyDetails : [],
-    });
-  }
-
-  const fallbackSections = parseBriefSectionsByHeaders(trimmed);
-  if (fallbackSections.length > 0) {
-    return contentFactsSchema.parse({
-      contentType: "hybrid",
-      narrativeSections: fallbackSections,
-      keyDetails: fallbackSections.flatMap((s) => s.points).slice(0, 20),
-    });
-  }
-
-  return contentFactsSchema.parse({
-    contentType: "hybrid",
-    narrativeSections: [{ title: "Research brief", points: [trimmed.slice(0, 2000)] }],
-    keyDetails: trimmed.length > 400 ? [trimmed.slice(0, 400)] : [trimmed],
-  });
 }
 
 export function parseContentFacts(raw: unknown): ContentFacts | null {
@@ -141,7 +171,7 @@ export async function extractContentFacts(
   const trimmed = sourceText.trim();
 
   if (opts.composeMode) {
-    return extractComposeResearchFacts(trimmed);
+    return extractComposeResearchFacts(trimmed, opts.includeFaq);
   }
 
   if (opts.preserveInstructions) {

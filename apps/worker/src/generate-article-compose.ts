@@ -39,6 +39,7 @@ export type GenerateArticleComposeOpts = {
   webSearchMaxResults?: number;
   articleDepth?: number;
   subtopics?: string[];
+  includeFaq?: boolean;
 };
 
 export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpts): Promise<{
@@ -81,6 +82,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   const articleDepth = opts.articleDepth ?? 50;
   const depthGuidance = writerArticleDepthGuidance(articleDepth);
   const subtopics = opts.subtopics ?? [];
+  const includeFaq = opts.includeFaq === true;
 
   const webSearchLimits = resolveWebSearchLimits({
     maxQueries: opts.webSearchMaxQueries,
@@ -123,6 +125,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
           voiceKeywords: opts.voice.keywords,
           articleDepth,
           subtopics,
+          includeFaq,
         })
       : await synthesizeResearchBrief({
           topic: opts.topic,
@@ -130,6 +133,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
           voiceKeywords: opts.voice.keywords,
           articleDepth,
           subtopics,
+          includeFaq,
         });
 
   const sourceTruncated = researchBrief.length > env.maxWriterInputChars;
@@ -146,6 +150,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     exactLinkLabels: true,
     composeMode: true,
     topic: opts.topic,
+    includeFaq,
   });
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
@@ -167,6 +172,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         maxWords: depthGuidance.maxWords,
         subtopics,
         topic: opts.topic,
+        includeFaq,
       });
       pipeline = await applyWriterLinkPipeline(expanded, {
         sourceText: researchBrief,

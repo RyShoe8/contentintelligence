@@ -197,6 +197,7 @@ export function WriterComposeForm({
   const [humanizationAttempts, setHumanizationAttempts] = useState<number | null>(null);
   const [deepResearch, setDeepResearch] = useState(true);
   const [webSearch, setWebSearch] = useState(true);
+  const [includeFaq, setIncludeFaq] = useState(false);
   const [webSearchMaxQueries, setWebSearchMaxQueries] = useState(
     WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT,
   );
@@ -535,6 +536,7 @@ export function WriterComposeForm({
             : {}),
           article_depth: articleDepth,
           subtopics: parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
+          include_faq: includeFaq,
         }),
       });
       const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse & {
@@ -892,6 +894,22 @@ export function WriterComposeForm({
                 {webSearchAvailable
                   ? "Discovers additional sources via Tavily (requires TAVILY_API_KEY on worker)."
                   : "Requires TAVILY_API_KEY on the worker (optional)."}
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-[var(--fg)]">
+            <input
+              type="checkbox"
+              checked={includeFaq}
+              onChange={(e) => setIncludeFaq(e.target.checked)}
+              disabled={writing}
+              className="mt-1 accent-[var(--primary)]"
+            />
+            <span>
+              Include FAQ section
+              <span className="block text-xs text-[var(--muted)]">
+                Adds a Frequently Asked Questions section with question-and-answer pairs at the end
+                of the article.
               </span>
             </span>
           </label>

@@ -368,6 +368,23 @@ describe("writerComposeInputSchema", () => {
     assert.equal(parsed.data?.article_depth, 80);
     assert.equal(parsed.data?.subtopics.length, 2);
   });
+
+  it("defaults include_faq to false and accepts true", () => {
+    const defaulted = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(defaulted.success, true);
+    assert.equal(defaulted.data?.include_faq, false);
+
+    const enabled = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      include_faq: true,
+    });
+    assert.equal(enabled.success, true);
+    assert.equal(enabled.data?.include_faq, true);
+  });
 });
 
 describe("parseWriterReferenceUrls", () => {
