@@ -25,7 +25,8 @@ import {
 } from "./voice-generate-lock.js";
 import { runWriterFingerprintsExtract } from "./writer-fingerprints.js";
 import { runWriterRewrite } from "./writer-rewrite.js";
-import { runWriterCompose } from "./writer-compose.js";
+import { startWriterComposeJob } from "./writer-compose-job.js";
+import type { WriterComposeBody } from "./writer-compose.js";
 
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -434,38 +435,59 @@ async function main(): Promise<void> {
       return reply.code(401).send({ error: "unauthorized" });
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const composeBody: WriterComposeBody = {
+      voice_id: String(body.voice_id ?? "").trim(),
+      organization_id: String(body.organization_id ?? "").trim(),
+      created_by: String(body.created_by ?? "").trim(),
+      topic: String(body.topic ?? ""),
+      reference_urls: Array.isArray(body.reference_urls)
+        ? (body.reference_urls as string[])
+        : [],
+      links: Array.isArray(body.links)
+        ? (body.links as { url: string; label?: string }[])
+        : [],
+      writer_article_id: body.writer_article_id
+        ? String(body.writer_article_id).trim()
+        : undefined,
+      deep_research:
+        body.deep_research === true ||
+        body.deep_research === "true" ||
+        body.deep_research === 1,
+      web_search:
+        body.web_search === true ||
+        body.web_search === "true" ||
+        body.web_search === 1,
+      web_search_max_queries:
+        body.web_search_max_queries != null
+          ? Number(body.web_search_max_queries)
+          : undefined,
+      web_search_max_results:
+        body.web_search_max_results != null
+          ? Number(body.web_search_max_results)
+          : undefined,
+      article_depth: body.article_depth != null ? Number(body.article_depth) : undefined,
+      subtopics: Array.isArray(body.subtopics) ? (body.subtopics as string[]) : [],
+    };
     try {
       const db = await getDb();
       await ensureIndexes(db);
-      const result = await runWriterCompose(db, {
-        voice_id: String(body.voice_id ?? "").trim(),
-        organization_id: String(body.organization_id ?? "").trim(),
-        created_by: String(body.created_by ?? "").trim(),
-        topic: String(body.topic ?? ""),
-        reference_urls: Array.isArray(body.reference_urls)
-          ? (body.reference_urls as string[])
-          : [],
-        links: Array.isArray(body.links)
-          ? (body.links as { url: string; label?: string }[])
-          : [],
-        writer_article_id: body.writer_article_id
-          ? String(body.writer_article_id).trim()
-          : undefined,
-      });
-      return result;
+      const result = await startWriterComposeJob(db, composeBody);
+      return reply.code(202).send(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const status =
-        message === "voice_not_found" ||
-        message === "writer_article_not_found" ||
-        message.includes("at least") ||
-        message.includes("Topic must")
-          ? 400
-          : message === "openai_not_configured" ||
-              message === "voice_persona_not_ready" ||
-              message === "research_brief_empty"
-            ? 503
-            : 500;
+        message === "compose_already_running"
+          ? 409
+          : message === "voice_not_found" ||
+              message === "writer_article_not_found" ||
+              message.includes("at least") ||
+              message.includes("Topic must")
+            ? 400
+            : message === "openai_not_configured" ||
+                message === "voice_persona_not_ready" ||
+                message === "research_brief_empty"
+              ? 503
+              : 500;
       return reply.code(status).send({ error: message });
     }
   });

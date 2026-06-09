@@ -644,6 +644,36 @@ export const writerArticleLinkSchema = z.object({
 export const writerArticleModeSchema = z.enum(["compose", "rewrite"]);
 export type WriterArticleMode = z.infer<typeof writerArticleModeSchema>;
 
+export const writerComposeJobStatusSchema = z.enum(["pending", "ready", "failed"]);
+export type WriterComposeJobStatus = z.infer<typeof writerComposeJobStatusSchema>;
+
+export const writerComposeMetaSchema = z.object({
+  references_fetched: z.number().int().optional(),
+  references_failed: z.array(z.string()).default([]).optional(),
+  user_references_fetched: z.number().int().optional(),
+  web_references_fetched: z.number().int().optional(),
+  web_search_urls: z.array(z.string()).default([]).optional(),
+  research_questions: z.number().int().optional(),
+  research_mode: z.enum(["deep", "standard"]).optional(),
+  source_truncated: z.boolean().optional(),
+  links_requested: z.number().int().optional(),
+  links_present: z.number().int().optional(),
+  links_carried_from_source: z.number().int().optional(),
+  links_added: z.number().int().optional(),
+  links_non_requested_in_output: z.number().int().optional(),
+  links_appended: z.number().int().optional(),
+  links_woven: z.number().int().optional(),
+  links_redistributed: z.number().int().optional(),
+  links_revised: z.boolean().optional(),
+  facts_extracted: z.boolean().optional(),
+  human_authenticity_score: z.number().optional(),
+  brand_consistency_score: z.number().optional(),
+  genericity_score: z.number().optional(),
+  humanization_attempts: z.number().int().optional(),
+});
+
+export type WriterComposeMeta = z.infer<typeof writerComposeMetaSchema>;
+
 export const writerArticleSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
@@ -660,6 +690,10 @@ export const writerArticleSchema = z.object({
     z.string().optional(),
   ),
   status: writerArticleStatusSchema.default("draft"),
+  compose_status: writerComposeJobStatusSchema.optional(),
+  compose_error: z.string().max(2000).optional(),
+  compose_requested_at: z.coerce.date().optional(),
+  compose_meta: writerComposeMetaSchema.optional(),
   created_by: z.string().email(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),

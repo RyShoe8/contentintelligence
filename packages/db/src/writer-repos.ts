@@ -1,7 +1,12 @@
 import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
-import type { WriterArticle, WriterArticleStatus } from "./schemas.js";
+import type {
+  WriterArticle,
+  WriterArticleStatus,
+  WriterComposeJobStatus,
+  WriterComposeMeta,
+} from "./schemas.js";
 import { writerArticleSchema } from "./schemas.js";
 import type { WriterArticleMode } from "./schemas.js";
 import {
@@ -125,6 +130,146 @@ export async function upsertWriterArticleDraft(
 
   await writerArticles(db).replaceOne({ id: row.id }, row, { upsert: true });
   return row;
+}
+
+export type UpsertWriterComposePendingInput = {
+  id?: string;
+  organization_id: string;
+  voice_id: string;
+  topic: string;
+  reference_urls: string[];
+  links: WriterLink[];
+  created_by: string;
+};
+
+export async function upsertWriterComposePending(
+  db: Db,
+  data: UpsertWriterComposePendingInput,
+): Promise<WriterArticle> {
+  const now = new Date();
+  const id = data.id ?? randomUUID();
+  const existing = await writerArticles(db).findOne({
+    id,
+    organization_id: data.organization_id,
+  });
+
+  const row: WriterArticle = writerArticleSchema.parse({
+    id,
+    organization_id: data.organization_id,
+    voice_id: data.voice_id,
+    mode: "compose",
+    topic: data.topic.trim(),
+    reference_urls: data.reference_urls,
+    title:
+      existing?.title?.trim() ||
+      defaultComposeTitle(data.topic.trim()),
+    source_text: existing?.source_text ?? "",
+    links: data.links,
+    generated_html: existing?.generated_html ?? "",
+    final_html: existing?.final_html ?? undefined,
+    status: "draft" as WriterArticleStatus,
+    compose_status: "pending",
+    compose_error: undefined,
+    compose_requested_at: now,
+    compose_meta: undefined,
+    created_by: existing?.created_by ?? data.created_by,
+    created_at: existing?.created_at ?? now,
+    updated_at: now,
+  });
+
+  await writerArticles(db).replaceOne({ id: row.id }, row, { upsert: true });
+  return row;
+}
+
+export type UpdateWriterComposeResultInput = {
+  generated_html: string;
+  research_brief: string;
+  compose_meta: WriterComposeMeta;
+};
+
+export async function updateWriterComposeResult(
+  db: Db,
+  id: string,
+  organizationId: string,
+  result: UpdateWriterComposeResultInput,
+): Promise<WriterArticle | null> {
+  const existing = await getWriterArticle(db, id, organizationId);
+  if (!existing) return null;
+
+  const now = new Date();
+  const row = writerArticleSchema.parse({
+    ...existing,
+    source_text: result.research_brief,
+    generated_html: result.generated_html,
+    compose_status: "ready",
+    compose_error: undefined,
+    compose_meta: result.compose_meta,
+    updated_at: now,
+  });
+  await writerArticles(db).replaceOne({ id, organization_id: organizationId }, row);
+  return row;
+}
+
+export async function updateWriterComposeFailed(
+  db: Db,
+  id: string,
+  organizationId: string,
+  error: string,
+): Promise<WriterArticle | null> {
+  const existing = await getWriterArticle(db, id, organizationId);
+  if (!existing) return null;
+
+  const now = new Date();
+  const row = writerArticleSchema.parse({
+    ...existing,
+    compose_status: "failed",
+    compose_error: error.slice(0, 2000),
+    updated_at: now,
+  });
+  await writerArticles(db).replaceOne({ id, organization_id: organizationId }, row);
+  return row;
+}
+
+export function resolveWriterComposeStatus(article: WriterArticle): WriterComposeJobStatus | undefined {
+  if (article.mode !== "compose") return undefined;
+  if (article.compose_status) return article.compose_status;
+  if (article.generated_html?.trim() || article.source_text?.trim()) return "ready";
+  return undefined;
+}
+
+export function writerComposeStatusPayload(article: WriterArticle) {
+  const composeStatus = resolveWriterComposeStatus(article);
+  const meta = article.compose_meta;
+  return {
+    writer_article_id: article.id,
+    compose_status: composeStatus,
+    compose_error: article.compose_error,
+    compose_requested_at: article.compose_requested_at?.toISOString(),
+    generated_html: article.generated_html,
+    research_brief: article.source_text,
+    references_fetched: meta?.references_fetched,
+    references_failed: meta?.references_failed,
+    user_references_fetched: meta?.user_references_fetched,
+    web_references_fetched: meta?.web_references_fetched,
+    web_search_urls: meta?.web_search_urls,
+    research_questions: meta?.research_questions,
+    research_mode: meta?.research_mode,
+    source_truncated: meta?.source_truncated,
+    links_requested: meta?.links_requested,
+    links_present: meta?.links_present,
+    links_carried_from_source: meta?.links_carried_from_source,
+    links_added: meta?.links_added,
+    links_non_requested_in_output: meta?.links_non_requested_in_output,
+    links_appended: meta?.links_appended,
+    links_woven: meta?.links_woven,
+    links_redistributed: meta?.links_redistributed,
+    links_revised: meta?.links_revised,
+    facts_extracted: meta?.facts_extracted,
+    human_authenticity_score: meta?.human_authenticity_score,
+    brand_consistency_score: meta?.brand_consistency_score,
+    genericity_score: meta?.genericity_score,
+    humanization_attempts: meta?.humanization_attempts,
+  };
 }
 
 export async function updateWriterArticle(

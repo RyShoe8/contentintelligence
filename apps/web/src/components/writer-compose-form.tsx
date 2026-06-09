@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
   parseWriterReferenceUrls,
@@ -20,6 +20,10 @@ import {
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
+import {
+  isComposePendingStale,
+  shouldPollCompose,
+} from "@/app/writer/compose-poll";
 import { Button } from "@/components/ui/button";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
 import { cn } from "@/lib/cn";
@@ -45,7 +49,41 @@ export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
   links: WriterLink[];
   generated_html: string;
   final_html?: string;
+  compose_status?: "pending" | "ready" | "failed";
+  compose_error?: string;
+  compose_requested_at?: string;
 };
+
+type ComposeStatusResponse = {
+  error?: string;
+  writer_article_id?: string;
+  compose_status?: "pending" | "ready" | "failed";
+  compose_error?: string;
+  compose_requested_at?: string;
+  generated_html?: string;
+  research_brief?: string;
+  references_fetched?: number;
+  references_failed?: string[];
+  user_references_fetched?: number;
+  web_references_fetched?: number;
+  web_search_urls?: string[];
+  research_questions?: number;
+  research_mode?: string;
+  links_requested?: number;
+  links_present?: number;
+  links_added?: number;
+  links_woven?: number;
+  links_appended?: number;
+  links_redistributed?: number;
+  links_revised?: boolean;
+  human_authenticity_score?: number;
+  brand_consistency_score?: number;
+  genericity_score?: number;
+  humanization_attempts?: number;
+};
+
+const COMPOSE_POLL_INTERVAL_MS = 3000;
+const COMPOSE_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
 type LinkRow = { url: string; label: string };
 
@@ -171,6 +209,142 @@ export function WriterComposeForm({
   const [researchMode, setResearchMode] = useState<string | null>(null);
   const [articleDepth, setArticleDepth] = useState(WRITER_ARTICLE_DEPTH_DEFAULT);
   const [subtopicsText, setSubtopicsText] = useState("");
+  const [composeProgress, setComposeProgress] = useState<string | null>(null);
+  const composePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const composePollStartedRef = useRef(0);
+
+  const stopComposePolling = useCallback(() => {
+    if (composePollRef.current) {
+      clearInterval(composePollRef.current);
+      composePollRef.current = null;
+    }
+    setWriting(false);
+    setComposeProgress(null);
+  }, []);
+
+  const applyComposeStatusData = useCallback((data: ComposeStatusResponse) => {
+    if (data.generated_html) setOutputHtml(data.generated_html);
+    if (data.research_brief) setResearchBrief(data.research_brief);
+    if (typeof data.references_fetched === "number") {
+      setReferencesFetched(data.references_fetched);
+    }
+    if (Array.isArray(data.references_failed)) {
+      setReferencesFailed(data.references_failed);
+    }
+    if (typeof data.research_questions === "number") {
+      setResearchQuestions(data.research_questions);
+    }
+    if (typeof data.user_references_fetched === "number") {
+      setUserReferencesFetched(data.user_references_fetched);
+    }
+    if (typeof data.web_references_fetched === "number") {
+      setWebReferencesFetched(data.web_references_fetched);
+    }
+    if (typeof data.research_mode === "string") {
+      setResearchMode(data.research_mode);
+    }
+    if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
+    if (typeof data.links_present === "number") setLinksPresent(data.links_present);
+    if (typeof data.links_added === "number") setLinksAdded(data.links_added);
+    if (typeof data.links_woven === "number" && data.links_woven > 0) {
+      setLinksWovenNotice(data.links_woven);
+    }
+    if (typeof data.links_appended === "number" && data.links_appended > 0) {
+      setLinksAppendedNotice(data.links_appended);
+    }
+    if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
+      setLinksRedistributedNotice(data.links_redistributed);
+    }
+    if (data.links_revised === true) setLinksRevisedNotice(true);
+    if (typeof data.human_authenticity_score === "number") {
+      setHumanAuthenticityScore(data.human_authenticity_score);
+    }
+    if (typeof data.brand_consistency_score === "number") {
+      setBrandConsistencyScore(data.brand_consistency_score);
+    }
+    if (typeof data.genericity_score === "number") {
+      setGenericityScore(data.genericity_score);
+    }
+    if (typeof data.humanization_attempts === "number") {
+      setHumanizationAttempts(data.humanization_attempts);
+    }
+  }, []);
+
+  const startComposePolling = useCallback(
+    (pollArticleId: string) => {
+      stopComposePolling();
+      setWriting(true);
+      setComposeProgress("Researching and writing…");
+      setWriteError(null);
+      composePollStartedRef.current = Date.now();
+
+      const handleStale = () => {
+        stopComposePolling();
+        setWriteError(
+          "Article generation may have stalled on the worker. Try Write again or check Render logs.",
+        );
+      };
+
+      const tick = async () => {
+        if (Date.now() - composePollStartedRef.current > COMPOSE_POLL_TIMEOUT_MS) {
+          handleStale();
+          return;
+        }
+        try {
+          const r = await fetch(
+            `/api/writer/articles/${encodeURIComponent(pollArticleId)}/compose-status`,
+            { cache: "no-store" },
+          );
+          const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse;
+          if (!r.ok) {
+            stopComposePolling();
+            setWriteError(data.error ?? `Status check failed (${r.status})`);
+            return;
+          }
+          if (data.compose_status === "ready") {
+            applyComposeStatusData(data);
+            stopComposePolling();
+            router.refresh();
+            return;
+          }
+          if (data.compose_status === "failed") {
+            stopComposePolling();
+            setWriteError(data.compose_error ?? "Generation failed");
+            router.refresh();
+            return;
+          }
+          if (
+            data.compose_status === "pending" &&
+            isComposePendingStale({
+              compose_status: "pending",
+              compose_requested_at: data.compose_requested_at,
+            })
+          ) {
+            handleStale();
+          }
+        } catch {
+          // keep polling on transient network errors
+        }
+      };
+
+      void tick();
+      composePollRef.current = setInterval(() => void tick(), COMPOSE_POLL_INTERVAL_MS);
+    },
+    [applyComposeStatusData, router, stopComposePolling],
+  );
+
+  useEffect(() => {
+    if (
+      selectedArticle &&
+      shouldPollCompose({
+        compose_status: selectedArticle.compose_status,
+        compose_requested_at: selectedArticle.compose_requested_at,
+      })
+    ) {
+      startComposePolling(selectedArticle.id);
+    }
+    return () => stopComposePolling();
+  }, [selectedArticle, startComposePolling, stopComposePolling]);
 
   const articlesByVoice = useMemo(() => {
     const map = new Map<string, WriterComposeArticleListItem[]>();
@@ -322,6 +496,7 @@ export function WriterComposeForm({
 
     setWriting(true);
     setWriteError(null);
+    setComposeProgress("Researching and writing…");
     setReferencesFetched(null);
     setReferencesFailed([]);
     setLinksPresent(null);
@@ -362,88 +537,42 @@ export function WriterComposeForm({
           subtopics: parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
         }),
       });
-      const data = (await r.json().catch(() => ({}))) as {
-        error?: string;
-        writer_article_id?: string;
-        generated_html?: string;
-        research_brief?: string;
-        references_fetched?: number;
-        references_failed?: string[];
-        user_references_fetched?: number;
-        web_references_fetched?: number;
-        web_search_urls?: string[];
-        research_questions?: number;
-        research_mode?: string;
-        links_requested?: number;
-        links_present?: number;
-        links_added?: number;
-        links_woven?: number;
-        links_appended?: number;
-        links_redistributed?: number;
-        links_revised?: boolean;
-        human_authenticity_score?: number;
-        brand_consistency_score?: number;
-        genericity_score?: number;
-        humanization_attempts?: number;
+      const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse & {
+        accepted?: boolean;
       };
       if (!r.ok) {
+        setWriting(false);
+        setComposeProgress(null);
         setWriteError(data.error ?? "Generation failed");
         return;
       }
-      if (data.generated_html) setOutputHtml(data.generated_html);
-      if (data.research_brief) setResearchBrief(data.research_brief);
-      if (typeof data.references_fetched === "number") {
-        setReferencesFetched(data.references_fetched);
+      if (r.status === 202 || data.compose_status === "pending") {
+        const nextId = data.writer_article_id ?? articleId;
+        if (nextId) {
+          setArticleId(nextId);
+          if (nextId !== articleId) {
+            router.push(`/writer?article_id=${encodeURIComponent(nextId)}`);
+          }
+          startComposePolling(nextId);
+        } else {
+          setWriting(false);
+          setComposeProgress(null);
+          setWriteError("Generation accepted but no article id returned");
+        }
+        return;
       }
-      if (Array.isArray(data.references_failed)) {
-        setReferencesFailed(data.references_failed);
-      }
-      if (typeof data.research_questions === "number") {
-        setResearchQuestions(data.research_questions);
-      }
-      if (typeof data.user_references_fetched === "number") {
-        setUserReferencesFetched(data.user_references_fetched);
-      }
-      if (typeof data.web_references_fetched === "number") {
-        setWebReferencesFetched(data.web_references_fetched);
-      }
-      if (typeof data.research_mode === "string") {
-        setResearchMode(data.research_mode);
-      }
-      if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
-      if (typeof data.links_present === "number") setLinksPresent(data.links_present);
-      if (typeof data.links_added === "number") setLinksAdded(data.links_added);
-      if (typeof data.links_woven === "number" && data.links_woven > 0) {
-        setLinksWovenNotice(data.links_woven);
-      }
-      if (typeof data.links_appended === "number" && data.links_appended > 0) {
-        setLinksAppendedNotice(data.links_appended);
-      }
-      if (typeof data.links_redistributed === "number" && data.links_redistributed > 0) {
-        setLinksRedistributedNotice(data.links_redistributed);
-      }
-      if (data.links_revised === true) setLinksRevisedNotice(true);
-      if (typeof data.human_authenticity_score === "number") {
-        setHumanAuthenticityScore(data.human_authenticity_score);
-      }
-      if (typeof data.brand_consistency_score === "number") {
-        setBrandConsistencyScore(data.brand_consistency_score);
-      }
-      if (typeof data.genericity_score === "number") {
-        setGenericityScore(data.genericity_score);
-      }
-      if (typeof data.humanization_attempts === "number") {
-        setHumanizationAttempts(data.humanization_attempts);
-      }
+      applyComposeStatusData(data);
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
         router.push(`/writer?article_id=${encodeURIComponent(data.writer_article_id)}`);
         router.refresh();
       }
-    } catch {
-      setWriteError("Generation failed");
-    } finally {
       setWriting(false);
+      setComposeProgress(null);
+    } catch {
+      setWriting(false);
+      setComposeProgress(null);
+      setWriteError("Generation failed");
     }
   }
 
@@ -812,9 +941,14 @@ export function WriterComposeForm({
 
         <div className="flex flex-wrap items-end gap-4">
           <Button type="button" disabled={writing || !canWrite} onClick={() => void handleWrite()}>
-            {writing ? "Researching…" : "Write"}
+            {writing ? "Researching and writing…" : "Write"}
           </Button>
         </div>
+        {composeProgress ? (
+          <p className="text-sm text-[var(--muted)]" role="status" aria-live="polite">
+            {composeProgress}
+          </p>
+        ) : null}
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
         {researchMode != null || researchQuestions != null ? (
           <p className="text-xs text-[var(--muted)]">

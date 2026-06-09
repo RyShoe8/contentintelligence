@@ -3,6 +3,7 @@ import {
   getWriterArticle,
   listVoices,
   listWriterArticlesByOrgAndMode,
+  resolveWriterComposeStatus,
 } from "@content-resourcer/db";
 import {
   WriterComposeForm,
@@ -73,6 +74,9 @@ export default async function WriterPage({
           links: selectedRaw.links,
           generated_html: selectedRaw.generated_html,
           final_html: selectedRaw.final_html,
+          compose_status: resolveWriterComposeStatus(selectedRaw),
+          compose_error: selectedRaw.compose_error,
+          compose_requested_at: selectedRaw.compose_requested_at?.toISOString(),
         }
       : null;
 

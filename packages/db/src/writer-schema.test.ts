@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { resolveWriterComposeStatus } from "./writer-repos.js";
 import { writerArticleSchema } from "./schemas.js";
 
 const minimalWriterDoc = {
@@ -39,5 +40,48 @@ describe("writerArticleSchema", () => {
       final_html: "<p>Saved</p>",
     });
     assert.equal(parsed.final_html, "<p>Saved</p>");
+  });
+
+  it("accepts compose job status fields", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+      compose_status: "pending",
+      compose_requested_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(parsed.compose_status, "pending");
+    assert.equal(parsed.mode, "compose");
+  });
+});
+
+describe("resolveWriterComposeStatus", () => {
+  it("returns explicit compose_status when set", () => {
+    const article = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+      compose_status: "failed",
+      compose_error: "timeout",
+    });
+    assert.equal(resolveWriterComposeStatus(article), "failed");
+  });
+
+  it("treats legacy compose articles with html as ready", () => {
+    const article = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+    });
+    assert.equal(resolveWriterComposeStatus(article), "ready");
+  });
+
+  it("returns undefined for rewrite mode", () => {
+    const article = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "rewrite",
+      reference_urls: [],
+    });
+    assert.equal(resolveWriterComposeStatus(article), undefined);
   });
 });
