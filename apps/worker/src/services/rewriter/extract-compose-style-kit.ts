@@ -7,6 +7,7 @@ import {
 } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
 import { extractHeadingsFromExampleHtml } from "./compose-style-excerpt.js";
+import { attachArchetypeToStyleKit } from "./compose-article-archetype.js";
 
 const SIGNATURE_MAX_WORDS = 65;
 const OPENING_PARAGRAPH_COUNT = 4;
@@ -65,12 +66,15 @@ export function extractComposeStyleKitDeterministic(html: string): ComposeStyleK
   const signatureParagraphs = [...new Set(signatureCandidates)].slice(0, SIGNATURE_TARGET);
   const rhythmSample = midArticleRhythmSample(sanitized);
 
-  return composeStyleKitSchema.parse({
-    headings,
-    openingParagraphs,
-    signatureParagraphs,
-    rhythmSample,
-  });
+  return attachArchetypeToStyleKit(
+    composeStyleKitSchema.parse({
+      headings,
+      openingParagraphs,
+      signatureParagraphs,
+      rhythmSample,
+    }),
+    sanitized,
+  );
 }
 
 async function extractSignatureParagraphsWithLlm(html: string): Promise<string[]> {

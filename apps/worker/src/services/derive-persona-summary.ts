@@ -13,17 +13,40 @@ export type PersonaVoiceOpts = {
   preferredPhrases?: VoicePreferredPhraseLike[];
 };
 
+export type DerivePersonaSummaryOpts = {
+  voiceOpts?: PersonaVoiceOpts;
+  /** Social/deal post sliders — omitted from writer persona by default. */
+  includeSocialPostSettings?: boolean;
+  /** Image generation only — omitted from writer persona by default. */
+  includeVisualIdentity?: boolean;
+  composeEditorialBlock?: string;
+};
+
+const WRITER_RHETORICAL_FALLBACK = [
+  "- Lead with operator conviction, not industry overview",
+  "- Keep paragraphs short and punchy",
+];
+const SOCIAL_RHETORICAL_FALLBACK = ["- Lead with deal hook", "- Keep sentences short"];
+const WRITER_OBJECTIVES_FALLBACK = "- engagement\n- authority\n- education";
+const SOCIAL_OBJECTIVES_FALLBACK = "- engagement\n- conversion";
+
 export function derivePersonaSummary(
   profile: BrandProfile,
   voiceName: string,
-  voiceOpts?: PersonaVoiceOpts,
+  opts: DerivePersonaSummaryOpts = {},
 ): string {
+  const includeSocial = opts.includeSocialPostSettings === true;
+  const includeVisual = opts.includeVisualIdentity === true;
+  const voiceOpts = opts.voiceOpts;
+
   const lines = [
     `# ${voiceName} voice`,
     "",
     "## Voice summary",
     profile.positioning.primary ||
-      `${voiceName} promotional voice shaped by linked content and historical posts.`,
+      (includeSocial
+        ? `${voiceName} promotional voice shaped by linked content and historical posts.`
+        : `${voiceName} editorial voice shaped by brand content and style examples.`),
     profile.positioning.secondary ? `Secondary positioning: ${profile.positioning.secondary}` : null,
     "",
     "## Tone & personality",
@@ -46,7 +69,9 @@ export function derivePersonaSummary(
     "## Rhetorical patterns",
     ...(profile.rhetoricalPatterns.length
       ? profile.rhetoricalPatterns.map((p) => `- ${p}`)
-      : ["- Lead with deal hook", "- Keep sentences short"]),
+      : includeSocial
+        ? SOCIAL_RHETORICAL_FALLBACK
+        : WRITER_RHETORICAL_FALLBACK),
     "",
     "## Taboos",
     ...tabooLines(profile.taboos),
@@ -54,7 +79,9 @@ export function derivePersonaSummary(
     "## Content objectives",
     profile.contentObjectives.length
       ? profile.contentObjectives.map((o) => `- ${o}`).join("\n")
-      : "- engagement\n- conversion",
+      : includeSocial
+        ? SOCIAL_OBJECTIVES_FALLBACK
+        : WRITER_OBJECTIVES_FALLBACK,
     "",
     "## Shared identity",
     profile.sharedIdentity.audienceType
@@ -69,6 +96,29 @@ export function derivePersonaSummary(
     profile.sharedIdentity.trustStyle
       ? `- Trust style: ${profile.sharedIdentity.trustStyle}`
       : null,
+    ...(includeVisual ? visualIdentitySections(profile) : []),
+    "",
+    "## Brand memory markers",
+    profile.memory.favoritePhrases.length
+      ? `Favorite phrases: ${profile.memory.favoritePhrases.join("; ")}`
+      : null,
+    profile.memory.recurringTopics.length
+      ? `Recurring topics: ${profile.memory.recurringTopics.join("; ")}`
+      : null,
+    profile.memory.recurringEnemies.length
+      ? `Recurring enemies: ${profile.memory.recurringEnemies.join("; ")}`
+      : null,
+    ...(includeSocial && voiceOpts ? voiceSettingsSections(voiceName, voiceOpts) : []),
+    ...(opts.composeEditorialBlock?.trim()
+      ? ["", "## Editorial compose", opts.composeEditorialBlock.trim()]
+      : []),
+  ].filter((x): x is string => Boolean(x));
+
+  return lines.join("\n");
+}
+
+function visualIdentitySections(profile: BrandProfile): string[] {
+  return [
     "",
     "## Visual identity",
     profile.visualPersonality.visualTone
@@ -86,21 +136,7 @@ export function derivePersonaSummary(
     profile.visualPersonality.memeCompatibility
       ? `- Meme compatibility: ${profile.visualPersonality.memeCompatibility}`
       : null,
-    "",
-    "## Brand memory markers",
-    profile.memory.favoritePhrases.length
-      ? `Favorite phrases: ${profile.memory.favoritePhrases.join("; ")}`
-      : null,
-    profile.memory.recurringTopics.length
-      ? `Recurring topics: ${profile.memory.recurringTopics.join("; ")}`
-      : null,
-    profile.memory.recurringEnemies.length
-      ? `Recurring enemies: ${profile.memory.recurringEnemies.join("; ")}`
-      : null,
-    ...(voiceOpts ? voiceSettingsSections(voiceName, voiceOpts) : []),
   ].filter((x): x is string => Boolean(x));
-
-  return lines.join("\n");
 }
 
 function voiceSettingsSections(voiceName: string, opts: PersonaVoiceOpts): string[] {
@@ -163,4 +199,17 @@ function tabooLines(taboos: string[]): string[] {
     return ["- Avoid generic AI phrasing", "- Avoid corporate jargon"];
   }
   return merged.map((t) => `- ${t}`);
+}
+
+/** Writer-focused persona for compose — no social/deal or visual sections. */
+export function deriveWriterPersonaSummary(
+  profile: BrandProfile,
+  voiceName: string,
+  composeEditorialBlock?: string,
+): string {
+  return derivePersonaSummary(profile, voiceName, {
+    includeSocialPostSettings: false,
+    includeVisualIdentity: false,
+    composeEditorialBlock,
+  });
 }

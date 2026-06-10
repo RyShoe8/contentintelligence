@@ -1,7 +1,12 @@
-import type { FaqItem } from "@content-resourcer/db";
+import type { ComposeArticleArchetype, FaqItem } from "@content-resourcer/db";
+import { writerComposeVoiceStyleIssues } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
-import type { ArticleRewriteExample } from "./types.js";
 import { extractHeadingsFromExampleHtml } from "./compose-style-excerpt.js";
+import {
+  DEFAULT_COMPOSE_ARTICLE_ARCHETYPE,
+  resolveComposeArticleArchetype,
+} from "./compose-article-archetype.js";
+import type { ArticleRewriteExample } from "./types.js";
 
 export type ComposeOutlineSection = {
   heading: string;
@@ -13,42 +18,84 @@ export type ComposeOutline = {
   sections: ComposeOutlineSection[];
 };
 
-export function extractStyleExampleHeadings(examples: ArticleRewriteExample[]): string[] {
-  const headings: string[] = [];
-  for (const ex of examples) {
-    for (const h of extractHeadingsFromExampleHtml(ex.html)) {
-      if (!headings.some((existing) => existing.toLowerCase() === h.toLowerCase())) {
-        headings.push(h);
-      }
-    }
-  }
-  return headings.slice(0, 12);
+function archetypeHeadingRoles(archetype: ComposeArticleArchetype): string[] {
+  return archetype.sampleHeadings.slice(0, archetype.sectionCount);
+}
+
+function maxSectionsForArchetype(archetype: ComposeArticleArchetype, includeFaq?: boolean): number {
+  const extra = includeFaq ? 1 : 0;
+  return archetype.sectionCount + extra;
+}
+
+function outlineHasTextbookHeadings(outline: ComposeOutline): string[] {
+  const fakeHtml = outline.sections.map((s) => `<h2>${s.heading}</h2>`).join("");
+  return writerComposeVoiceStyleIssues(fakeHtml);
+}
+
+function outlineExceedsArchetype(
+  outline: ComposeOutline,
+  archetype: ComposeArticleArchetype,
+  includeFaq?: boolean,
+): boolean {
+  return outline.sections.length > maxSectionsForArchetype(archetype, includeFaq);
+}
+
+function subtopicsUsedAsHeadings(outline: ComposeOutline, subtopics: string[]): boolean {
+  if (!subtopics.length) return false;
+  const headings = outline.sections.map((s) => s.heading.toLowerCase().trim());
+  return subtopics.some((sub) => {
+    const normalized = sub.trim().toLowerCase();
+    return headings.some((h) => h === normalized || h.includes(normalized) || normalized.includes(h));
+  });
 }
 
 function fallbackOutline(
   topic: string,
-  subtopics: string[],
   keyDetails: string[],
+  archetype: ComposeArticleArchetype,
 ): ComposeOutline {
+  const roles = archetypeHeadingRoles(archetype);
+  const sectionCount = archetype.sectionCount;
+  const chunk = Math.max(1, Math.ceil(keyDetails.length / sectionCount));
   const sections: ComposeOutlineSection[] = [];
-  if (subtopics.length) {
-    for (const sub of subtopics.slice(0, 6)) {
-      sections.push({ heading: sub.trim(), factSummary: "Cover relevant research facts" });
-    }
-  } else {
-    const chunk = Math.max(1, Math.ceil(keyDetails.length / 4));
-    for (let i = 0; i < Math.min(4, keyDetails.length); i += chunk) {
-      const slice = keyDetails.slice(i, i + chunk);
-      sections.push({
-        heading: i === 0 ? topic.trim() : `More on ${topic.trim()}`,
-        factSummary: slice.slice(0, 3).join("; "),
-      });
-    }
+
+  for (let i = 0; i < sectionCount; i++) {
+    const role = roles[i] ?? `Editorial section ${i + 1}`;
+    const slice = keyDetails.slice(i * chunk, i * chunk + chunk);
+    sections.push({
+      heading: i === 0 ? topic.trim() || role : role,
+      factSummary:
+        slice.length > 0
+          ? slice.slice(0, 4).join("; ")
+          : "Weave relevant research facts in brand voice",
+    });
   }
+
   if (!sections.length) {
-    sections.push({ heading: topic.trim(), factSummary: "Cover all research facts in brand voice" });
+    sections.push({
+      heading: topic.trim() || "Editorial opening",
+      factSummary: "Cover research facts in a single editorial thread",
+    });
   }
+
   return { sections };
+}
+
+function buildOutlineSystemPrompt(archetype: ComposeArticleArchetype, includeFaq?: boolean): string {
+  const roles = archetypeHeadingRoles(archetype);
+  const maxSections = maxSectionsForArchetype(archetype, includeFaq);
+  return `Plan an editorial article outline in JSON only.
+Reply: {"title": string?, "sections": [{"heading": string, "factSummary": string}]}
+Rules:
+- Plan exactly ${archetype.sectionCount} main sections (max ${maxSections} if FAQ closing section is required).
+- Match the structural roles of these reference headings — topic-adapted wording, do NOT copy verbatim:
+${roles.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}
+- Single editorial thread${archetype.singleThreaded ? " — NOT a typology survey" : ""}.
+- Do NOT create one section per research subtopic, community type, or brief bucket (no parallel active adult / memory care / outdoor tour unless the reference headings use that shape).
+- Headings must sound like editorial chapter titles — NOT research brief labels (Topic overview, Key facts, Angles, Caveats, FAQ).
+- Do NOT use generic survey headings ("Understanding the…", "Innovative Trends", "Nature's Embrace", "Looking Ahead").
+- Assign each section a factSummary describing which research facts to weave in (short phrase, not full bullets).
+- Subtopics and user angles are fact pools — weave into sections, not as H2 titles.`;
 }
 
 export async function planComposeOutline(opts: {
@@ -56,38 +103,45 @@ export async function planComposeOutline(opts: {
   subtopics?: string[];
   keyDetails: string[];
   faqItems?: FaqItem[];
-  styleHeadings: string[];
+  includeFaq?: boolean;
+  archetype?: ComposeArticleArchetype;
+  examples?: ArticleRewriteExample[];
 }): Promise<ComposeOutline> {
   const topic = opts.topic.trim();
+  const archetype =
+    opts.archetype ??
+    (opts.examples?.length ? resolveComposeArticleArchetype(opts.examples) : DEFAULT_COMPOSE_ARTICLE_ARCHETYPE);
+
   if (!topic) {
-    return fallbackOutline("", opts.subtopics ?? [], opts.keyDetails);
+    return fallbackOutline("", opts.keyDetails, archetype);
   }
 
-  const factSample = opts.keyDetails.slice(0, 12);
-  const styleHeadingBlock =
-    opts.styleHeadings.length > 0
-      ? opts.styleHeadings.map((h) => `- ${h}`).join("\n")
-      : "(no style headings available)";
+  const factSample = opts.keyDetails.slice(0, 16);
+  const subtopicBlock = opts.subtopics?.length
+    ? `Subtopics to weave as facts (NOT as section titles):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+    : "";
 
-  try {
+  const tryPlan = async (retryIssues: string[]): Promise<ComposeOutline | null> => {
+    const retryBlock =
+      retryIssues.length > 0
+        ? `\nFix these outline issues:\n${retryIssues.map((i) => `- ${i}`).join("\n")}`
+        : "";
+
     const raw = await completeJson<{
       title?: string;
       sections?: { heading?: string; factSummary?: string }[];
     }>({
-      system: `Plan an editorial article outline in JSON only.
-Reply: {"title": string?, "sections": [{"heading": string, "factSummary": string}]}
-Rules:
-- Headings must sound like editorial chapter titles from the brand style examples — NOT research brief labels (Topic overview, Key facts, Angles, Caveats, FAQ).
-- Do NOT use generic survey headings like "What X Looks Like" or "Understanding Y" unless the style examples use that pattern.
-- Assign each section a factSummary describing which research facts to weave in (short phrase, not full bullets).
-- 4–7 sections typical. Match rhythm of style example headings when possible.`,
+      system: `${buildOutlineSystemPrompt(archetype, opts.includeFaq)}${retryBlock}`,
       user: [
         `Topic: ${topic}`,
-        opts.subtopics?.length
-          ? `Required subtopics (each needs a section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+        subtopicBlock,
+        opts.includeFaq && opts.faqItems?.length
+          ? `Include FAQ facts in a closing section when needed (${opts.faqItems.length} Q/A pairs).`
           : "",
         `Research facts (pool — assign across sections, do not mirror brief structure):\n${factSample.map((f) => `- ${f}`).join("\n")}`,
-        `Style example headings (imitate tone and shape, not wording):\n${styleHeadingBlock}`,
+        archetype.openingPattern
+          ? `Opening pattern from brand example (match rhythm, do not copy): ${archetype.openingPattern}`
+          : "",
         "",
         "Write the outline JSON.",
       ]
@@ -104,19 +158,59 @@ Rules:
       }))
       .filter((s) => s.heading.length > 0);
 
-    if (sections.length >= 2) {
-      return {
-        title: raw?.title?.trim() || undefined,
-        sections,
-      };
+    if (sections.length < 2) return null;
+
+    const outline: ComposeOutline = {
+      title: raw?.title?.trim() || undefined,
+      sections,
+    };
+
+    const issues: string[] = [];
+    if (outlineExceedsArchetype(outline, archetype, opts.includeFaq)) {
+      issues.push(
+        `Too many sections (${outline.sections.length}) — plan exactly ${archetype.sectionCount} main sections`,
+      );
     }
+    if (subtopicsUsedAsHeadings(outline, opts.subtopics ?? [])) {
+      issues.push("Subtopics appear as section headings — weave subtopics as facts inside sections instead");
+    }
+    issues.push(...outlineHasTextbookHeadings(outline));
+
+    if (issues.length) {
+      if (retryIssues.length > 0) return null;
+      const retry = await tryPlan(issues.slice(0, 4));
+      return retry;
+    }
+
+    return outline;
+  };
+
+  try {
+    const planned = await tryPlan([]);
+    if (planned) return planned;
   } catch {
     // fall through to deterministic outline
   }
 
-  return fallbackOutline(topic, opts.subtopics ?? [], opts.keyDetails);
+  return fallbackOutline(topic, opts.keyDetails, archetype);
 }
 
 export function formatComposeOutlineForPrompt(outline: ComposeOutline): string {
-  return `\n\nEditorial outline (follow this structure — weave facts into each section; do NOT add research-brief section headings):\n${JSON.stringify(outline, null, 2)}`;
+  return `\n\nEditorial outline (follow this structure and section count — weave facts into each section; do NOT add research-brief section headings or extra survey sections):\n${JSON.stringify(outline, null, 2)}`;
+}
+
+export function extractStyleExampleHeadings(examples: ArticleRewriteExample[]): string[] {
+  const primaryArchetype = examples.length ? resolveComposeArticleArchetype(examples) : undefined;
+  if (primaryArchetype?.sampleHeadings.length) {
+    return primaryArchetype.sampleHeadings.slice(0, 12);
+  }
+  const headings: string[] = [];
+  for (const ex of examples) {
+    for (const h of extractHeadingsFromExampleHtml(ex.html)) {
+      if (!headings.some((existing) => existing.toLowerCase() === h.toLowerCase())) {
+        headings.push(h);
+      }
+    }
+  }
+  return headings.slice(0, 12);
 }

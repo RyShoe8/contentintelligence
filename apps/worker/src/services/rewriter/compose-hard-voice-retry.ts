@@ -9,10 +9,7 @@ import {
 import type { Voice } from "@content-resourcer/db";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { interpretBrand } from "./brand-interpreter.js";
-import {
-  extractStyleExampleHeadings,
-  planComposeOutline,
-} from "./compose-outline.js";
+import { planComposeOutline } from "./compose-outline.js";
 import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import type { ArticleRewriteExample } from "./types.js";
@@ -68,7 +65,8 @@ export async function runComposeHardVoiceFixLoop(
         subtopics: opts.subtopics,
         keyDetails: opts.facts.keyDetails,
         faqItems: opts.facts.faqItems,
-        styleHeadings: extractStyleExampleHeadings(opts.examples),
+        includeFaq: opts.includeFaq,
+        examples: opts.examples,
       });
 
       html = await reconstructArticleHtml({

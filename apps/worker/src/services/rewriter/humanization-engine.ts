@@ -39,7 +39,6 @@ import { retrieveRankedExamples } from "./example-retrieval.js";
 import { analyzeGenericity } from "./generic-detector.js";
 import { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
 import {
-  extractStyleExampleHeadings,
   planComposeOutline,
   type ComposeOutline,
 } from "./compose-outline.js";
@@ -195,7 +194,8 @@ export async function runHumanizationEngine(
       subtopics: opts.subtopics,
       keyDetails: facts.keyDetails,
       faqItems: facts.faqItems,
-      styleHeadings: extractStyleExampleHeadings(examples),
+      includeFaq: opts.includeFaq,
+      examples,
     });
   }
 

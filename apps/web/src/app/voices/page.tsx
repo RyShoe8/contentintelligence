@@ -342,11 +342,14 @@ export default async function VoicesPage({
           </fieldset>
 
           <label className="flex flex-col gap-1 text-sm">
-            Persona template
+            <LabelWithTip htmlFor="voice-persona" tip={VOICE_FIELD_TIPS.persona}>
+              Persona template
+            </LabelWithTip>
             <span className="text-xs text-[var(--muted)]">
-              Generated from your website, RSS articles, social links, voice keywords, and phrase settings — not from Feed emails. Editable after generation. Also used when building Posts. Generation usually takes 1–3 minutes.
+              Writer and editorial voice from your website, RSS articles, social links, and keywords. Social post sliders below control Posts separately. Editable after generation. Generation usually takes 1–3 minutes.
             </span>
             <textarea
+              id="voice-persona"
               name="persona"
               rows={12}
               defaultValue={activeVoice?.persona ?? ""}

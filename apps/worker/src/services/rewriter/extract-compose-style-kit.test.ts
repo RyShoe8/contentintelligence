@@ -31,4 +31,12 @@ describe("extractComposeStyleKitDeterministic", () => {
     assert.ok(summary?.includes("Example 1"));
     assert.ok(summary?.includes("Headings:"));
   });
+
+  it("persists compose archetype on deterministic kit extract", () => {
+    const kit = extractComposeStyleKitDeterministic(SBD_CHAIR_FIXTURE);
+    assert.ok(kit.archetype);
+    assert.equal(kit.archetype?.sectionCount, 2);
+    assert.ok(kit.archetype?.sampleHeadings.some((h) => /sit in every chair/i.test(h)));
+    assert.equal(kit.archetype?.singleThreaded, true);
+  });
 });

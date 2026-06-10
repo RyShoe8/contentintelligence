@@ -1,57 +1,77 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { emptyBrandProfile } from "@content-resourcer/db";
-import { derivePersonaSummary } from "./derive-persona-summary.js";
+import { derivePersonaSummary, deriveWriterPersonaSummary } from "./derive-persona-summary.js";
 
 describe("derivePersonaSummary", () => {
   const profile = emptyBrandProfile();
   profile.positioning.primary = "Bold promo voice";
 
-  it("omits voice settings sections when opts are not provided", () => {
-    const summary = derivePersonaSummary(profile, "Spinfinite");
-    assert.match(summary, /# Spinfinite voice/);
+  it("omits voice settings and visual sections in default writer mode", () => {
+    const summary = derivePersonaSummary(profile, "Senior By Design");
+    assert.match(summary, /# Senior By Design voice/);
     assert.match(summary, /## Voice summary/);
     assert.doesNotMatch(summary, /## Brand mention frequency/);
     assert.doesNotMatch(summary, /## Preferred phrases for posts/);
+    assert.doesNotMatch(summary, /## Content provider names in posts/);
+    assert.doesNotMatch(summary, /## Visual identity/);
+    assert.doesNotMatch(summary, /casino/);
   });
 
-  it("includes default brand mention level with Sometimes label", () => {
+  it("includes social post settings only when includeSocialPostSettings is true", () => {
     const summary = derivePersonaSummary(profile, "Spinfinite", {
-      brandMentionLevel: 50,
-      preferredPhrases: [],
+      includeSocialPostSettings: true,
+      voiceOpts: {
+        brandMentionLevel: 50,
+        preferredPhrases: [],
+      },
     });
     assert.match(summary, /## Brand mention frequency/);
     assert.match(summary, /Setting: 50 \(Sometimes\)/);
-    assert.match(summary, /Mention "Spinfinite" at least once when it fits naturally/);
+    assert.match(summary, /## Content provider names in posts/);
+    assert.match(summary, /casino/);
+    assert.match(summary, /## Preferred phrases for posts/);
   });
 
-  it("renders preferred phrases with and without URLs", () => {
+  it("includes visual identity only when includeVisualIdentity is true", () => {
+    profile.visualPersonality.visualTone = "Playful and warm";
     const summary = derivePersonaSummary(profile, "Spinfinite", {
-      brandMentionLevel: 100,
-      preferredPhrases: [
-        {
-          phrases: ["Grab it while it lasts"],
-          url: "https://example.com/promo",
-          frequency_level: 50,
-        },
-        { phrases: ["Your daily bonus drop"], frequency_level: 50 },
-      ],
+      includeVisualIdentity: true,
+    });
+    assert.match(summary, /## Visual identity/);
+    assert.match(summary, /Visual tone: Playful and warm/);
+  });
+
+  it("renders preferred phrases with and without URLs in social mode", () => {
+    const summary = derivePersonaSummary(profile, "Spinfinite", {
+      includeSocialPostSettings: true,
+      voiceOpts: {
+        brandMentionLevel: 100,
+        preferredPhrases: [
+          {
+            phrases: ["Grab it while it lasts"],
+            url: "https://example.com/promo",
+            frequency_level: 50,
+          },
+          { phrases: ["Your daily bonus drop"], frequency_level: 50 },
+        ],
+      },
     });
     assert.match(summary, /## Preferred phrases for posts/);
     assert.match(
       summary,
       /- Grab it while it lasts\|https:\/\/example.com\/promo \(Sometimes, 50, exact wording only\)/,
     );
-    assert.match(summary, /- Your daily bonus drop \(Sometimes, 50, exact wording only\)/);
-    assert.match(summary, /Use at most one phrase\+link pair when natural/);
   });
 
-  it("shows None configured when preferred phrases are empty", () => {
-    const summary = derivePersonaSummary(profile, "Spinfinite", {
-      brandMentionLevel: 50,
-      preferredPhrases: [],
-    });
-    assert.match(summary, /## Preferred phrases for posts/);
-    assert.match(summary, /- None configured/);
+  it("appends compose editorial block in writer mode", () => {
+    const summary = deriveWriterPersonaSummary(
+      profile,
+      "Senior By Design",
+      "- Single editorial thread\n- Conviction opening",
+    );
+    assert.match(summary, /## Editorial compose/);
+    assert.match(summary, /Single editorial thread/);
+    assert.doesNotMatch(summary, /casino/);
   });
 });

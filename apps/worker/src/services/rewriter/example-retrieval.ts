@@ -10,6 +10,7 @@ import {
 import type { Voice } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
 import { extractComposeStyleKitDeterministic } from "./extract-compose-style-kit.js";
+import { attachArchetypeToStyleKit } from "./compose-article-archetype.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1200;
@@ -34,7 +35,8 @@ function resolveComposeStyleKit(
   content: string,
 ): ComposeStyleKit | undefined {
   if (!isStyleExample) return undefined;
-  if (stored) return stored;
+  if (stored?.archetype) return stored;
+  if (stored) return attachArchetypeToStyleKit(stored, content);
   return extractComposeStyleKitDeterministic(content);
 }
 

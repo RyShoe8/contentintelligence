@@ -168,9 +168,11 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nArticle length:\n${writerArticleDepthGuidance(opts.articleDepth).reconstructionPrompt}`
       : "";
   const subtopicsBlock =
-    opts.subtopics?.length
-      ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
-      : "";
+    opts.composeMode && opts.subtopics?.length
+      ? `\nResearch subtopics (weave as facts inside editorial sections — do NOT use as H2/H3 headings):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+      : !opts.composeMode && opts.subtopics?.length
+        ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+        : "";
 
   const faqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq) : "";
 
