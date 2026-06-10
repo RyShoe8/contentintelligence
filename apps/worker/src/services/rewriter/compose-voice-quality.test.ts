@@ -5,6 +5,7 @@ import {
   buildVoiceQualityWarning,
   composeStyleIssueTotal,
   evaluateComposeVoiceQuality,
+  shouldRunComposeFinalPolish,
   shouldRunComposeVoicePolish,
 } from "./compose-voice-quality.js";
 
@@ -69,6 +70,43 @@ describe("shouldRunComposeVoicePolish", () => {
         styleIssueCounts: emptyCounts,
         genericityScore: 30,
       }),
+      false,
+    );
+  });
+});
+
+describe("shouldRunComposeFinalPolish", () => {
+  it("runs when genericity exceeds max after hard voice loop", () => {
+    const html = "<p>We test chairs. We reject bad specs.</p>";
+    assert.equal(
+      shouldRunComposeFinalPolish({ html, genericityScore: 45 }),
+      true,
+    );
+  });
+
+  it("runs when operator voice issues remain", () => {
+    const html = [
+      "<p>Designers and planners must consider how communities foster connections and holistic wellness across facilities.</p>",
+      "<p>".repeat(20),
+      "Residents need thoughtful integration of outdoor amenities and social interaction programs.",
+      "</p>",
+    ].join("");
+    assert.equal(
+      shouldRunComposeFinalPolish({ html, genericityScore: 20 }),
+      true,
+    );
+  });
+
+  it("skips when scores and style checks pass", () => {
+    const html = [
+      "<h2>Chairs we actually sit in</h2>",
+      "<p>We test every chair before we specify it. We reject catalog seating that fails after six months.</p>",
+      "<p>Our team sits in each model ourselves before we put it on a plan.</p>",
+      "<p>We look for durability first and comfort second when we specify seating.</p>",
+      "<p>We never specify seating we have not tested ourselves in our own communities.</p>",
+    ].join("");
+    assert.equal(
+      shouldRunComposeFinalPolish({ html, genericityScore: 25 }),
       false,
     );
   });

@@ -9,7 +9,11 @@ import {
 import type { Voice } from "@content-resourcer/db";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { interpretBrand } from "./brand-interpreter.js";
-import { planComposeOutline } from "./compose-outline.js";
+import { resolveComposeArticleArchetype } from "./compose-article-archetype.js";
+import {
+  applyManifestoArchetypeOverride,
+  planComposeOutline,
+} from "./compose-outline.js";
 import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import type { ArticleRewriteExample } from "./types.js";
@@ -60,6 +64,10 @@ export async function runComposeHardVoiceFixLoop(
         composeMode: true,
         topic: opts.topic,
       });
+      const composeArchetype = applyManifestoArchetypeOverride(
+        resolveComposeArticleArchetype(opts.examples),
+        opts.topic,
+      );
       const composeOutline = await planComposeOutline({
         topic: opts.topic,
         subtopics: opts.subtopics,
@@ -85,6 +93,7 @@ export async function runComposeHardVoiceFixLoop(
         topic: opts.topic,
         includeFaq: opts.includeFaq,
         composeOutline,
+        composeArchetype,
       });
       html = await humanizeArticleHtml({
         voice: opts.voice,
@@ -95,9 +104,14 @@ export async function runComposeHardVoiceFixLoop(
         topic: opts.topic,
         styleExampleExcerpt: opts.styleExampleExcerpt,
         includeFaq: opts.includeFaq,
+        composeArchetype,
       });
       html = stripLeadingComposeChrome(html);
     } else {
+      const composeArchetype = applyManifestoArchetypeOverride(
+        resolveComposeArticleArchetype(opts.examples),
+        opts.topic,
+      );
       html = await humanizeArticleHtml({
         voice: opts.voice,
         html,
@@ -107,6 +121,7 @@ export async function runComposeHardVoiceFixLoop(
         topic: opts.topic,
         styleExampleExcerpt: opts.styleExampleExcerpt,
         includeFaq: opts.includeFaq,
+        composeArchetype,
       });
       html = stripLeadingComposeChrome(html);
     }

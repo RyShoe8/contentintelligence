@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_COMPOSE_ARTICLE_ARCHETYPE } from "./compose-article-archetype.js";
 import {
+  applyManifestoArchetypeOverride,
+  buildOutlineSystemPrompt,
   extractStyleExampleHeadings,
+  faqHeadingRole,
   formatComposeOutlineForPrompt,
   planComposeOutline,
 } from "./compose-outline.js";
+import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
 
 describe("extractStyleExampleHeadings", () => {
   it("returns primary archetype headings instead of blending all examples", () => {
@@ -54,6 +58,45 @@ describe("planComposeOutline", () => {
         `subtopic "${sub}" should not appear as a heading`,
       );
     }
+  });
+});
+
+describe("buildOutlineSystemPrompt", () => {
+  it("includes guidelines manifesto rules for broad guideline topics", () => {
+    const prompt = buildOutlineSystemPrompt(DEFAULT_COMPOSE_ARTICLE_ARCHETYPE, {
+      topic: "senior living design guidelines",
+      includeFaq: true,
+    });
+    assert.match(prompt, /Guidelines manifesto mode/);
+    assert.match(prompt, /test → reject → apply/);
+    assert.ok(isGuidelinesManifestoTopic("senior living design guidelines"));
+  });
+
+  it("anchors FAQ section to archetype heading role", () => {
+    const archetype = {
+      ...DEFAULT_COMPOSE_ARTICLE_ARCHETYPE,
+      sampleHeadings: ["We sit in every chair", "What we look for", "What we reject"],
+    };
+    assert.equal(faqHeadingRole(archetype), "What we reject");
+    const prompt = buildOutlineSystemPrompt(archetype, { includeFaq: true });
+    assert.match(prompt, /What we reject/);
+    assert.match(prompt, /NOT a question-mark title/);
+  });
+});
+
+describe("applyManifestoArchetypeOverride", () => {
+  it("forces single-threaded shape and caps sections for guideline topics", () => {
+    const surveyArchetype = {
+      ...DEFAULT_COMPOSE_ARTICLE_ARCHETYPE,
+      sectionCount: 6,
+      singleThreaded: false,
+    };
+    const overridden = applyManifestoArchetypeOverride(
+      surveyArchetype,
+      "senior living design guidelines",
+    );
+    assert.equal(overridden.singleThreaded, true);
+    assert.equal(overridden.sectionCount, 4);
   });
 });
 

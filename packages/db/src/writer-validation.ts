@@ -233,6 +233,11 @@ const COMPOSE_TEXTBOOK_HEADING_RES = [
   /got questions/i,
   /we(?:'|’)ve got answers/i,
   /we've got answers/i,
+  /^curious about\b/i,
+  /^shaping the\b/i,
+  /^embracing\b/i,
+  /^designing with\b/i,
+  /\bquestions\?$/i,
 ];
 
 const COMPOSE_GENERIC_GUIDE_PHRASES = [
@@ -264,6 +269,15 @@ const COMPOSE_GENERIC_GUIDE_PHRASES = [
   "social interaction",
   "mental well-being",
   "physical health and mental",
+  "foster connections",
+  "holistic wellness",
+  "reach out",
+  "make a difference",
+  "shaping the future",
+  "embracing",
+  "crafting welcoming",
+  "designing with residents",
+  "curious about",
 ];
 
 const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 55;
@@ -436,7 +450,13 @@ export function writerComposeFaqStyleIssues(
   let faqMatch: RegExpExecArray | null;
   while ((faqMatch = faqHeadingRe.exec(html)) !== null) {
     const title = stripHtmlToPlainText(faqMatch[1] ?? "").trim();
-    if (/^(your questions answered|common questions|frequently asked questions)$/i.test(title)) {
+    if (
+      /^(your questions answered|common questions|frequently asked questions)$/i.test(title) ||
+      /^curious about\b/i.test(title) ||
+      /^got questions\b/i.test(title) ||
+      /^your questions\b/i.test(title) ||
+      /\?$/.test(title)
+    ) {
       issues.push(`FAQ section title "${title}" — use a punchy editorial title from brand examples`);
     }
   }

@@ -6,6 +6,7 @@ import {
   DEFAULT_COMPOSE_ARTICLE_ARCHETYPE,
   resolveComposeArticleArchetype,
 } from "./compose-article-archetype.js";
+import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 export type ComposeOutlineSection = {
@@ -81,7 +82,50 @@ function fallbackOutline(
   return { sections };
 }
 
-function buildOutlineSystemPrompt(archetype: ComposeArticleArchetype, includeFaq?: boolean): string {
+const FAQ_HEADING_ROLE_RE = /\b(?:reject|questions|look for)\b/i;
+
+/** Editorial FAQ H2 role from primary archetype headings. */
+export function faqHeadingRole(archetype: ComposeArticleArchetype): string {
+  const roleMatch = [...archetype.sampleHeadings].reverse().find((h) => FAQ_HEADING_ROLE_RE.test(h));
+  if (roleMatch) return roleMatch;
+  const last = archetype.sampleHeadings[archetype.sampleHeadings.length - 1];
+  return last?.trim() || "Closing stance";
+}
+
+/** Force single-threaded manifesto shape for broad guideline topics. */
+export function applyManifestoArchetypeOverride(
+  archetype: ComposeArticleArchetype,
+  topic: string,
+): ComposeArticleArchetype {
+  if (!isGuidelinesManifestoTopic(topic)) return archetype;
+  return {
+    ...archetype,
+    singleThreaded: true,
+    sectionCount: Math.min(archetype.sectionCount, 4),
+  };
+}
+
+function manifestoOutlineRules(topic: string): string {
+  if (!isGuidelinesManifestoTopic(topic)) return "";
+  return `
+- Guidelines manifesto mode: one editorial thesis thread (test → reject → apply, or match reference heading roles).
+- Weave broad research as supporting evidence inside sections — NOT parallel subtopic or community-type H2s.
+- Forbid field-survey headings even if the research brief suggests them.`;
+}
+
+function faqOutlineRules(archetype: ComposeArticleArchetype, includeFaq?: boolean): string {
+  if (!includeFaq) return "";
+  const role = faqHeadingRole(archetype);
+  return `
+- Closing FAQ section (+1 beyond main sections) must use an editorial H2 adapted from: "${role}" — NOT a question-mark title ("Curious About…", "Got Questions").`;
+}
+
+export function buildOutlineSystemPrompt(
+  archetype: ComposeArticleArchetype,
+  opts?: { includeFaq?: boolean; topic?: string },
+): string {
+  const includeFaq = opts?.includeFaq;
+  const topic = opts?.topic?.trim() ?? "";
   const roles = archetypeHeadingRoles(archetype);
   const maxSections = maxSectionsForArchetype(archetype, includeFaq);
   return `Plan an editorial article outline in JSON only.
@@ -95,7 +139,7 @@ ${roles.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}
 - Headings must sound like editorial chapter titles — NOT research brief labels (Topic overview, Key facts, Angles, Caveats, FAQ).
 - Do NOT use generic survey headings ("Understanding the…", "Innovative Trends", "Nature's Embrace", "Looking Ahead").
 - Assign each section a factSummary describing which research facts to weave in (short phrase, not full bullets).
-- Subtopics and user angles are fact pools — weave into sections, not as H2 titles.`;
+- Subtopics and user angles are fact pools — weave into sections, not as H2 titles.${manifestoOutlineRules(topic)}${faqOutlineRules(archetype, includeFaq)}`;
 }
 
 export async function planComposeOutline(opts: {
@@ -108,9 +152,10 @@ export async function planComposeOutline(opts: {
   examples?: ArticleRewriteExample[];
 }): Promise<ComposeOutline> {
   const topic = opts.topic.trim();
-  const archetype =
+  const baseArchetype =
     opts.archetype ??
     (opts.examples?.length ? resolveComposeArticleArchetype(opts.examples) : DEFAULT_COMPOSE_ARTICLE_ARCHETYPE);
+  const archetype = applyManifestoArchetypeOverride(baseArchetype, topic);
 
   if (!topic) {
     return fallbackOutline("", opts.keyDetails, archetype);
@@ -131,7 +176,7 @@ export async function planComposeOutline(opts: {
       title?: string;
       sections?: { heading?: string; factSummary?: string }[];
     }>({
-      system: `${buildOutlineSystemPrompt(archetype, opts.includeFaq)}${retryBlock}`,
+      system: `${buildOutlineSystemPrompt(archetype, { includeFaq: opts.includeFaq, topic })}${retryBlock}`,
       user: [
         `Topic: ${topic}`,
         subtopicBlock,

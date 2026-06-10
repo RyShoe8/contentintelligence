@@ -32,13 +32,16 @@ import {
 } from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import { env } from "../../env.js";
+import type { ComposeArticleArchetype } from "@content-resourcer/db";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { interpretBrand } from "./brand-interpreter.js";
 import { extractContentFacts } from "./fact-extractor.js";
 import { retrieveRankedExamples } from "./example-retrieval.js";
 import { analyzeGenericity } from "./generic-detector.js";
 import { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
+import { resolveComposeArticleArchetype } from "./compose-article-archetype.js";
 import {
+  applyManifestoArchetypeOverride,
   planComposeOutline,
   type ComposeOutline,
 } from "./compose-outline.js";
@@ -187,6 +190,13 @@ export async function runHumanizationEngine(
     faqItems: facts.faqItems,
   };
 
+  const composeArchetype =
+    composeMode && examples.length && opts.topic?.trim()
+      ? applyManifestoArchetypeOverride(resolveComposeArticleArchetype(examples), opts.topic)
+      : composeMode && examples.length
+        ? resolveComposeArticleArchetype(examples)
+        : undefined;
+
   let composeOutline: ComposeOutline | undefined;
   if (composeMode && opts.topic?.trim()) {
     composeOutline = await planComposeOutline({
@@ -224,6 +234,7 @@ export async function runHumanizationEngine(
       topic: opts.topic,
       includeFaq: opts.includeFaq,
       composeOutline,
+      composeArchetype,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -236,6 +247,7 @@ export async function runHumanizationEngine(
       topic: opts.topic,
       styleExampleExcerpt: composeStyleExcerpt,
       includeFaq: opts.includeFaq,
+      composeArchetype,
     });
     if (composeMode) {
       html = stripLeadingComposeChrome(html);
@@ -389,6 +401,7 @@ export async function polishComposeHtmlVoice(opts: {
   includeFaq?: boolean;
   styleExampleExcerpt?: string;
   retryIssues?: string[];
+  composeArchetype?: ComposeArticleArchetype;
 }): Promise<string> {
   const html = await humanizeArticleHtml({
     voice: opts.voice,
@@ -399,6 +412,7 @@ export async function polishComposeHtmlVoice(opts: {
     includeFaq: opts.includeFaq,
     retryIssues: opts.retryIssues,
     attempt: opts.retryIssues?.length ? 2 : 1,
+    composeArchetype: opts.composeArchetype,
   });
   return stripLeadingComposeChrome(html);
 }

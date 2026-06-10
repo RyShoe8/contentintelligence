@@ -26,6 +26,7 @@ import {
 import { analyzeGenericity } from "./services/rewriter/generic-detector.js";
 import {
   evaluateComposeVoiceQuality,
+  shouldRunComposeFinalPolish,
   shouldRunComposeVoicePolish,
 } from "./services/rewriter/compose-voice-quality.js";
 import { buildReferenceCorpusPrioritized } from "./writer-reference-corpus.js";
@@ -47,6 +48,8 @@ import {
   summarizeComposeStyleKits,
 } from "./services/rewriter/extract-compose-style-kit.js";
 import { runComposeHardVoiceFixLoop } from "./services/rewriter/compose-hard-voice-retry.js";
+import { resolveComposeArticleArchetype } from "./services/rewriter/compose-article-archetype.js";
+import { applyManifestoArchetypeOverride } from "./services/rewriter/compose-outline.js";
 
 export type GenerateArticleComposeOpts = {
   db: Db;
@@ -75,6 +78,7 @@ async function postExpandComposeVoicePolish(opts: {
   styleExampleExcerpt?: string;
   knownExampleTitles?: string[];
   faqItems?: { question: string; answer: string }[];
+  composeArchetype?: ReturnType<typeof resolveComposeArticleArchetype>;
 }): Promise<string> {
   let html = await polishComposeHtmlVoice({
     voice: opts.voice,
@@ -82,6 +86,7 @@ async function postExpandComposeVoicePolish(opts: {
     topic: opts.topic,
     includeFaq: opts.includeFaq,
     styleExampleExcerpt: opts.styleExampleExcerpt,
+    composeArchetype: opts.composeArchetype,
   });
 
   const voiceIssues = [
@@ -107,6 +112,7 @@ async function postExpandComposeVoicePolish(opts: {
       includeFaq: opts.includeFaq,
       styleExampleExcerpt: opts.styleExampleExcerpt,
       retryIssues,
+      composeArchetype: opts.composeArchetype,
     });
   }
 
@@ -279,6 +285,10 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
 
   const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);
   const knownExampleTitles = humanized.examples.map((ex) => ex.title).filter(Boolean);
+  const composeArchetype = applyManifestoArchetypeOverride(
+    resolveComposeArticleArchetype(humanized.examples),
+    opts.topic,
+  );
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
     sourceText: voiceResearchBrief,
@@ -326,6 +336,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       styleExampleExcerpt,
       knownExampleTitles,
       faqItems: humanized.facts.faqItems,
+      composeArchetype,
     });
   } else {
     const composeGateOpts = {
@@ -358,6 +369,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         styleExampleExcerpt,
         knownExampleTitles,
         faqItems: humanized.facts.faqItems,
+        composeArchetype,
       });
     }
   }
@@ -382,6 +394,26 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     knownExampleTitles,
     faqItems: humanized.facts.faqItems,
   };
+  const postHardGenericity = await analyzeGenericity(html);
+  if (
+    shouldRunComposeFinalPolish({
+      html,
+      genericityScore: postHardGenericity.score,
+      composeGateOpts,
+    })
+  ) {
+    html = await postExpandComposeVoicePolish({
+      voice: opts.voice,
+      html,
+      topic: opts.topic,
+      includeFaq,
+      styleExampleExcerpt,
+      knownExampleTitles,
+      faqItems: humanized.facts.faqItems,
+      composeArchetype,
+    });
+    html = stripLeadingComposeChrome(html);
+  }
   const finalGenericity = await analyzeGenericity(html);
   const finalQuality = evaluateComposeVoiceQuality({
     facts: humanized.facts,

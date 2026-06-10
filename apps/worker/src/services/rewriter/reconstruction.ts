@@ -5,6 +5,7 @@ import {
   writerArticleDepthGuidance,
   type BrandInterpretation,
   type BrandMemory,
+  type ComposeArticleArchetype,
   type ContentFacts,
   type WriterLink,
 } from "@content-resourcer/db";
@@ -24,9 +25,11 @@ import {
 } from "./compose-voice-rules.js";
 import { buildRichExampleExcerpt } from "./compose-style-excerpt.js";
 import {
+  faqHeadingRole,
   formatComposeOutlineForPrompt,
   type ComposeOutline,
 } from "./compose-outline.js";
+import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
@@ -145,6 +148,7 @@ export type ReconstructArticleOpts = {
   topic?: string;
   includeFaq?: boolean;
   composeOutline?: ComposeOutline;
+  composeArchetype?: ComposeArticleArchetype;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -174,15 +178,24 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
         ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
         : "";
 
-  const faqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq) : "";
+  const faqRole = opts.composeArchetype ? faqHeadingRole(opts.composeArchetype) : undefined;
+  const faqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq, faqRole) : "";
 
   const topic = opts.topic?.trim();
+  const manifestoBlock =
+    opts.composeMode && topic && isGuidelinesManifestoTopic(topic)
+      ? "\nWrite as an operator manifesto on what we test, reject, and specify — not a neutral industry design guide."
+      : "";
+  const openingBlock =
+    opts.composeMode && opts.composeArchetype?.openingPattern?.trim()
+      ? `\nOpening requirement: first or second paragraph must adapt this operator conviction (rhythm only, do not copy verbatim): ${opts.composeArchetype.openingPattern.trim()}`
+      : "";
   const composeTopicBlock =
     opts.composeMode && topic
       ? `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
-Do not add sections about community engagement, creating content, or promoting the brand.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${openingBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
       : "";
 
   const viewpointRule = opts.composeMode

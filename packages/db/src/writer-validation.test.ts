@@ -831,6 +831,21 @@ describe("writerComposeVoiceStyleIssues", () => {
     const issues = writerComposeVoiceStyleIssues(html);
     assert.ok(issues.some((i) => i.includes("Independence Matters")));
   });
+
+  it("flags shaping the future and holistic wellness guide patterns", () => {
+    const html =
+      "<h2>Shaping the Future of Senior Living</h2><p>Communities that foster connections and holistic wellness can make a difference for residents.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Shaping the Future")));
+    assert.ok(issues.some((i) => i.includes("foster connections")));
+    assert.ok(issues.some((i) => i.includes("holistic wellness")));
+  });
+
+  it("flags designing with residents heading", () => {
+    const html = "<h2>Designing with Residents in Mind</h2><p>We test every layout ourselves.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Designing with Residents")));
+  });
 });
 
 describe("writerComposeHardVoiceIssues", () => {
@@ -903,6 +918,12 @@ describe("writerComposeFaqStyleIssues", () => {
       { question: "Do I owe tax?", answer: sourceAnswer },
     ]);
     assert.ok(issues.some((i) => i.includes("copies research brief wording")));
+  });
+
+  it("flags curious-about FAQ section titles", () => {
+    const html = "<h2>Curious About Common Questions?</h2><h3>What is design?</h3><p>Short answer.</p>";
+    const issues = writerComposeFaqStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Curious About Common Questions?")));
   });
 });
 

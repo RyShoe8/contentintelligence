@@ -40,6 +40,41 @@ describe("extractComposeArticleArchetype", () => {
     assert.equal(primary?.title, "Rich");
   });
 
+  it("pickPrimaryStyleExample prefers punchy operator voice over long generic posts", () => {
+    const longGeneric = "<h2>Understanding Active Adult Communities</h2>".repeat(20) +
+      "<p>".repeat(50) +
+      "Designers must consider wellness and outdoor spaces for memory care and assisted living residents. ".repeat(80) +
+      "</p>";
+    const primary = pickPrimaryStyleExample([
+      {
+        title: "Long survey",
+        html: longGeneric,
+        composeStyleKit: {
+          headings: [
+            "Understanding Active Adult Communities",
+            "Memory Care Design Trends",
+            "Outdoor Wellness Spaces",
+            "Technology in Assisted Living",
+            "Independent Living Innovations",
+            "Looking Ahead",
+          ],
+          openingParagraphs: ["Senior living design requires thoughtful integration of many community types."],
+          signatureParagraphs: [],
+        },
+      },
+      {
+        title: "Chair essay",
+        html: CHAIR_POST,
+        composeStyleKit: {
+          headings: ["We sit in every chair", "What we look for", "What we reject"],
+          openingParagraphs: ["We never specify seating we have not tested ourselves."],
+          signatureParagraphs: ["We never specify seating we have not tested ourselves."],
+        },
+      },
+    ]);
+    assert.equal(primary?.title, "Chair essay");
+  });
+
   it("resolveComposeArticleArchetype uses stored archetype when present", () => {
     const archetype = resolveComposeArticleArchetype([
       {

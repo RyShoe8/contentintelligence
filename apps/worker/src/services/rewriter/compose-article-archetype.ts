@@ -24,13 +24,35 @@ export const DEFAULT_COMPOSE_ARTICLE_ARCHETYPE: ComposeArticleArchetype =
     singleThreaded: true,
   });
 
+const OPERATOR_CONVICTION_RE = /\b(?:we never|what we reject)\b/i;
+
+function kitOperatorText(kit?: ComposeStyleKit): string {
+  if (!kit) return "";
+  return [...kit.signatureParagraphs, ...kit.openingParagraphs].join(" ");
+}
+
+function weVoiceDensityScore(text: string): number {
+  const plain = text.trim();
+  if (!plain) return 0;
+  const words = plain.split(/\s+/).filter(Boolean);
+  if (!words.length) return 0;
+  const weCount = (plain.match(/\b(?:we|our|us)\b/gi) ?? []).length;
+  return Math.min((weCount / words.length) * 100, 8);
+}
+
 function scoreStyleExample(ex: ArticleRewriteExample): number {
   const kit = ex.composeStyleKit;
   let score = 0;
-  if (kit?.signatureParagraphs.length) score += kit.signatureParagraphs.length * 3;
+  if (kit?.signatureParagraphs.length) score += kit.signatureParagraphs.length * 5;
   if (kit?.openingParagraphs.length) score += kit.openingParagraphs.length;
   if (kit?.headings.length) score += Math.min(kit.headings.length, 6);
-  if (ex.html?.length) score += Math.min(ex.html.length / 2000, 5);
+
+  const operatorText = kitOperatorText(kit);
+  if (OPERATOR_CONVICTION_RE.test(operatorText)) score += 4;
+  score += weVoiceDensityScore(operatorText);
+
+  if (kit?.headings.some((h) => TYPOLOGY_TOUR_RE.test(h))) score -= 3;
+  if (ex.html?.length) score += Math.min(ex.html.length / 4000, 2);
   return score;
 }
 

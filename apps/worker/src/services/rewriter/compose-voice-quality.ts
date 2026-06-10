@@ -6,6 +6,7 @@ import {
   hasComposeHardVoiceFailures,
   rewriterComposeCompletenessIssues,
   rewriterComposeQualityGatePassed,
+  writerComposeOperatorVoiceIssues,
   writerComposeStyleIssueCounts,
   type ComposeStyleIssueCounts,
   type ContentFacts,
@@ -39,6 +40,19 @@ export function shouldRunComposeVoicePolish(opts: {
     opts.linksRevised ||
     composeStyleIssueTotal(opts.styleIssueCounts) > 0 ||
     opts.genericityScore > REWRITER_COMPOSE_GENERICITY_MAX
+  );
+}
+
+export function shouldRunComposeFinalPolish(opts: {
+  html: string;
+  genericityScore: number;
+  composeGateOpts?: ComposeVoiceQualityOpts;
+}): boolean {
+  const styleIssueCounts = writerComposeStyleIssueCounts(opts.html, opts.composeGateOpts ?? {});
+  return (
+    opts.genericityScore > REWRITER_COMPOSE_GENERICITY_MAX ||
+    composeStyleIssueTotal(styleIssueCounts) > 0 ||
+    writerComposeOperatorVoiceIssues(opts.html).length > 0
   );
 }
 

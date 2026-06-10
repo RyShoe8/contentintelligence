@@ -15,13 +15,17 @@ Editorial rhetorical patterns (from brand style examples):
 - Headings should sound like editorial chapter titles, not textbook section labels.
 - Closings should land with conviction — not "we invite you to discover" or "several questions remain open."`;
 
-export function composeFaqPromptRules(includeFaq?: boolean): string {
+export function composeFaqPromptRules(includeFaq?: boolean, faqHeadingRole?: string): string {
   if (!includeFaq) {
     return "\nDo not include an FAQ, frequently asked questions, or Q&A section.";
   }
+  const roleLine = faqHeadingRole?.trim()
+    ? `- Adapt the FAQ section H2 from this editorial role: "${faqHeadingRole.trim()}" — topic-adapted wording, not verbatim.`
+    : "- Use a punchy editorial section title from brand style examples";
   return `
 FAQ section (required — editorial format, not an industry guide dump):
-- Use a punchy editorial section title from brand style examples — NOT "Your Questions Answered", "Common Questions", or "Frequently Asked Questions".
+${roleLine}
+- Forbidden FAQ H2 titles: "Your Questions Answered", "Common Questions", "Frequently Asked Questions", "Curious About…", "Got Questions", "Your Questions", or any H2 ending in "?".
 - Format each item as <h3>Question?</h3><p>Answer.</p> with short answers (1–2 sentences each).
 - Cover FAQ facts from extracted narrative sections; do not invent answers.
 - Do not add more than 4 FAQ items unless facts require more.`;
