@@ -93,7 +93,10 @@ export default async function VoicesPage({
     editing && editing.organization_id === orgId ? editing : null;
 
   if (activeVoice?.persona_status === "failed" && isFixedRhythmSamplePersonaError(activeVoice.persona_error)) {
-    await updateVoicePersonaStatus(db, activeVoice.id, { persona_error: undefined });
+    await updateVoicePersonaStatus(db, activeVoice.id, {
+      persona_status: "failed",
+      persona_error: undefined,
+    });
     activeVoice = { ...activeVoice, persona_error: undefined };
   }
 
