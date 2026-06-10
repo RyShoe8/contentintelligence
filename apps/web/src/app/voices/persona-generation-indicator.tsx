@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VoicePersonaStatus } from "@content-resourcer/db";
 import { isPersonaPendingStale } from "./persona-poll";
+import { formatPersonaErrorForDisplay } from "./persona-error-display";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
@@ -87,7 +88,7 @@ export function PersonaGenerationIndicator({
         router.refresh();
       } else if (next === "failed") {
         setMessage("");
-        setError(data.persona_error ?? "Persona generation failed.");
+        setError(formatPersonaErrorForDisplay(data.persona_error) || "Persona generation failed.");
         clearGeneratingParam();
         router.refresh();
       }

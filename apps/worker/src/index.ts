@@ -22,6 +22,7 @@ import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
 import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
+import { formatJobErrorMessage } from "./format-job-error.js";
 import { ingestVoiceRssStyleExamplesAndRecordSync } from "./jobs/ingest-voice-rss-style-examples.js";
 import {
   isVoicePersonaGenerateInFlight,
@@ -559,7 +560,7 @@ async function main(): Promise<void> {
     }).catch(async (e) => {
       try {
         const db = await getDb();
-        const message = e instanceof Error ? e.message : String(e);
+        const message = formatJobErrorMessage(e);
         await updateVoicePersonaStatus(db, voiceId, {
           persona_status: "failed",
           persona_error: message,

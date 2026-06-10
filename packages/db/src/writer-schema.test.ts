@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { resolveWriterComposeStatus } from "./writer-repos.js";
-import { writerArticleSchema } from "./schemas.js";
+import {
+  sanitizeComposeStyleKitForStorage,
+  writerArticleSchema,
+} from "./schemas.js";
 
 const minimalWriterDoc = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -104,6 +107,17 @@ describe("writerArticleSchema", () => {
     });
     assert.equal(parsed.compose_style_kit?.rhythmSample, undefined);
     assert.equal(parsed.compose_style_kit?.archetype?.openingPattern, undefined);
+  });
+
+  it("sanitizeComposeStyleKitForStorage omits null rhythmSample before write", () => {
+    const kit = sanitizeComposeStyleKitForStorage({
+      headings: ["Opening"],
+      openingParagraphs: [],
+      signatureParagraphs: [],
+      rhythmSample: null as unknown as string,
+    });
+    assert.equal(kit.rhythmSample, undefined);
+    assert.ok(!("rhythmSample" in kit));
   });
 });
 

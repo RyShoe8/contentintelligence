@@ -6,6 +6,7 @@ import {
 } from "@content-resourcer/db";
 import { analyzeBrandProfile } from "./jobs/analyze-brand-profile.js";
 import { ingestVoiceRssStyleExamplesAndRecordSync } from "./jobs/ingest-voice-rss-style-examples.js";
+import { formatJobErrorMessage } from "./format-job-error.js";
 
 export const PERSONA_GENERATION_TIMEOUT_MS = 12 * 60 * 1000;
 
@@ -65,7 +66,7 @@ export async function runVoicePersonaGeneration(
       persona_error: undefined,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = formatJobErrorMessage(e);
     try {
       await updateVoicePersonaStatus(db, voiceId, {
         persona_status: "failed",

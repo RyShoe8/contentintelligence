@@ -716,6 +716,25 @@ export const composeStyleKitSchema = z.object({
 
 export type ComposeStyleKit = z.infer<typeof composeStyleKitSchema>;
 
+/** Strip null/empty optional nested fields before Zod parse (Mongo legacy shape). */
+export function sanitizeComposeStyleKitInput(v: unknown): unknown {
+  if (v == null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v)) return v;
+  const kit = { ...(v as Record<string, unknown>) };
+  if (kit.rhythmSample == null || kit.rhythmSample === "") delete kit.rhythmSample;
+  if (kit.archetype && typeof kit.archetype === "object" && !Array.isArray(kit.archetype)) {
+    const arch = { ...(kit.archetype as Record<string, unknown>) };
+    if (arch.openingPattern == null || arch.openingPattern === "") delete arch.openingPattern;
+    kit.archetype = arch;
+  }
+  return kit;
+}
+
+/** Normalize kit before Mongo write — never persist null optional strings. */
+export function sanitizeComposeStyleKitForStorage(kit: ComposeStyleKit): ComposeStyleKit {
+  return composeStyleKitSchema.parse(sanitizeComposeStyleKitInput(kit));
+}
+
 export const writerArticleSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
@@ -747,7 +766,7 @@ export const writerArticleSchema = z.object({
     writerComposeMetaSchema.optional(),
   ),
   compose_style_kit: z.preprocess(
-    (v) => (v == null ? undefined : v),
+    sanitizeComposeStyleKitInput,
     composeStyleKitSchema.optional(),
   ),
   created_by: z.string().email(),

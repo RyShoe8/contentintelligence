@@ -8,7 +8,7 @@ import type {
   WriterComposeJobStatus,
   WriterComposeMeta,
 } from "./schemas.js";
-import { writerArticleSchema } from "./schemas.js";
+import { sanitizeComposeStyleKitForStorage, writerArticleSchema } from "./schemas.js";
 import type { WriterArticleMode } from "./schemas.js";
 import {
   defaultComposeTitle,
@@ -160,6 +160,11 @@ export type UpsertWriterStyleExampleFromRssInput = {
   compose_style_kit?: ComposeStyleKit;
 };
 
+function storageComposeStyleKit(kit?: ComposeStyleKit): ComposeStyleKit | undefined {
+  if (!kit) return undefined;
+  return sanitizeComposeStyleKitForStorage(kit);
+}
+
 export async function upsertWriterStyleExampleFromRss(
   db: Db,
   data: UpsertWriterStyleExampleFromRssInput,
@@ -181,7 +186,7 @@ export async function upsertWriterStyleExampleFromRss(
       title: data.title.trim() || existing.title,
       final_html: data.final_html,
       reference_urls: [sourceUrl],
-      compose_style_kit: data.compose_style_kit ?? existing.compose_style_kit,
+      compose_style_kit: storageComposeStyleKit(data.compose_style_kit) ?? existing.compose_style_kit,
       status: "saved",
       updated_at: now,
     });
@@ -208,7 +213,7 @@ export async function upsertWriterStyleExampleFromRss(
     links: [],
     generated_html: "",
     final_html: data.final_html,
-    compose_style_kit: data.compose_style_kit,
+    compose_style_kit: storageComposeStyleKit(data.compose_style_kit),
     status: "saved",
     created_by: data.created_by,
     created_at: now,

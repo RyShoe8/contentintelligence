@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   ensureIndexes,
   listContentSignals,
   listVoices,
   getVoice,
   listWriterStyleExamplesForVoice,
+  updateVoicePersonaStatus,
   writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
 import { connectMongo } from "@/lib/mongo";
@@ -30,6 +32,10 @@ import {
   VoiceStyleExamplesEditor,
   type VoiceStyleExampleItem,
 } from "@/components/voice-style-examples-editor";
+import {
+  formatPersonaErrorForDisplay,
+  isFixedRhythmSamplePersonaError,
+} from "./persona-error-display";
 
 export const dynamic = "force-dynamic";
 
@@ -83,8 +89,25 @@ export default async function VoicesPage({
   const contentSignals = await listContentSignals(db, { organizationId: orgId });
   const selectedId = sp.voice_id ?? "";
   const editing = selectedId ? await getVoice(db, selectedId) : null;
-  const activeVoice =
+  let activeVoice =
     editing && editing.organization_id === orgId ? editing : null;
+
+  if (activeVoice?.persona_status === "failed" && isFixedRhythmSamplePersonaError(activeVoice.persona_error)) {
+    await updateVoicePersonaStatus(db, activeVoice.id, { persona_error: undefined });
+    activeVoice = { ...activeVoice, persona_error: undefined };
+  }
+
+  if (selectedId && activeVoice && sp.error === "generate_failed") {
+    const detail = decodeErrorDetail(sp.error_detail);
+    if (!detail || isFixedRhythmSamplePersonaError(detail)) {
+      const params = new URLSearchParams({ voice_id: selectedId });
+      if (sp.generating === "1") params.set("generating", "1");
+      if (sp.style_sync === "1") params.set("style_sync", "1");
+      if (sp.saved === "1") params.set("saved", "1");
+      redirect(`/voices?${params.toString()}`);
+    }
+  }
+
   const workerConfigured = !!process.env.WORKER_URL;
   const activePersonaStale = activeVoice
     ? isPersonaPendingStale(activeVoice)
@@ -116,8 +139,9 @@ export default async function VoicesPage({
         : sp.error === "generate_failed"
           ? (() => {
               const detail = decodeErrorDetail(sp.error_detail);
-              return detail
-                ? `Could not start persona generation: ${detail}`
+              const friendly = detail ? formatPersonaErrorForDisplay(detail) : "";
+              return friendly
+                ? `Could not start persona generation: ${friendly}`
                 : "Could not start persona generation. Check worker configuration.";
             })()
           : sp.error === "missing_voice"
@@ -154,7 +178,7 @@ export default async function VoicesPage({
         <PersonaGenerationIndicator
           voiceId={activeVoice.id}
           initialStatus={activeVoice.persona_status}
-          initialError={activeVoice.persona_error}
+          initialError={formatPersonaErrorForDisplay(activeVoice.persona_error)}
           startPolling={activePersonaPolling}
           voiceIdParam={activeVoice.id}
           generatingParam={sp.generating}
@@ -361,7 +385,9 @@ export default async function VoicesPage({
               }
             />
             {activeVoice?.persona_status === "failed" && activeVoice.persona_error ? (
-              <span className="text-xs text-red-600">{activeVoice.persona_error}</span>
+              <span className="text-xs text-red-600">
+                {formatPersonaErrorForDisplay(activeVoice.persona_error)}
+              </span>
             ) : null}
             {activeVoice?.persona_generated_at ? (
               <LocalDateTime iso={activeVoice.persona_generated_at.toISOString()} />
