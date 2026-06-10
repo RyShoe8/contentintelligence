@@ -19,6 +19,9 @@ import {
   writerComposeOperatorVoiceIssues,
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
+  collectComposeHardVoiceRetryIssues,
+  hasComposeHardVoiceFailures,
+  writerComposeHardVoiceIssues,
   writerComposeVoiceStyleIssues,
   writerHasRelatedLinksBlock,
   postReviseWriterLinksInHtml,
@@ -814,6 +817,42 @@ describe("writerComposeVoiceStyleIssues", () => {
     const html =
       "<h2>We sit in every chair</h2><p>We never specify seating we have not tested.</p><p>That rule sounds simple. We take it seriously.</p>";
     assert.equal(writerComposeVoiceStyleIssues(html).length, 0);
+  });
+
+  it("flags Got Questions FAQ-style headings", () => {
+    const html =
+      "<h2>Got Questions? We've Got Answers!</h2><p>We answer common questions below.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Got Questions")));
+  });
+
+  it("flags Independence Matters heading", () => {
+    const html = "<h2>Independence Matters</h2><p>We design for dignity.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Independence Matters")));
+  });
+});
+
+describe("writerComposeHardVoiceIssues", () => {
+  it("aggregates voice style and brief outline issues", () => {
+    const html =
+      "<h2>Topic overview</h2><h2>Innovative Trends Ahead</h2><p>The landscape of design plays a crucial role.</p>";
+    const issues = writerComposeHardVoiceIssues(html);
+    assert.ok(issues.some((i) => i.includes("Topic overview")));
+    assert.ok(issues.some((i) => i.includes("Innovative Trends")));
+  });
+
+  it("hasComposeHardVoiceFailures returns false for clean editorial copy", () => {
+    const html =
+      "<h2>We sit in every chair</h2><p>We never specify seating we have not tested.</p>";
+    assert.equal(hasComposeHardVoiceFailures(html), false);
+  });
+
+  it("collectComposeHardVoiceRetryIssues dedupes issues", () => {
+    const html = "<h2>Understanding the Basics</h2><p>Body.</p>";
+    const issues = collectComposeHardVoiceRetryIssues(html);
+    assert.ok(issues.length >= 1);
+    assert.equal(new Set(issues).size, issues.length);
   });
 });
 

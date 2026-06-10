@@ -3,11 +3,13 @@ import {
   listSavedWriterExamplesForVoice,
   listWriterStyleExamplesForVoice,
   sanitizeArticleHtmlForLearning,
+  type ComposeStyleKit,
   type ContentFacts,
   writerArticleHtmlForLearning,
 } from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
+import { extractComposeStyleKitDeterministic } from "./extract-compose-style-kit.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1200;
@@ -23,7 +25,37 @@ type ExampleCandidate = {
   content: string;
   source: "article";
   styleExample: boolean;
+  composeStyleKit?: ComposeStyleKit;
 };
+
+function resolveComposeStyleKit(
+  isStyleExample: boolean,
+  stored: ComposeStyleKit | undefined,
+  content: string,
+): ComposeStyleKit | undefined {
+  if (!isStyleExample) return undefined;
+  if (stored) return stored;
+  return extractComposeStyleKitDeterministic(content);
+}
+
+function candidateToExample(
+  c: ExampleCandidate,
+  composeMode: boolean,
+  styleExampleCount: number,
+): ArticleRewriteExample {
+  const useFullHtml = composeMode && c.styleExample && styleExampleCount > 0 && styleExampleCount <= 3;
+  const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
+  const html = useFullHtml
+    ? c.content
+    : c.content.length > excerptChars
+      ? `${c.content.slice(0, excerptChars)}…`
+      : c.content;
+  return {
+    title: c.title,
+    html,
+    composeStyleKit: c.composeStyleKit,
+  };
+}
 
 export async function loadExampleCandidates(
   db: Db,
@@ -54,13 +86,18 @@ export async function loadExampleCandidates(
       return true;
     })
     .slice(0, CANDIDATE_ARTICLE_LIMIT)
-    .map((a) => ({
-      id: a.id,
-      title: a.title,
-      content: sanitizeArticleHtmlForLearning(writerArticleHtmlForLearning(a) ?? ""),
-      source: "article" as const,
-      styleExample: styleIds.has(a.id),
-    }))
+    .map((a) => {
+      const isStyle = styleIds.has(a.id);
+      const content = sanitizeArticleHtmlForLearning(writerArticleHtmlForLearning(a) ?? "");
+      return {
+        id: a.id,
+        title: a.title,
+        content,
+        source: "article" as const,
+        styleExample: isStyle,
+        composeStyleKit: resolveComposeStyleKit(isStyle, a.compose_style_kit, content),
+      };
+    })
     .filter((c) => c.content.length > 0);
 }
 
@@ -68,16 +105,14 @@ function fallbackExamples(
   candidates: ExampleCandidate[],
   composeMode?: boolean,
 ): ArticleRewriteExample[] {
-  const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
   const limit = composeMode ? COMPOSE_RANKED_EXAMPLE_LIMIT : RANKED_EXAMPLE_LIMIT;
+  const styleExampleCount = candidates.filter((c) => c.styleExample).length;
   const ordered = composeMode
     ? [...candidates].sort((a, b) => Number(b.styleExample) - Number(a.styleExample))
     : candidates;
-  return ordered.slice(0, limit).map((c) => ({
-    title: c.title,
-    html:
-      c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
-  }));
+  return ordered
+    .slice(0, limit)
+    .map((c) => candidateToExample(c, composeMode === true, styleExampleCount));
 }
 
 export async function retrieveRankedExamples(
@@ -107,11 +142,7 @@ export async function retrieveRankedExamples(
   const styleExampleCount = candidates.filter((c) => c.styleExample).length;
   if (composeMode && styleExampleCount > 0 && styleExampleCount <= 3) {
     const styleOnly = candidates.filter((c) => c.styleExample);
-    return styleOnly.map((c) => ({
-      title: c.title,
-      html:
-        c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
-    }));
+    return styleOnly.map((c) => candidateToExample(c, true, styleExampleCount));
   }
 
   const catalog = candidates.map((c, i) => ({
@@ -150,12 +181,5 @@ For compose articles: prioritize stylistic and rhythmic match to a human brand o
   if (!indices?.length) return fallbackExamples(candidates, composeMode);
 
   const unique = [...new Set(indices)].slice(0, rankedLimit);
-  return unique.map((i) => {
-    const c = candidates[i]!;
-    return {
-      title: c.title,
-      html:
-        c.content.length > excerptChars ? `${c.content.slice(0, excerptChars)}…` : c.content,
-    };
-  });
+  return unique.map((i) => candidateToExample(candidates[i]!, composeMode, styleExampleCount));
 }

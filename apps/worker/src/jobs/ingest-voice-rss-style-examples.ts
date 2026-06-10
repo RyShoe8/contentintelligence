@@ -11,6 +11,7 @@ import {
 import { env } from "../env.js";
 import { fetchSafeText } from "../safe-fetch.js";
 import { extractHumanFingerprintsFromHtml } from "../services/rewriter/extract-human-fingerprints.js";
+import { extractComposeStyleKit } from "../services/rewriter/extract-compose-style-kit.js";
 import { resolveArticleHtmlFromRssItem } from "../services/rss/extract-article-html.js";
 import { parseRssFeed } from "../services/rss/parse-rss-feed.js";
 
@@ -94,6 +95,8 @@ export async function ingestVoiceRssStyleExamples(
         continue;
       }
 
+      const composeStyleKit = await extractComposeStyleKit(html);
+
       const { created } = await upsertWriterStyleExampleFromRss(db, {
         organization_id: voice.organization_id,
         voice_id: voice.id,
@@ -101,6 +104,7 @@ export async function ingestVoiceRssStyleExamples(
         final_html: html,
         source_url: sourceUrl,
         created_by: voice.created_by,
+        compose_style_kit: composeStyleKit,
       });
 
       await mergeFingerprintsFromHtml(db, voice, html);

@@ -9,8 +9,7 @@ import {
   COMPOSE_VOICE_RULES,
   composeFaqPromptRules,
 } from "./compose-voice-rules.js";
-
-const COMPOSE_STYLE_EXCERPT_CHARS = 2800;
+import { COMPOSE_STYLE_PROMPT_MAX_CHARS } from "./compose-style-excerpt.js";
 
 export type HumanizeArticleOpts = {
   voice: Voice;
@@ -70,7 +69,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
   const styleExampleBlock =
     opts.composeMode && opts.styleExampleExcerpt?.trim()
-      ? `\n\nBrand style reference (match rhythm and paragraph length only — do not copy titles, dates, navigation, or share buttons):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_EXCERPT_CHARS)}`
+      ? `\n\nBrand style reference (match rhythm and paragraph length only — do not copy titles, dates, navigation, or share buttons):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_PROMPT_MAX_CHARS)}`
       : "";
 
   const systemPromptWithStyle = `${systemPrompt}${styleExampleBlock}`;

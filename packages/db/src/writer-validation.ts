@@ -229,6 +229,10 @@ const COMPOSE_TEXTBOOK_HEADING_RES = [
   /\btrends shaping\b/i,
   /^embracing nature\b/i,
   /^tackling design challenges\b/i,
+  /^independence matters\b/i,
+  /got questions/i,
+  /we(?:'|’)ve got answers/i,
+  /we've got answers/i,
 ];
 
 const COMPOSE_GENERIC_GUIDE_PHRASES = [
@@ -343,6 +347,44 @@ export function writerComposeVoiceStyleIssues(html: string): string[] {
   }
 
   return [...new Set(issues)].slice(0, 6);
+}
+
+export type ComposeHardVoiceOpts = {
+  includeFaq?: boolean;
+  knownExampleTitles?: string[];
+  faqItems?: { question: string; answer: string }[];
+};
+
+/** Deterministic compose blockers that must be retried before shipping. */
+export function writerComposeHardVoiceIssues(
+  html: string,
+  opts: ComposeHardVoiceOpts = {},
+): string[] {
+  return [
+    ...writerComposeVoiceStyleIssues(html),
+    ...writerComposeBriefOutlineIssues(html),
+    ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
+    ...(opts.includeFaq ? writerComposeFaqStyleIssues(html, opts.faqItems ?? []) : []),
+  ].slice(0, 12);
+}
+
+/** Operator voice gaps — retried in engine loop but not post-link reconstruct blockers alone. */
+export function writerComposeSoftVoiceIssues(html: string): string[] {
+  return writerComposeOperatorVoiceIssues(html);
+}
+
+export function hasComposeHardVoiceFailures(
+  html: string,
+  opts: ComposeHardVoiceOpts = {},
+): boolean {
+  return writerComposeHardVoiceIssues(html, opts).length > 0;
+}
+
+export function collectComposeHardVoiceRetryIssues(
+  html: string,
+  opts: ComposeHardVoiceOpts = {},
+): string[] {
+  return [...new Set(writerComposeHardVoiceIssues(html, opts))];
 }
 
 const COMPOSE_MIN_WE_PER_500_WORDS = 3;

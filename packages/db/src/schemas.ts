@@ -691,6 +691,15 @@ export const writerComposeMetaSchema = z.object({
 
 export type WriterComposeMeta = z.infer<typeof writerComposeMetaSchema>;
 
+export const composeStyleKitSchema = z.object({
+  headings: z.array(z.string().trim().min(1)).max(30).default([]),
+  openingParagraphs: z.array(z.string().trim().min(1)).max(6).default([]),
+  signatureParagraphs: z.array(z.string().trim().min(1)).max(8).default([]),
+  rhythmSample: z.string().trim().max(800).optional(),
+});
+
+export type ComposeStyleKit = z.infer<typeof composeStyleKitSchema>;
+
 export const writerArticleSchema = z.object({
   id: z.string().uuid(),
   organization_id: z.string().uuid(),
@@ -720,6 +729,10 @@ export const writerArticleSchema = z.object({
   compose_meta: z.preprocess(
     (v) => (v == null ? undefined : v),
     writerComposeMetaSchema.optional(),
+  ),
+  compose_style_kit: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    composeStyleKitSchema.optional(),
   ),
   created_by: z.string().email(),
   created_at: z.coerce.date(),

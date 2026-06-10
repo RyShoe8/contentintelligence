@@ -1,5 +1,6 @@
 import type { Db } from "mongodb";
 import {
+  listWriterStyleExamplesForVoice,
   type Voice,
   type WriterLink,
   REWRITER_COMPOSE_GENERICITY_MAX,
@@ -40,6 +41,12 @@ import {
   searchWebForTopic,
 } from "./writer-web-search.js";
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
+import { preprocessResearchBriefForVoice } from "./services/rewriter/compose-voice-brief.js";
+import {
+  extractComposeStyleKitDeterministic,
+  summarizeComposeStyleKits,
+} from "./services/rewriter/extract-compose-style-kit.js";
+import { runComposeHardVoiceFixLoop } from "./services/rewriter/compose-hard-voice-retry.js";
 
 export type GenerateArticleComposeOpts = {
   db: Db;
@@ -230,11 +237,35 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   }
 
   const sourceTruncatedFinal = sourceTruncated;
+  const rawResearchBrief = researchBrief;
+
+  const styleArticles = await listWriterStyleExamplesForVoice(
+    opts.db,
+    opts.organizationId,
+    opts.voice.id,
+  );
+  const styleKits = styleArticles.slice(0, 3).map((article) => {
+    const html = article.final_html?.trim() ?? "";
+    return (
+      article.compose_style_kit ??
+      (html ? extractComposeStyleKitDeterministic(html) : undefined)
+    );
+  }).filter((kit): kit is NonNullable<typeof kit> => kit != null);
+  const styleKitSummary = summarizeComposeStyleKits(styleKits);
+
+  const voiceResearchBrief = await preprocessResearchBriefForVoice({
+    voice: opts.voice,
+    topic: opts.topic,
+    researchBrief: rawResearchBrief,
+    styleKitSummary,
+    includeFaq,
+  });
+
   let humanized = await runHumanizationEngine({
     db: opts.db,
     voice: opts.voice,
     organizationId: opts.organizationId,
-    sourceText: researchBrief,
+    sourceText: voiceResearchBrief,
     links: opts.links,
     writerArticleId: opts.writerArticleId,
     preserveInstructions: false,
@@ -250,7 +281,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   const knownExampleTitles = humanized.examples.map((ex) => ex.title).filter(Boolean);
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
-    sourceText: researchBrief,
+    sourceText: voiceResearchBrief,
     links: opts.links,
     voice: opts.voice,
     exactAnchorLabels: false,
@@ -273,7 +304,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         includeFaq,
       });
       pipeline = await applyWriterLinkPipeline(expandedHtml, {
-        sourceText: researchBrief,
+        sourceText: voiceResearchBrief,
         links: opts.links,
         voice: opts.voice,
         exactAnchorLabels: false,
@@ -331,6 +362,20 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     }
   }
 
+  html = await runComposeHardVoiceFixLoop({
+    voice: opts.voice,
+    html,
+    topic: opts.topic,
+    includeFaq,
+    facts: humanized.facts,
+    examples: humanized.examples,
+    links: opts.links,
+    articleDepth,
+    subtopics,
+    styleExampleExcerpt,
+    knownExampleTitles,
+  });
+
   html = stripLeadingComposeChrome(html);
   const composeGateOpts = {
     includeFaq,
@@ -351,11 +396,11 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     composeGateOpts,
   });
 
-  const sourceTrimmed = researchBrief.trim();
+  const sourceTrimmed = rawResearchBrief.trim();
 
   return {
     html,
-    researchBrief,
+    researchBrief: rawResearchBrief,
     referencesFetched,
     referencesFailed,
     userReferencesFetched,

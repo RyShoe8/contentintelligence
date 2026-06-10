@@ -86,6 +86,10 @@ export const REWRITER_HUMAN_AUTHENTICITY_MIN = 80;
 export const REWRITER_BRAND_CONSISTENCY_MIN = 80;
 export const REWRITER_SELF_CRITIQUE_GENERICITY_MAX = 30;
 export const REWRITER_MAX_HUMANIZATION_ATTEMPTS = 3;
+/** Compose-only: extended loop when hard voice pattern checks fail. */
+export const REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS = 6;
+/** Post-link reconstruct/humanize retries for forbidden headings/phrases. */
+export const COMPOSE_POST_LINK_HARD_MAX = 3;
 export const REWRITER_COMPOSE_HUMAN_AUTHENTICITY_MIN = 85;
 export const REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN = 85;
 export const REWRITER_COMPOSE_GENERICITY_MAX = 38;

@@ -3,6 +3,7 @@ import {
   REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN,
   composeEffectiveBrandConsistency,
   composeGenericityScore,
+  hasComposeHardVoiceFailures,
   rewriterComposeCompletenessIssues,
   rewriterComposeQualityGatePassed,
   writerComposeStyleIssueCounts,
@@ -100,7 +101,8 @@ export function evaluateComposeVoiceQuality(opts: {
   const noDrift =
     completenessIssues.length === 0 &&
     composeStyleIssueTotal(styleIssueCounts) === 0 &&
-    genericityOk;
+    genericityOk &&
+    !hasComposeHardVoiceFailures(opts.html, opts.composeGateOpts ?? {});
   const voiceQualityWarning = buildVoiceQualityWarning({
     gateOk,
     noDrift,

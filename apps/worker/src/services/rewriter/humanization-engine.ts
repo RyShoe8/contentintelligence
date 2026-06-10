@@ -1,7 +1,9 @@
 import type { Db } from "mongodb";
 import {
   REWRITER_COMPOSE_GENERICITY_MAX,
+  REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS,
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
+  hasComposeHardVoiceFailures,
   composeEffectiveBrandConsistency,
   composeGenericityScore,
   isComposeNarrativeFacts,
@@ -200,8 +202,11 @@ export async function runHumanizationEngine(
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
   let attempts = 0;
+  const maxAttempts = composeMode
+    ? REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS
+    : REWRITER_MAX_HUMANIZATION_ATTEMPTS;
 
-  while (attempts < REWRITER_MAX_HUMANIZATION_ATTEMPTS) {
+  while (attempts < maxAttempts) {
     attempts++;
     let html = await reconstructArticleHtml({
       voice: opts.voice,
@@ -352,7 +357,9 @@ export async function runHumanizationEngine(
   const voiceQualityWarning = composeMode
     ? buildVoiceQualityWarning({
         gateOk: finalGateOk,
-        noDrift: final.completenessIssueCount === 0,
+        noDrift:
+          final.completenessIssueCount === 0 &&
+          !hasComposeHardVoiceFailures(final.html, composeGateOpts),
         genericityOk: finalGenericityOk,
         effectiveBc: finalBc,
         genericityScore: finalGenericityScore,

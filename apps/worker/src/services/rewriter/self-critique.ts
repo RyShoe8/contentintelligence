@@ -16,6 +16,7 @@ import {
 } from "@content-resourcer/db";
 import type { VoiceGenerationContext } from "../../voice-generation-context.js";
 import { completeJson } from "../llm/json-completion.js";
+import { COMPOSE_STYLE_PROMPT_MAX_CHARS } from "./compose-style-excerpt.js";
 
 export function parseSelfCritiqueResult(raw: unknown): SelfCritiqueResult | null {
   const parsed = selfCritiqueResultSchema.safeParse(raw);
@@ -87,7 +88,7 @@ ${preserveBlock}${composeBlock ? `\n${composeBlock}` : ""}`,
       topic ? `Article topic: ${topic}` : "",
       personaBlock,
       opts.styleExampleExcerpt?.trim()
-        ? `\nBrand style reference (compare opening rhythm, paragraph length, and operator voice side-by-side):\n${opts.styleExampleExcerpt.trim().slice(0, 2800)}`
+        ? `\nBrand style reference (compare opening rhythm, paragraph length, and operator voice side-by-side):\n${opts.styleExampleExcerpt.trim().slice(0, COMPOSE_STYLE_PROMPT_MAX_CHARS)}`
         : "",
       "",
       "Facts the article should reflect (JSON):",

@@ -2,6 +2,7 @@ import type { Collection, Db } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { COLLECTIONS } from "./collections.js";
 import type {
+  ComposeStyleKit,
   WriterArticle,
   WriterArticleStatus,
   WriterComposeJobStatus,
@@ -156,6 +157,7 @@ export type UpsertWriterStyleExampleFromRssInput = {
   final_html: string;
   source_url: string;
   created_by: string;
+  compose_style_kit?: ComposeStyleKit;
 };
 
 export async function upsertWriterStyleExampleFromRss(
@@ -179,6 +181,7 @@ export async function upsertWriterStyleExampleFromRss(
       title: data.title.trim() || existing.title,
       final_html: data.final_html,
       reference_urls: [sourceUrl],
+      compose_style_kit: data.compose_style_kit ?? existing.compose_style_kit,
       status: "saved",
       updated_at: now,
     });
@@ -205,6 +208,7 @@ export async function upsertWriterStyleExampleFromRss(
     links: [],
     generated_html: "",
     final_html: data.final_html,
+    compose_style_kit: data.compose_style_kit,
     status: "saved",
     created_by: data.created_by,
     created_at: now,
