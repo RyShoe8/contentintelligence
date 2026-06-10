@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { deleteVoiceStyleExampleAction } from "@/app/voices/actions";
 
@@ -13,7 +13,6 @@ export type VoiceStyleExampleItem = {
 };
 
 type Props = {
-  voiceId: string;
   rssFeedUrl?: string;
   examples: VoiceStyleExampleItem[];
   workerConfigured: boolean;
@@ -23,15 +22,7 @@ type Props = {
   syncIndicator?: ReactNode;
 };
 
-function confirmDelete(title: string, e: FormEvent<HTMLFormElement>) {
-  const label = title.trim() || "this style example";
-  if (!confirm(`Remove "${label}" from style examples? It will not be re-imported from RSS.`)) {
-    e.preventDefault();
-  }
-}
-
 export function VoiceStyleExamplesEditor({
-  voiceId,
   rssFeedUrl,
   examples,
   workerConfigured,
@@ -107,13 +98,26 @@ export function VoiceStyleExamplesEditor({
                     {new Date(ex.updated_at).toLocaleDateString()}
                   </p>
                 </div>
-                <form action={deleteVoiceStyleExampleAction} onSubmit={(e) => confirmDelete(ex.title, e)}>
-                  <input type="hidden" name="voice_id" value={voiceId} />
-                  <input type="hidden" name="example_id" value={ex.id} />
-                  <Button type="submit" variant="danger" size="sm">
-                    Remove
-                  </Button>
-                </form>
+                <Button
+                  type="submit"
+                  formAction={deleteVoiceStyleExampleAction}
+                  name="example_id"
+                  value={ex.id}
+                  variant="danger"
+                  size="sm"
+                  onClick={(e) => {
+                    const label = ex.title.trim() || "this style example";
+                    if (
+                      !confirm(
+                        `Remove "${label}" from style examples? It will not be re-imported from RSS.`,
+                      )
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
               </div>
             </li>
           ))}
