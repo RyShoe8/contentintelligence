@@ -13,6 +13,7 @@ export type VoiceStyleExampleItem = {
 };
 
 type Props = {
+  voiceId: string;
   rssFeedUrl?: string;
   examples: VoiceStyleExampleItem[];
   workerConfigured: boolean;
@@ -23,6 +24,7 @@ type Props = {
 };
 
 export function VoiceStyleExamplesEditor({
+  voiceId,
   rssFeedUrl,
   examples,
   workerConfigured,
@@ -100,9 +102,7 @@ export function VoiceStyleExamplesEditor({
                 </div>
                 <Button
                   type="submit"
-                  formAction={deleteVoiceStyleExampleAction}
-                  name="example_id"
-                  value={ex.id}
+                  formAction={deleteVoiceStyleExampleAction.bind(null, voiceId, ex.id)}
                   variant="danger"
                   size="sm"
                   onClick={(e) => {

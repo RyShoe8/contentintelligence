@@ -399,6 +399,7 @@ export default async function VoicesPage({
 
           {activeVoice ? (
             <VoiceStyleExamplesEditor
+              voiceId={activeVoice.id}
               rssFeedUrl={activeVoice.rss_feed_url}
               examples={styleExamples}
               workerConfigured={workerConfigured}

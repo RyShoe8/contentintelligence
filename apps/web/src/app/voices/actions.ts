@@ -408,29 +408,29 @@ function styleExampleRedirect(voiceId: string, query: string) {
   redirect(`/voices?voice_id=${encodeURIComponent(voiceId)}&${query}`);
 }
 
-export async function deleteVoiceStyleExampleAction(formData: FormData) {
+export async function deleteVoiceStyleExampleAction(voiceId: string, exampleId: string) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
-  const voiceId = String(formData.get("voice_id") ?? "").trim();
-  const exampleId = String(formData.get("example_id") ?? "").trim();
+  const trimmedVoiceId = voiceId.trim();
+  const trimmedExampleId = exampleId.trim();
 
-  if (!voiceId || !exampleId) redirect("/voices?error=missing_voice");
+  if (!trimmedVoiceId || !trimmedExampleId) redirect("/voices?error=missing_voice");
 
   const db = await connectMongo();
   await ensureIndexes(db);
-  const voice = await getVoiceForSession(db, voiceId, orgId);
-  if (!voice) styleExampleRedirect(voiceId, "error=style_example_not_found");
+  const voice = await getVoiceForSession(db, trimmedVoiceId, orgId);
+  if (!voice) styleExampleRedirect(trimmedVoiceId, "error=style_example_not_found");
 
-  const example = await getWriterStyleExample(db, exampleId, orgId, voiceId);
-  if (!example) styleExampleRedirect(voiceId, "error=style_example_not_found");
+  const example = await getWriterStyleExample(db, trimmedExampleId, orgId, trimmedVoiceId);
+  if (!example) styleExampleRedirect(trimmedVoiceId, "error=style_example_not_found");
 
-  const sourceUrl = example!.reference_urls?.[0]?.trim();
+  const sourceUrl = example.reference_urls?.[0]?.trim();
   if (sourceUrl) {
-    await addExcludedStyleSourceUrl(db, voiceId, sourceUrl);
+    await addExcludedStyleSourceUrl(db, trimmedVoiceId, sourceUrl);
   }
 
-  await deleteWriterStyleExample(db, exampleId, orgId, voiceId);
+  await deleteWriterStyleExample(db, trimmedExampleId, orgId, trimmedVoiceId);
 
   revalidatePath("/voices");
-  styleExampleRedirect(voiceId, "style_example_deleted=1");
+  styleExampleRedirect(trimmedVoiceId, "style_example_deleted=1");
 }
