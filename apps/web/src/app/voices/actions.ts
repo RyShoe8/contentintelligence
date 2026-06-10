@@ -404,7 +404,7 @@ export async function deleteVoiceAction(formData: FormData) {
   redirect("/voices?deleted=1");
 }
 
-function styleExampleRedirect(voiceId: string, query: string) {
+function styleExampleRedirect(voiceId: string, query: string): never {
   redirect(`/voices?voice_id=${encodeURIComponent(voiceId)}&${query}`);
 }
 
