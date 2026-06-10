@@ -2,7 +2,6 @@ import type { Db } from "mongodb";
 import {
   REWRITER_COMPOSE_GENERICITY_MAX,
   REWRITER_MAX_HUMANIZATION_ATTEMPTS,
-  REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN,
   composeEffectiveBrandConsistency,
   composeGenericityScore,
   isComposeNarrativeFacts,
@@ -45,6 +44,7 @@ import {
 import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
+import { buildVoiceQualityWarning } from "./compose-voice-quality.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 export { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
@@ -143,41 +143,6 @@ function effectiveBrandScore(
   styleCounts: ReturnType<typeof writerComposeStyleIssueCounts>,
 ): number {
   return composeEffectiveBrandConsistency(critique, styleCounts);
-}
-
-function buildVoiceQualityWarning(opts: {
-  gateOk: boolean;
-  noDrift: boolean;
-  genericityOk: boolean;
-  effectiveBc: number;
-  genericityScore: number;
-  styleIssueCounts: ReturnType<typeof writerComposeStyleIssueCounts>;
-  completenessIssues: string[];
-}): string | undefined {
-  if (opts.gateOk && opts.noDrift && opts.genericityOk) return undefined;
-  const parts: string[] = [];
-  if (!opts.genericityOk) {
-    parts.push(
-      `Genericity ${opts.genericityScore} exceeds max ${REWRITER_COMPOSE_GENERICITY_MAX}`,
-    );
-  }
-  if (opts.effectiveBc < REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN) {
-    parts.push(`Brand consistency ${opts.effectiveBc} below target ${REWRITER_COMPOSE_BRAND_CONSISTENCY_MIN}`);
-  }
-  const styleTotal =
-    opts.styleIssueCounts.voiceStyleIssueCount +
-    opts.styleIssueCounts.operatorVoiceIssueCount +
-    opts.styleIssueCounts.leakIssueCount +
-    opts.styleIssueCounts.faqStyleIssueCount;
-  if (styleTotal > 0) {
-    parts.push("Voice style checks flagged generic or off-brand patterns");
-  }
-  if (opts.completenessIssues.length > 0) {
-    parts.push(opts.completenessIssues[0]!);
-  }
-  return parts.length
-    ? `${parts.join("; ")}. Review before publishing.`
-    : "Voice quality did not fully pass. Review before publishing.";
 }
 
 export async function runHumanizationEngine(

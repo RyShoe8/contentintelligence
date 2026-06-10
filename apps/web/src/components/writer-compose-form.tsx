@@ -203,6 +203,10 @@ function initialPendingComposeState(selectedArticle: WriterComposeArticleDetail 
   };
 }
 
+function composeVoiceWarningDisplayMessage(warning: string): string {
+  return warning.replace(/\.\s*Review before publishing\.?\s*$/i, "").trim();
+}
+
 export function WriterComposeForm({
   voices,
   articles,
@@ -850,7 +854,7 @@ export function WriterComposeForm({
                   >
                     {voice.name}
                     {!voice.ready ? (
-                      <span className="ml-1 text-xs font-normal text-amber-200/90">
+                      <span className="ml-1 text-xs font-normal text-amber-800">
                         (persona pending)
                       </span>
                     ) : null}
@@ -918,7 +922,7 @@ export function WriterComposeForm({
         </p>
       ) : null}
       {readyVoices.length === 0 ? (
-        <p className="text-sm text-amber-200/90">
+        <p className="text-sm text-amber-800">
           No voices with a ready persona.{" "}
           <Link href="/voices" className="text-[var(--primary)] hover:underline">
             Generate a persona on Voices
@@ -927,7 +931,7 @@ export function WriterComposeForm({
         </p>
       ) : null}
       {voiceId && !selectedVoice?.ready ? (
-        <p className="text-sm text-amber-200/90">
+        <p className="text-sm text-amber-800">
           Select a voice with a ready persona to write.{" "}
           <Link href="/voices" className="text-[var(--primary)] hover:underline">
             Voices
@@ -1219,8 +1223,9 @@ export function WriterComposeForm({
         ) : null}
         {writeError ? <p className="text-sm text-red-300/90">{writeError}</p> : null}
         {voiceQualityWarning ? (
-          <p className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/95">
-            Voice quality: did not fully pass — {voiceQualityWarning}
+          <p className="ui-alert-warning text-sm" role="alert">
+            <span className="font-medium">Voice quality did not fully pass.</span>{" "}
+            {composeVoiceWarningDisplayMessage(voiceQualityWarning)}
           </p>
         ) : null}
         {shouldShowComposeResearchStats(resultComposePhase) &&
@@ -1249,7 +1254,7 @@ export function WriterComposeForm({
             className={cn(
               "text-xs",
               linksPresent != null && linksPresent < linksRequested
-                ? "text-amber-200/90"
+                ? "text-amber-800"
                 : "text-[var(--muted)]",
             )}
           >
@@ -1265,12 +1270,12 @@ export function WriterComposeForm({
             {brandConsistencyScore != null ? ` · Brand consistency: ${brandConsistencyScore}` : ""}
             {` · Genericity: ${genericityScore}`}
             {humanizationAttempts != null && humanizationAttempts > 1
-              ? ` (${humanizationAttempts} humanization passes)`
+              ? ` (${humanizationAttempts} rewrite attempts)`
               : ""}
           </p>
         ) : null}
         {shouldShowComposeLinkReworkNotices(resultComposePhase) && linksRevisedNotice ? (
-          <p className="text-xs text-amber-200/90">
+          <p className="text-xs text-amber-800">
             Links were reworked for more natural placement in the article.
           </p>
         ) : null}
@@ -1285,7 +1290,7 @@ export function WriterComposeForm({
         {shouldShowComposeLinkReworkNotices(resultComposePhase) &&
         linksAppendedNotice != null &&
         linksAppendedNotice > 0 ? (
-          <p className="text-xs text-amber-200/90">
+          <p className="text-xs text-amber-800">
             {linksAppendedNotice} link{linksAppendedNotice === 1 ? "" : "s"} added in a Related links
             section at the end.
           </p>

@@ -3,7 +3,6 @@ import {
   type Voice,
   type WriterLink,
   REWRITER_COMPOSE_GENERICITY_MAX,
-  composeEffectiveBrandConsistency,
   stripLeadingComposeChrome,
   writerArticleDepthGuidance,
   writerComposeResearchConfig,
@@ -24,6 +23,10 @@ import {
   runHumanizationEngine,
 } from "./services/rewriter/humanization-engine.js";
 import { analyzeGenericity } from "./services/rewriter/generic-detector.js";
+import {
+  evaluateComposeVoiceQuality,
+  shouldRunComposeVoicePolish,
+} from "./services/rewriter/compose-voice-quality.js";
 import { buildReferenceCorpusPrioritized } from "./writer-reference-corpus.js";
 import {
   runDeepTopicResearch,
@@ -293,23 +296,60 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       knownExampleTitles,
       faqItems: humanized.facts.faqItems,
     });
+  } else {
+    const composeGateOpts = {
+      includeFaq,
+      knownExampleTitles,
+      faqItems: humanized.facts.faqItems,
+    };
+    const prePolishStyleCounts = writerComposeStyleIssueCounts(html, composeGateOpts);
+    let needsPolish = shouldRunComposeVoicePolish({
+      linksWoven: pipeline.linksWoven,
+      linksRevised: pipeline.linksRevised,
+      styleIssueCounts: prePolishStyleCounts,
+      genericityScore: 0,
+    });
+    if (!needsPolish) {
+      const prePolishGenericity = await analyzeGenericity(html);
+      needsPolish = shouldRunComposeVoicePolish({
+        linksWoven: pipeline.linksWoven,
+        linksRevised: pipeline.linksRevised,
+        styleIssueCounts: prePolishStyleCounts,
+        genericityScore: prePolishGenericity.score,
+      });
+    }
+    if (needsPolish) {
+      html = await postExpandComposeVoicePolish({
+        voice: opts.voice,
+        html,
+        topic: opts.topic,
+        includeFaq,
+        styleExampleExcerpt,
+        knownExampleTitles,
+        faqItems: humanized.facts.faqItems,
+      });
+    }
   }
 
   html = stripLeadingComposeChrome(html);
-  const styleCounts = writerComposeStyleIssueCounts(html, {
+  const composeGateOpts = {
     includeFaq,
     knownExampleTitles,
     faqItems: humanized.facts.faqItems,
-  });
-  const brandConsistencyScore = composeEffectiveBrandConsistency(
-    {
+  };
+  const finalGenericity = await analyzeGenericity(html);
+  const finalQuality = evaluateComposeVoiceQuality({
+    facts: humanized.facts,
+    html,
+    critique: {
       humanAuthenticity: humanized.humanAuthenticityScore,
       brandConsistency: humanized.brandConsistencyScore,
       genericity: humanized.genericityScore,
       issues: [],
     },
-    styleCounts,
-  );
+    genericity: finalGenericity,
+    composeGateOpts,
+  });
 
   const sourceTrimmed = researchBrief.trim();
 
@@ -335,9 +375,9 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     linksRevised: pipeline.linksRevised,
     factsExtracted: humanized.factsExtracted,
     humanAuthenticityScore: humanized.humanAuthenticityScore,
-    brandConsistencyScore,
-    genericityScore: humanized.genericityScore,
+    brandConsistencyScore: finalQuality.brandConsistencyScore,
+    genericityScore: finalQuality.genericityScore,
     humanizationAttempts: humanized.humanizationAttempts,
-    voiceQualityWarning: humanized.voiceQualityWarning,
+    voiceQualityWarning: finalQuality.voiceQualityWarning,
   };
 }
