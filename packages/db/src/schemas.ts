@@ -706,11 +706,21 @@ export const composeArticleArchetypeSchema = z.object({
 
 export type ComposeArticleArchetype = z.infer<typeof composeArticleArchetypeSchema>;
 
+export const composeStyleKitRhythmSchema = z.object({
+  shortParagraphShare: z.number().min(0).max(1).default(0),
+  hasFragments: z.boolean().default(false),
+  hasBoldLines: z.boolean().default(false),
+});
+
+export type ComposeStyleKitRhythm = z.infer<typeof composeStyleKitRhythmSchema>;
+
 export const composeStyleKitSchema = z.object({
   headings: z.array(z.string().trim().min(1)).max(30).default([]),
   openingParagraphs: z.array(z.string().trim().min(1)).max(6).default([]),
   signatureParagraphs: z.array(z.string().trim().min(1)).max(8).default([]),
+  concreteDetails: z.array(z.string().trim().min(1)).max(15).default([]),
   rhythmSample: optionalTrimmedString(800),
+  rhythm: composeStyleKitRhythmSchema.optional(),
   archetype: composeArticleArchetypeSchema.optional(),
 });
 
@@ -722,6 +732,8 @@ export function sanitizeComposeStyleKitInput(v: unknown): unknown {
   if (typeof v !== "object" || Array.isArray(v)) return v;
   const kit = { ...(v as Record<string, unknown>) };
   if (kit.rhythmSample == null || kit.rhythmSample === "") delete kit.rhythmSample;
+  if (kit.rhythm == null) delete kit.rhythm;
+  if (kit.concreteDetails == null) delete kit.concreteDetails;
   if (kit.archetype && typeof kit.archetype === "object" && !Array.isArray(kit.archetype)) {
     const arch = { ...(kit.archetype as Record<string, unknown>) };
     if (arch.openingPattern == null || arch.openingPattern === "") delete arch.openingPattern;

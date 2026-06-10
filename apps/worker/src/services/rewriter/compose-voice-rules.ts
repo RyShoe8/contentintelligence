@@ -1,3 +1,21 @@
+import type { ComposeStyleKitRhythm } from "@content-resourcer/db";
+
+const RHYTHM_SHORT_SHARE_MIN = 0.25;
+
+/** Staccato rhythm rules when the primary brand example uses that pattern. */
+export function composeRhythmPromptRules(rhythm?: ComposeStyleKitRhythm): string {
+  if (!rhythm) return "";
+  const applies = rhythm.shortParagraphShare > RHYTHM_SHORT_SHARE_MIN || rhythm.hasFragments;
+  if (!applies) return "";
+  const boldLine = rhythm.hasBoldLines
+    ? "\n- Bold 3–6 key conviction statements with <strong> (not headings)."
+    : "";
+  return `
+Brand rhythm (match the staccato pattern from brand examples):
+- Include at least 3 one-line paragraphs (under 12 words) at emphasis moments.
+- Use at least one staccato fragment run for emphasis (e.g. "Too low. Too deep. Too hard.").${boldLine}`;
+}
+
 export const COMPOSE_VOICE_RULES = `
 Compose editorial voice (match brand examples — not a neutral industry guide):
 - Short paragraphs (often 1–3 sentences); mix sentence length and rhythm.
@@ -20,13 +38,14 @@ export function composeFaqPromptRules(includeFaq?: boolean, faqHeadingRole?: str
     return "\nDo not include an FAQ, frequently asked questions, or Q&A section.";
   }
   const roleLine = faqHeadingRole?.trim()
-    ? `- Adapt the FAQ section H2 from this editorial role: "${faqHeadingRole.trim()}" — topic-adapted wording, not verbatim.`
+    ? `- Adapt the FAQ section H2 from this editorial role: "${faqHeadingRole.trim()}" — topic-adapted wording that makes sense over Q&A items, not verbatim.`
     : "- Use a punchy editorial section title from brand style examples";
   return `
 FAQ section (required — editorial format, not an industry guide dump):
 ${roleLine}
 - Forbidden FAQ H2 titles: "Your Questions Answered", "Common Questions", "Frequently Asked Questions", "Curious About…", "Got Questions", "Your Questions", or any H2 ending in "?".
 - Format each item as <h3>Question?</h3><p>Answer.</p> with short answers (1–2 sentences each).
+- Write each answer in operator we-voice with at least one concrete specific — not a research summary.
 - Cover FAQ facts from extracted narrative sections; do not invent answers.
 - Do not add more than 4 FAQ items unless facts require more.`;
 }

@@ -7,6 +7,7 @@ import {
   extractStyleExampleHeadings,
   faqHeadingRole,
   formatComposeOutlineForPrompt,
+  outlineRejectionRoleIssues,
   planComposeOutline,
 } from "./compose-outline.js";
 import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
@@ -81,6 +82,49 @@ describe("buildOutlineSystemPrompt", () => {
     const prompt = buildOutlineSystemPrompt(archetype, { includeFaq: true });
     assert.match(prompt, /What we reject/);
     assert.match(prompt, /NOT a question-mark title/);
+  });
+
+  it("prefers question-ish FAQ roles over conviction roles", () => {
+    const archetype = {
+      ...DEFAULT_COMPOSE_ARTICLE_ARCHETYPE,
+      sampleHeadings: ["What we reject", "What families ask us", "Closing stance"],
+    };
+    assert.equal(faqHeadingRole(archetype), "What families ask us");
+  });
+
+  it("includes concrete lens line when lens provided", () => {
+    const prompt = buildOutlineSystemPrompt(DEFAULT_COMPOSE_ARTICLE_ARCHETYPE, {
+      topic: "senior living design guidelines",
+      concreteLens: "the dining room chair",
+    });
+    assert.match(prompt, /Anchor the article through this concrete lens: the dining room chair/);
+  });
+
+  it("omits lens line when no lens", () => {
+    const prompt = buildOutlineSystemPrompt(DEFAULT_COMPOSE_ARTICLE_ARCHETYPE, {
+      topic: "senior living design guidelines",
+    });
+    assert.ok(!prompt.includes("concrete lens"));
+  });
+});
+
+describe("outlineRejectionRoleIssues", () => {
+  it("flags rejection heading assigned neutral facts", () => {
+    const issues = outlineRejectionRoleIssues({
+      sections: [
+        { heading: "What We Reject", factSummary: "Lighting research and acoustic comfort findings" },
+      ],
+    });
+    assert.ok(issues.some((i) => i.includes("What We Reject")));
+  });
+
+  it("passes rejection heading with rejection facts", () => {
+    const issues = outlineRejectionRoleIssues({
+      sections: [
+        { heading: "What We Reject", factSummary: "Materials we never specify and chairs we avoid" },
+      ],
+    });
+    assert.equal(issues.length, 0);
   });
 });
 

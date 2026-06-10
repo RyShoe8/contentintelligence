@@ -6,7 +6,9 @@ import {
   hasComposeHardVoiceFailures,
   rewriterComposeCompletenessIssues,
   rewriterComposeQualityGatePassed,
+  writerComposeConcretenessIssues,
   writerComposeOperatorVoiceIssues,
+  writerComposeRhythmIssues,
   writerComposeStyleIssueCounts,
   type ComposeStyleIssueCounts,
   type ContentFacts,
@@ -52,7 +54,9 @@ export function shouldRunComposeFinalPolish(opts: {
   return (
     opts.genericityScore > REWRITER_COMPOSE_GENERICITY_MAX ||
     composeStyleIssueTotal(styleIssueCounts) > 0 ||
-    writerComposeOperatorVoiceIssues(opts.html).length > 0
+    writerComposeOperatorVoiceIssues(opts.html).length > 0 ||
+    writerComposeConcretenessIssues(opts.html).length > 0 ||
+    writerComposeRhythmIssues(opts.html).length > 0
   );
 }
 

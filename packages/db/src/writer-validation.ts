@@ -238,6 +238,9 @@ const COMPOSE_TEXTBOOK_HEADING_RES = [
   /^embracing\b/i,
   /^designing with\b/i,
   /\bquestions\?$/i,
+  /^rethinking\b/i,
+  /\bin action$/i,
+  /^our commitment to\b/i,
 ];
 
 const COMPOSE_GENERIC_GUIDE_PHRASES = [
@@ -278,6 +281,13 @@ const COMPOSE_GENERIC_GUIDE_PHRASES = [
   "crafting welcoming",
   "designing with residents",
   "curious about",
+  "fosters community engagement",
+  "pave the way",
+  "speak volumes",
+  "go hand in hand",
+  "cater to the whole person",
+  "isn't just a checkbox",
+  "boast",
 ];
 
 const COMPOSE_MAX_AVG_PARAGRAPH_WORDS = 55;
@@ -377,6 +387,7 @@ export function writerComposeHardVoiceIssues(
   return [
     ...writerComposeVoiceStyleIssues(html),
     ...writerComposeBriefOutlineIssues(html),
+    ...writerComposeSectionRoleIssues(html),
     ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
     ...(opts.includeFaq ? writerComposeFaqStyleIssues(html, opts.faqItems ?? []) : []),
   ].slice(0, 12);
@@ -429,6 +440,77 @@ export function writerComposeOperatorVoiceIssues(html: string): string[] {
   }
 
   return issues.slice(0, 2);
+}
+
+const REJECTION_HEADING_RE = /\b(?:reject|never|won'?t|stand against)\b/i;
+const REJECTION_BODY_RE = /\bwe\s+(?:reject|never|won'?t|don'?t|avoid|refuse|stand against)\b/i;
+
+/** Flags headings that promise a stance the section body never delivers. */
+export function writerComposeSectionRoleIssues(html: string): string[] {
+  const issues: string[] = [];
+  const sectionRe = /<h2\b[^>]*>([\s\S]*?)<\/h2>([\s\S]*?)(?=<h2\b|$)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = sectionRe.exec(html)) !== null) {
+    const heading = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (!heading || !REJECTION_HEADING_RE.test(heading)) continue;
+    const body = stripHtmlToPlainText(match[2] ?? "");
+    if (body.trim().length < 40) continue;
+    if (!REJECTION_BODY_RE.test(body)) {
+      issues.push(
+        `Section "${heading}" promises rejection but body never rejects anything — state what we reject/never do, or rename the heading`,
+      );
+    }
+  }
+  return issues.slice(0, 3);
+}
+
+const COMPOSE_MIN_CONCRETE_PER_500_WORDS = 3;
+const COMPOSE_CONCRETENESS_MIN_WORDS = 300;
+const COMPOSE_RHYTHM_MIN_WORDS = 400;
+const COMPOSE_RHYTHM_SHORT_PARAGRAPH_WORDS = 12;
+
+/** Flags abstract compose copy lacking numbers, names, and brand specifics. */
+export function writerComposeConcretenessIssues(html: string): string[] {
+  const plain = stripHtmlToPlainText(html);
+  const words = plain.split(/\s+/).filter(Boolean);
+  if (words.length < COMPOSE_CONCRETENESS_MIN_WORDS) return [];
+
+  const numberMatches = plain.match(/\d+(?:[.,]\d+)*%?/g) ?? [];
+  // Multi-word capitalized sequences (names/places); sentence starts rarely chain capitals.
+  const properNounMatches = plain.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+  const concreteCount = numberMatches.length + properNounMatches.length;
+  const per500 = (concreteCount / words.length) * 500;
+
+  if (per500 < COMPOSE_MIN_CONCRETE_PER_500_WORDS) {
+    return [
+      `Article reads abstract (${concreteCount} concrete specifics in ${words.length} words) — anchor claims with concrete brand specifics (numbers, named tests, places)`,
+    ];
+  }
+  return [];
+}
+
+/** Flags uniform paragraph rhythm missing short punchy lines and bold emphasis. */
+export function writerComposeRhythmIssues(html: string): string[] {
+  const plain = stripHtmlToPlainText(html);
+  const words = plain.split(/\s+/).filter(Boolean);
+  if (words.length < COMPOSE_RHYTHM_MIN_WORDS) return [];
+
+  const paragraphs = writerHtmlParagraphs(html)
+    .map((p) => stripHtmlToPlainText(p).trim())
+    .filter(Boolean);
+  const hasShortParagraph = paragraphs.some(
+    (t) => t.split(/\s+/).filter(Boolean).length <= COMPOSE_RHYTHM_SHORT_PARAGRAPH_WORDS,
+  );
+
+  const bodyWithoutHeadings = html.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, "");
+  const hasBoldLines = /<(?:strong|b)\b/i.test(bodyWithoutHeadings);
+
+  if (!hasShortParagraph && !hasBoldLines) {
+    return [
+      "No rhythm variation — add short punchy one-line paragraphs and bold conviction lines like brand examples",
+    ];
+  }
+  return [];
 }
 
 /** Flags blog page chrome or copied example metadata in compose output. */

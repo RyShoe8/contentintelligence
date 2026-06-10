@@ -19,8 +19,10 @@ import {
   rewriterQualityGatePassed,
   stripLeadingComposeChrome,
   writerComposeBriefOutlineIssues,
+  writerComposeConcretenessIssues,
   writerComposeFaqStyleIssues,
   writerComposeOperatorVoiceIssues,
+  writerComposeRhythmIssues,
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
   writerComposeVoiceStyleIssues,
@@ -32,14 +34,17 @@ import {
 } from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import { env } from "../../env.js";
-import type { ComposeArticleArchetype } from "@content-resourcer/db";
+import type { ComposeArticleArchetype, ComposeStyleKitRhythm } from "@content-resourcer/db";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { interpretBrand } from "./brand-interpreter.js";
 import { extractContentFacts } from "./fact-extractor.js";
 import { retrieveRankedExamples } from "./example-retrieval.js";
 import { analyzeGenericity } from "./generic-detector.js";
 import { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
-import { resolveComposeArticleArchetype } from "./compose-article-archetype.js";
+import {
+  resolveComposeArticleArchetype,
+  resolvePrimaryKitRhythm,
+} from "./compose-article-archetype.js";
 import {
   applyManifestoArchetypeOverride,
   planComposeOutline,
@@ -49,6 +54,7 @@ import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import { buildVoiceQualityWarning } from "./compose-voice-quality.js";
+import { pickConcreteLens } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 export { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
@@ -196,9 +202,12 @@ export async function runHumanizationEngine(
       : composeMode && examples.length
         ? resolveComposeArticleArchetype(examples)
         : undefined;
+  const composeRhythm = composeMode ? resolvePrimaryKitRhythm(examples) : undefined;
 
   let composeOutline: ComposeOutline | undefined;
+  let concreteLens: string | undefined;
   if (composeMode && opts.topic?.trim()) {
+    concreteLens = await pickConcreteLens(opts.topic, facts.keyDetails);
     composeOutline = await planComposeOutline({
       topic: opts.topic,
       subtopics: opts.subtopics,
@@ -206,6 +215,7 @@ export async function runHumanizationEngine(
       faqItems: facts.faqItems,
       includeFaq: opts.includeFaq,
       examples,
+      concreteLens,
     });
   }
 
@@ -235,6 +245,7 @@ export async function runHumanizationEngine(
       includeFaq: opts.includeFaq,
       composeOutline,
       composeArchetype,
+      concreteLens,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -248,6 +259,7 @@ export async function runHumanizationEngine(
       styleExampleExcerpt: composeStyleExcerpt,
       includeFaq: opts.includeFaq,
       composeArchetype,
+      composeRhythm,
     });
     if (composeMode) {
       html = stripLeadingComposeChrome(html);
@@ -273,6 +285,8 @@ export async function runHumanizationEngine(
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
     const operatorVoiceIssues = composeMode ? writerComposeOperatorVoiceIssues(html) : [];
+    const concretenessIssues = composeMode ? writerComposeConcretenessIssues(html) : [];
+    const rhythmIssues = composeMode ? writerComposeRhythmIssues(html) : [];
     const leakIssues = composeMode
       ? writerComposeReferenceLeakIssues(html, knownExampleTitles)
       : [];
@@ -301,7 +315,9 @@ export async function runHumanizationEngine(
         voiceStyleIssues.length +
         operatorVoiceIssues.length +
         leakIssues.length +
-        faqStyleIssues.length,
+        faqStyleIssues.length +
+        concretenessIssues.length +
+        rhythmIssues.length,
       styleIssueCounts,
     };
 
@@ -327,6 +343,8 @@ export async function runHumanizationEngine(
       operatorVoiceIssues.length === 0 &&
       leakIssues.length === 0 &&
       faqStyleIssues.length === 0 &&
+      concretenessIssues.length === 0 &&
+      rhythmIssues.length === 0 &&
       genericityOk;
 
     if (gateOk && noDrift) {
@@ -351,6 +369,8 @@ export async function runHumanizationEngine(
       ...operatorVoiceIssues,
       ...leakIssues,
       ...faqStyleIssues,
+      ...concretenessIssues,
+      ...rhythmIssues,
     ]);
   }
 
@@ -402,6 +422,7 @@ export async function polishComposeHtmlVoice(opts: {
   styleExampleExcerpt?: string;
   retryIssues?: string[];
   composeArchetype?: ComposeArticleArchetype;
+  composeRhythm?: ComposeStyleKitRhythm;
 }): Promise<string> {
   const html = await humanizeArticleHtml({
     voice: opts.voice,
@@ -413,6 +434,7 @@ export async function polishComposeHtmlVoice(opts: {
     retryIssues: opts.retryIssues,
     attempt: opts.retryIssues?.length ? 2 : 1,
     composeArchetype: opts.composeArchetype,
+    composeRhythm: opts.composeRhythm,
   });
   return stripLeadingComposeChrome(html);
 }

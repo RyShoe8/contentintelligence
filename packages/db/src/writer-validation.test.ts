@@ -14,7 +14,10 @@ import {
   writerArticleDisplayHtml,
   writerComposeResearchConfig,
   writerComposeBriefOutlineIssues,
+  writerComposeConcretenessIssues,
   writerComposeFaqStyleIssues,
+  writerComposeRhythmIssues,
+  writerComposeSectionRoleIssues,
   writerComposeLinkIssues,
   writerComposeOperatorVoiceIssues,
   writerComposeReferenceLeakIssues,
@@ -846,6 +849,26 @@ describe("writerComposeVoiceStyleIssues", () => {
     const issues = writerComposeVoiceStyleIssues(html);
     assert.ok(issues.some((i) => i.includes("Designing with Residents")));
   });
+
+  it("flags rethinking and in-action headings plus new guide phrases", () => {
+    const html =
+      "<h2>Rethinking Senior Living Design</h2><h2>Our Philosophy in Action</h2><p>Bathrooms boast walk-in showers that pave the way for safety, and the results speak volumes because comfort and dignity go hand in hand.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Rethinking Senior Living Design")));
+    assert.ok(issues.some((i) => i.includes("Philosophy in Action")));
+    assert.ok(issues.some((i) => i.includes("pave the way")));
+    assert.ok(issues.some((i) => i.includes("speak volumes")));
+    assert.ok(issues.some((i) => i.includes("go hand in hand")));
+    assert.ok(issues.some((i) => i.includes("boast")));
+  });
+
+  it("flags our-commitment-to heading and checkbox phrase", () => {
+    const html =
+      "<h2>Our Commitment to Excellence</h2><p>Safety isn't just a checkbox for us; it caters to the whole person.</p>";
+    const issues = writerComposeVoiceStyleIssues(html);
+    assert.ok(issues.some((i) => i.includes("Our Commitment to Excellence")));
+    assert.ok(issues.some((i) => i.includes("isn't just a checkbox")));
+  });
 });
 
 describe("writerComposeHardVoiceIssues", () => {
@@ -868,6 +891,77 @@ describe("writerComposeHardVoiceIssues", () => {
     const issues = collectComposeHardVoiceRetryIssues(html);
     assert.ok(issues.length >= 1);
     assert.equal(new Set(issues).size, issues.length);
+  });
+});
+
+describe("writerComposeConcretenessIssues", () => {
+  it("flags abstract copy with no numbers or proper nouns", () => {
+    const sentence =
+      "Good design supports wellbeing and fosters a sense of belonging for residents and their families across every shared space. ";
+    const html = `<p>${sentence.repeat(20)}</p>`;
+    const issues = writerComposeConcretenessIssues(html);
+    assert.ok(issues.some((i) => i.includes("reads abstract")));
+  });
+
+  it("passes specific copy with numbers and named places", () => {
+    const sentence =
+      "Only 10% of chairs pass the test at our 35,000 square foot Design Center in Dallas, where Sarah Thompson checks each 10-year warranty herself. ";
+    const html = `<p>${sentence.repeat(15)}</p>`;
+    assert.equal(writerComposeConcretenessIssues(html).length, 0);
+  });
+
+  it("skips short articles", () => {
+    const html = "<p>Good design supports wellbeing and belonging.</p>";
+    assert.equal(writerComposeConcretenessIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeRhythmIssues", () => {
+  it("flags uniform long paragraphs with no bold lines", () => {
+    const longP = `<p>${"This paragraph contains a steady flow of medium length sentences that never break stride or land a short punchy statement anywhere in the body. ".repeat(3)}</p>`;
+    const html = longP.repeat(7);
+    const issues = writerComposeRhythmIssues(html);
+    assert.ok(issues.some((i) => i.includes("No rhythm variation")));
+  });
+
+  it("passes copy with short punchy paragraphs", () => {
+    const longP = `<p>${"This paragraph contains a steady flow of medium length sentences that never break stride or land a short punchy statement anywhere in the body. ".repeat(3)}</p>`;
+    const html = `${longP}<p>Every. Single. One.</p>${longP.repeat(6)}`;
+    assert.equal(writerComposeRhythmIssues(html).length, 0);
+  });
+
+  it("passes copy with bold conviction lines", () => {
+    const longP = `<p>${"This paragraph contains a steady flow of medium length sentences that never break stride or land a short punchy statement anywhere in the body. ".repeat(3)}</p>`;
+    const html = `${longP}<p>${"We test everything before it reaches a community because <strong>a chair is never just a chair</strong> and details carry the entire experience for residents. ".repeat(3)}</p>${longP.repeat(5)}`;
+    assert.equal(writerComposeRhythmIssues(html).length, 0);
+  });
+});
+
+describe("writerComposeSectionRoleIssues", () => {
+  it("flags rejection heading over neutral body", () => {
+    const html =
+      "<h2>What We Reject</h2><p>Research shows that lighting and acoustics influence resident comfort in measurable ways across many communities.</p>";
+    const issues = writerComposeSectionRoleIssues(html);
+    assert.ok(issues.some((i) => i.includes("What We Reject")));
+  });
+
+  it("passes rejection heading with actual rejections", () => {
+    const html =
+      "<h2>What We Reject</h2><p>We reject chairs that look fine in a catalog but fail after six months of daily use in a real community.</p>";
+    assert.equal(writerComposeSectionRoleIssues(html).length, 0);
+  });
+
+  it("ignores non-rejection headings", () => {
+    const html =
+      "<h2>The Dining Room</h2><p>Research shows that lighting and acoustics influence resident comfort in measurable ways.</p>";
+    assert.equal(writerComposeSectionRoleIssues(html).length, 0);
+  });
+
+  it("is included in hard voice issues", () => {
+    const html =
+      "<h2>What We Stand Against</h2><p>Communities increasingly recognize that environment matters and research highlights several relevant findings for many operators today.</p>";
+    const issues = writerComposeHardVoiceIssues(html);
+    assert.ok(issues.some((i) => i.includes("promises rejection")));
   });
 });
 

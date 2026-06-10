@@ -114,6 +114,7 @@ describe("writerArticleSchema", () => {
       headings: ["Opening"],
       openingParagraphs: [],
       signatureParagraphs: [],
+      concreteDetails: [],
       rhythmSample: null as unknown as string,
     });
     assert.equal(kit.rhythmSample, undefined);

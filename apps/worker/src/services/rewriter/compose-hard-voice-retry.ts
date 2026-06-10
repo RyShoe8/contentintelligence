@@ -9,7 +9,10 @@ import {
 import type { Voice } from "@content-resourcer/db";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { interpretBrand } from "./brand-interpreter.js";
-import { resolveComposeArticleArchetype } from "./compose-article-archetype.js";
+import {
+  resolveComposeArticleArchetype,
+  resolvePrimaryKitRhythm,
+} from "./compose-article-archetype.js";
 import {
   applyManifestoArchetypeOverride,
   planComposeOutline,
@@ -51,6 +54,8 @@ export async function runComposeHardVoiceFixLoop(
     knownExampleTitles: opts.knownExampleTitles,
     faqItems: opts.facts.faqItems,
   };
+
+  const composeRhythm = resolvePrimaryKitRhythm(opts.examples);
 
   for (let attempt = 0; attempt < COMPOSE_POST_LINK_HARD_MAX; attempt++) {
     if (!hasComposeHardVoiceFailures(html, gateOpts)) return html;
@@ -105,6 +110,7 @@ export async function runComposeHardVoiceFixLoop(
         styleExampleExcerpt: opts.styleExampleExcerpt,
         includeFaq: opts.includeFaq,
         composeArchetype,
+        composeRhythm,
       });
       html = stripLeadingComposeChrome(html);
     } else {
@@ -122,6 +128,7 @@ export async function runComposeHardVoiceFixLoop(
         styleExampleExcerpt: opts.styleExampleExcerpt,
         includeFaq: opts.includeFaq,
         composeArchetype,
+        composeRhythm,
       });
       html = stripLeadingComposeChrome(html);
     }

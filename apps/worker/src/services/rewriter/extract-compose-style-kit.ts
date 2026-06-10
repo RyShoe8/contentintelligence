@@ -13,6 +13,9 @@ const SIGNATURE_MAX_WORDS = 65;
 const OPENING_PARAGRAPH_COUNT = 4;
 const SIGNATURE_TARGET = 6;
 const RHYTHM_SAMPLE_CHARS = 600;
+const CONCRETE_DETAIL_TARGET = 15;
+const CONCRETE_DETAIL_MAX_WORDS = 50;
+const SHORT_PARAGRAPH_WORDS = 12;
 
 function isListOnlyParagraph(html: string): boolean {
   const trimmed = html.trim();
@@ -41,6 +44,79 @@ function midArticleRhythmSample(sanitized: string): string | undefined {
   return sample.length >= 80 ? sample : undefined;
 }
 
+// Numbers, percentages, dimensions, warranties, money, and Name Surname pairs.
+const CONCRETE_SIGNAL_RES = [
+  /\d+(?:\.\d+)?%/,
+  /\d{1,3}(?:,\d{3})+/,
+  /\d+\s*[-–]?\s*(?:year|years|sq\.?\s*ft|square\s+(?:feet|foot)|ft|foot|inch|inches)\b/i,
+  /\$\d/,
+  /\b\d+['′]\s?\d+["″]?/,
+  /\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/,
+];
+
+function sentenceConcreteScore(sentence: string): number {
+  let score = 0;
+  for (const re of CONCRETE_SIGNAL_RES) {
+    if (re.test(sentence)) score += 2;
+  }
+  if (/\b(?:we|our|us)\b/i.test(sentence)) score += 1;
+  if (/\b(?:test|warranty|showroom|factory|founder|rule)\b/i.test(sentence)) score += 1;
+  return score;
+}
+
+function splitIntoSentences(plain: string): string[] {
+  return plain
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 20);
+}
+
+/** Verbatim brand-specific facts (numbers, names, places, processes) from example copy. */
+export function extractConcreteDetails(sanitized: string): string[] {
+  const sentences = splitIntoSentences(stripHtmlToPlainText(sanitized));
+  const scored = sentences
+    .map((sentence) => ({ sentence, score: sentenceConcreteScore(sentence) }))
+    .filter(({ sentence, score }) => {
+      if (score < 2) return false;
+      const words = sentence.split(/\s+/).filter(Boolean).length;
+      return words >= 4 && words <= CONCRETE_DETAIL_MAX_WORDS;
+    })
+    .sort((a, b) => b.score - a.score)
+    .map(({ sentence }) => sentence);
+  return [...new Set(scored)].slice(0, CONCRETE_DETAIL_TARGET);
+}
+
+function paragraphHasFragmentRun(plain: string): boolean {
+  const sentences = plain.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  return sentences.some((s) => {
+    const words = s.split(/\s+/).filter(Boolean).length;
+    return words >= 1 && words <= 4 && /[.!?]$/.test(s);
+  });
+}
+
+/** Paragraph rhythm metrics from example copy. */
+export function extractRhythmMetrics(sanitized: string): {
+  shortParagraphShare: number;
+  hasFragments: boolean;
+  hasBoldLines: boolean;
+} {
+  const paragraphs = writerHtmlParagraphs(sanitized)
+    .filter((p) => !isListOnlyParagraph(p))
+    .map((p) => stripHtmlToPlainText(p).trim())
+    .filter((t) => t.length > 0);
+
+  const shortCount = paragraphs.filter(
+    (t) => t.split(/\s+/).filter(Boolean).length <= SHORT_PARAGRAPH_WORDS,
+  ).length;
+  const shortParagraphShare = paragraphs.length ? shortCount / paragraphs.length : 0;
+  const hasFragments = paragraphs.some(paragraphHasFragmentRun);
+
+  const bodyWithoutHeadings = sanitized.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, "");
+  const hasBoldLines = /<(?:strong|b)\b/i.test(bodyWithoutHeadings);
+
+  return { shortParagraphShare, hasFragments, hasBoldLines };
+}
+
 /** Deterministic style kit from HTML — no LLM. */
 export function extractComposeStyleKitDeterministic(html: string): ComposeStyleKit {
   const sanitized = sanitizeArticleHtmlForLearning(html);
@@ -65,11 +141,15 @@ export function extractComposeStyleKitDeterministic(html: string): ComposeStyleK
 
   const signatureParagraphs = [...new Set(signatureCandidates)].slice(0, SIGNATURE_TARGET);
   const rhythmSample = midArticleRhythmSample(sanitized);
+  const concreteDetails = extractConcreteDetails(sanitized);
+  const rhythm = extractRhythmMetrics(sanitized);
 
   const kitInput: Record<string, unknown> = {
     headings,
     openingParagraphs,
     signatureParagraphs,
+    concreteDetails,
+    rhythm,
   };
   if (rhythmSample) kitInput.rhythmSample = rhythmSample;
 
@@ -79,42 +159,58 @@ export function extractComposeStyleKitDeterministic(html: string): ComposeStyleK
   );
 }
 
-async function extractSignatureParagraphsWithLlm(html: string): Promise<string[]> {
+async function extractKitFieldsWithLlm(html: string): Promise<{
+  signatureParagraphs: string[];
+  concreteDetails: string[];
+}> {
   const trimmed = sanitizeArticleHtmlForLearning(html).slice(0, 12000);
-  if (!trimmed.trim()) return [];
+  if (!trimmed.trim()) return { signatureParagraphs: [], concreteDetails: [] };
 
-  const raw = await completeJson<{ signatureParagraphs?: string[] }>({
-    system: `Extract 2–3 signature conviction paragraphs from brand editorial content as JSON only:
-{"signatureParagraphs": string[]}
+  const raw = await completeJson<{
+    signatureParagraphs?: string[];
+    concreteDetails?: string[];
+  }>({
+    system: `Extract brand voice anchors from editorial content as JSON only:
+{"signatureParagraphs": string[], "concreteDetails": string[]}
 Rules:
-- Each entry: one short paragraph (1–3 sentences) with operator "we" voice when present.
-- Prefer paragraphs with strong opinions, rules, or selective stances — not generic overview.
+- signatureParagraphs: 2–3 short conviction paragraphs (1–3 sentences) with operator "we" voice when present. Prefer strong opinions, rules, or selective stances — not generic overview.
+- concreteDetails: up to 8 verbatim brand-specific facts — numbers, percentages, named people, named tests or processes, places, warranties, dimensions. One sentence each.
 - Copy text verbatim from the article; do not invent.
-- Empty array if none found.`,
+- Empty arrays if none found.`,
     user: trimmed,
     temperature: 0.2,
-    maxTokens: 700,
+    maxTokens: 900,
   });
 
-  const paragraphs = raw?.signatureParagraphs?.filter(
-    (p) => typeof p === "string" && p.trim().length >= 20,
-  );
-  return paragraphs?.slice(0, 3).map((p) => p.trim()) ?? [];
+  const signatureParagraphs =
+    raw?.signatureParagraphs
+      ?.filter((p) => typeof p === "string" && p.trim().length >= 20)
+      .slice(0, 3)
+      .map((p) => p.trim()) ?? [];
+  const concreteDetails =
+    raw?.concreteDetails
+      ?.filter((d) => typeof d === "string" && d.trim().length >= 10)
+      .slice(0, 8)
+      .map((d) => d.trim()) ?? [];
+  return { signatureParagraphs, concreteDetails };
 }
 
-/** Full kit extraction: deterministic + optional LLM when signatures are sparse. */
+/** Full kit extraction: deterministic + optional LLM when signatures or details are sparse. */
 export async function extractComposeStyleKit(html: string): Promise<ComposeStyleKit> {
   const kit = extractComposeStyleKitDeterministic(html);
-  if (kit.signatureParagraphs.length >= 2) return kit;
+  if (kit.signatureParagraphs.length >= 2 && kit.concreteDetails.length >= 3) return kit;
 
   try {
-    const llmSignatures = await extractSignatureParagraphsWithLlm(html);
-    if (!llmSignatures.length) return kit;
+    const llm = await extractKitFieldsWithLlm(html);
+    if (!llm.signatureParagraphs.length && !llm.concreteDetails.length) return kit;
     return composeStyleKitSchema.parse({
       ...kit,
-      signatureParagraphs: [...new Set([...kit.signatureParagraphs, ...llmSignatures])].slice(
+      signatureParagraphs: [
+        ...new Set([...kit.signatureParagraphs, ...llm.signatureParagraphs]),
+      ].slice(0, SIGNATURE_TARGET),
+      concreteDetails: [...new Set([...kit.concreteDetails, ...llm.concreteDetails])].slice(
         0,
-        SIGNATURE_TARGET,
+        CONCRETE_DETAIL_TARGET,
       ),
     });
   } catch {

@@ -179,7 +179,7 @@ describe("buildReconstructionSystemPrompt", () => {
     });
 
     assert.match(prompt, /FAQ section \(required — editorial format/);
-    assert.match(prompt, /NOT "Your Questions Answered"/);
+    assert.match(prompt, /Forbidden FAQ H2 titles: "Your Questions Answered"/);
     assert.match(prompt, /<h3>Question\?<\/h3><p>Answer/);
   });
 

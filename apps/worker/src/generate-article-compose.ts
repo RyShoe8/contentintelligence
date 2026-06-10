@@ -48,7 +48,10 @@ import {
   summarizeComposeStyleKits,
 } from "./services/rewriter/extract-compose-style-kit.js";
 import { runComposeHardVoiceFixLoop } from "./services/rewriter/compose-hard-voice-retry.js";
-import { resolveComposeArticleArchetype } from "./services/rewriter/compose-article-archetype.js";
+import {
+  resolveComposeArticleArchetype,
+  resolvePrimaryKitRhythm,
+} from "./services/rewriter/compose-article-archetype.js";
 import { applyManifestoArchetypeOverride } from "./services/rewriter/compose-outline.js";
 
 export type GenerateArticleComposeOpts = {
@@ -79,6 +82,7 @@ async function postExpandComposeVoicePolish(opts: {
   knownExampleTitles?: string[];
   faqItems?: { question: string; answer: string }[];
   composeArchetype?: ReturnType<typeof resolveComposeArticleArchetype>;
+  composeRhythm?: ReturnType<typeof resolvePrimaryKitRhythm>;
 }): Promise<string> {
   let html = await polishComposeHtmlVoice({
     voice: opts.voice,
@@ -87,6 +91,7 @@ async function postExpandComposeVoicePolish(opts: {
     includeFaq: opts.includeFaq,
     styleExampleExcerpt: opts.styleExampleExcerpt,
     composeArchetype: opts.composeArchetype,
+    composeRhythm: opts.composeRhythm,
   });
 
   const voiceIssues = [
@@ -113,6 +118,7 @@ async function postExpandComposeVoicePolish(opts: {
       styleExampleExcerpt: opts.styleExampleExcerpt,
       retryIssues,
       composeArchetype: opts.composeArchetype,
+      composeRhythm: opts.composeRhythm,
     });
   }
 
@@ -289,6 +295,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     resolveComposeArticleArchetype(humanized.examples),
     opts.topic,
   );
+  const composeRhythm = resolvePrimaryKitRhythm(humanized.examples);
 
   let pipeline = await applyWriterLinkPipeline(humanized.html, {
     sourceText: voiceResearchBrief,
@@ -337,6 +344,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       knownExampleTitles,
       faqItems: humanized.facts.faqItems,
       composeArchetype,
+      composeRhythm,
     });
   } else {
     const composeGateOpts = {
@@ -370,6 +378,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         knownExampleTitles,
         faqItems: humanized.facts.faqItems,
         composeArchetype,
+        composeRhythm,
       });
     }
   }
@@ -411,6 +420,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       knownExampleTitles,
       faqItems: humanized.facts.faqItems,
       composeArchetype,
+      composeRhythm,
     });
     html = stripLeadingComposeChrome(html);
   }

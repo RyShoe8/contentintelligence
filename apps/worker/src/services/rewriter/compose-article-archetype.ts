@@ -106,6 +106,13 @@ export function resolveComposeArticleArchetype(
   return extractComposeArticleArchetype(primary.html, primary.composeStyleKit);
 }
 
+/** Rhythm metrics from the primary style example kit, when present. */
+export function resolvePrimaryKitRhythm(
+  examples: ArticleRewriteExample[],
+): ComposeStyleKit["rhythm"] {
+  return pickPrimaryStyleExample(examples)?.composeStyleKit?.rhythm;
+}
+
 export function attachArchetypeToStyleKit(
   kit: ComposeStyleKit,
   html: string,

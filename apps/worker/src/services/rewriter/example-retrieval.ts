@@ -9,7 +9,11 @@ import {
 } from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
-import { extractComposeStyleKitDeterministic } from "./extract-compose-style-kit.js";
+import {
+  extractComposeStyleKitDeterministic,
+  extractConcreteDetails,
+  extractRhythmMetrics,
+} from "./extract-compose-style-kit.js";
 import { attachArchetypeToStyleKit } from "./compose-article-archetype.js";
 import type { ArticleRewriteExample } from "./types.js";
 
@@ -29,14 +33,27 @@ type ExampleCandidate = {
   composeStyleKit?: ComposeStyleKit;
 };
 
+/** Backfill concreteDetails/rhythm on stored kits that pre-date those fields. */
+function backfillStyleKitFields(kit: ComposeStyleKit, content: string): ComposeStyleKit {
+  const needsDetails = !kit.concreteDetails.length;
+  const needsRhythm = !kit.rhythm;
+  if (!needsDetails && !needsRhythm) return kit;
+  const sanitized = sanitizeArticleHtmlForLearning(content);
+  return {
+    ...kit,
+    concreteDetails: needsDetails ? extractConcreteDetails(sanitized) : kit.concreteDetails,
+    rhythm: needsRhythm ? extractRhythmMetrics(sanitized) : kit.rhythm,
+  };
+}
+
 function resolveComposeStyleKit(
   isStyleExample: boolean,
   stored: ComposeStyleKit | undefined,
   content: string,
 ): ComposeStyleKit | undefined {
   if (!isStyleExample) return undefined;
-  if (stored?.archetype) return stored;
-  if (stored) return attachArchetypeToStyleKit(stored, content);
+  if (stored?.archetype) return backfillStyleKitFields(stored, content);
+  if (stored) return backfillStyleKitFields(attachArchetypeToStyleKit(stored, content), content);
   return extractComposeStyleKitDeterministic(content);
 }
 

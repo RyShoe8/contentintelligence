@@ -82,12 +82,19 @@ function fallbackOutline(
   return { sections };
 }
 
-const FAQ_HEADING_ROLE_RE = /\b(?:reject|questions|look for)\b/i;
+const FAQ_QUESTION_ROLE_RE = /\b(?:question|ask|hear)\b/i;
+const FAQ_CONVICTION_ROLE_RE = /\b(?:reject|look for)\b/i;
 
-/** Editorial FAQ H2 role from primary archetype headings. */
+/** Editorial FAQ H2 role from primary archetype headings — question-ish roles first. */
 export function faqHeadingRole(archetype: ComposeArticleArchetype): string {
-  const roleMatch = [...archetype.sampleHeadings].reverse().find((h) => FAQ_HEADING_ROLE_RE.test(h));
-  if (roleMatch) return roleMatch;
+  const questionRole = [...archetype.sampleHeadings]
+    .reverse()
+    .find((h) => FAQ_QUESTION_ROLE_RE.test(h));
+  if (questionRole) return questionRole;
+  const convictionRole = [...archetype.sampleHeadings]
+    .reverse()
+    .find((h) => FAQ_CONVICTION_ROLE_RE.test(h));
+  if (convictionRole) return convictionRole;
   const last = archetype.sampleHeadings[archetype.sampleHeadings.length - 1];
   return last?.trim() || "Closing stance";
 }
@@ -117,12 +124,35 @@ function faqOutlineRules(archetype: ComposeArticleArchetype, includeFaq?: boolea
   if (!includeFaq) return "";
   const role = faqHeadingRole(archetype);
   return `
-- Closing FAQ section (+1 beyond main sections) must use an editorial H2 adapted from: "${role}" — NOT a question-mark title ("Curious About…", "Got Questions").`;
+- Closing FAQ section (+1 beyond main sections) must use an editorial H2 adapted from: "${role}" — adapt the wording so the title makes sense over Q&A items; NOT a question-mark title ("Curious About…", "Got Questions").`;
+}
+
+const REJECTION_ROLE_HEADING_RE = /\b(?:reject|never|won'?t|stand against)\b/i;
+const REJECTION_FACT_RE = /\b(?:reject|never|won'?t|avoid|refuse|rule out|don'?t)\b/i;
+
+/** Rejection-role headings must be assigned rejection-type facts. */
+export function outlineRejectionRoleIssues(outline: ComposeOutline): string[] {
+  const issues: string[] = [];
+  for (const section of outline.sections) {
+    if (!REJECTION_ROLE_HEADING_RE.test(section.heading)) continue;
+    if (!REJECTION_FACT_RE.test(section.factSummary)) {
+      issues.push(
+        `Rejection-role section "${section.heading}" must be assigned facts about what we reject/avoid — reassign facts or rename the heading`,
+      );
+    }
+  }
+  return issues.slice(0, 2);
+}
+
+function concreteLensRule(lens?: string): string {
+  if (!lens?.trim()) return "";
+  return `
+- Anchor the article through this concrete lens: ${lens.trim()}. Open with it, return to it, use it to make abstract guidelines tangible.`;
 }
 
 export function buildOutlineSystemPrompt(
   archetype: ComposeArticleArchetype,
-  opts?: { includeFaq?: boolean; topic?: string },
+  opts?: { includeFaq?: boolean; topic?: string; concreteLens?: string },
 ): string {
   const includeFaq = opts?.includeFaq;
   const topic = opts?.topic?.trim() ?? "";
@@ -139,7 +169,7 @@ ${roles.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}
 - Headings must sound like editorial chapter titles — NOT research brief labels (Topic overview, Key facts, Angles, Caveats, FAQ).
 - Do NOT use generic survey headings ("Understanding the…", "Innovative Trends", "Nature's Embrace", "Looking Ahead").
 - Assign each section a factSummary describing which research facts to weave in (short phrase, not full bullets).
-- Subtopics and user angles are fact pools — weave into sections, not as H2 titles.${manifestoOutlineRules(topic)}${faqOutlineRules(archetype, includeFaq)}`;
+- Subtopics and user angles are fact pools — weave into sections, not as H2 titles.${manifestoOutlineRules(topic)}${concreteLensRule(opts?.concreteLens)}${faqOutlineRules(archetype, includeFaq)}`;
 }
 
 export async function planComposeOutline(opts: {
@@ -150,6 +180,7 @@ export async function planComposeOutline(opts: {
   includeFaq?: boolean;
   archetype?: ComposeArticleArchetype;
   examples?: ArticleRewriteExample[];
+  concreteLens?: string;
 }): Promise<ComposeOutline> {
   const topic = opts.topic.trim();
   const baseArchetype =
@@ -176,7 +207,7 @@ export async function planComposeOutline(opts: {
       title?: string;
       sections?: { heading?: string; factSummary?: string }[];
     }>({
-      system: `${buildOutlineSystemPrompt(archetype, { includeFaq: opts.includeFaq, topic })}${retryBlock}`,
+      system: `${buildOutlineSystemPrompt(archetype, { includeFaq: opts.includeFaq, topic, concreteLens: opts.concreteLens })}${retryBlock}`,
       user: [
         `Topic: ${topic}`,
         subtopicBlock,
@@ -219,6 +250,7 @@ export async function planComposeOutline(opts: {
     if (subtopicsUsedAsHeadings(outline, opts.subtopics ?? [])) {
       issues.push("Subtopics appear as section headings — weave subtopics as facts inside sections instead");
     }
+    issues.push(...outlineRejectionRoleIssues(outline));
     issues.push(...outlineHasTextbookHeadings(outline));
 
     if (issues.length) {

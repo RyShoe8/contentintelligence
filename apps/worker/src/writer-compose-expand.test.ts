@@ -16,7 +16,7 @@ describe("buildExpandArticleComposeSystemPrompt", () => {
     });
     assert.match(prompt, /Short paragraphs \(often 1–3 sentences\)/);
     assert.match(prompt, /Innovative Design Trends/);
-    assert.match(prompt, /NOT "Your Questions Answered"/);
+    assert.match(prompt, /Forbidden FAQ H2 titles: "Your Questions Answered"/);
   });
 });
 

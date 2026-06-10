@@ -22,7 +22,9 @@ import {
   COMPOSE_SBD_RHETORIC_RULES,
   COMPOSE_VOICE_RULES,
   composeFaqPromptRules,
+  composeRhythmPromptRules,
 } from "./compose-voice-rules.js";
+import { resolvePrimaryKitRhythm } from "./compose-article-archetype.js";
 import { buildRichExampleExcerpt } from "./compose-style-excerpt.js";
 import {
   faqHeadingRole,
@@ -33,7 +35,7 @@ import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
-const COMPOSE_EXAMPLE_EXCERPT_CHARS = 3500;
+const COMPOSE_EXAMPLE_EXCERPT_CHARS = 7000;
 
 function fingerprintsBlock(memory?: BrandMemory): string {
   if (!memory) return "";
@@ -114,13 +116,30 @@ function formatSectionsForPrompt(facts: ContentFacts): string {
   return `\n\nProcedural sections (include ALL steps):\n${JSON.stringify(facts.sections, null, 2)}`;
 }
 
+const BRAND_DETAILS_MAX = 12;
+
+/** Aggregated verbatim brand facts from style example kits. */
+export function formatBrandDetailsForPrompt(examples: ArticleRewriteExample[]): string {
+  const details: string[] = [];
+  for (const ex of examples) {
+    for (const d of ex.composeStyleKit?.concreteDetails ?? []) {
+      if (!details.some((existing) => existing.toLowerCase() === d.toLowerCase())) {
+        details.push(d);
+      }
+    }
+  }
+  if (!details.length) return "";
+  const lines = details.slice(0, BRAND_DETAILS_MAX).map((d) => `- ${d}`);
+  return `\n\nBrand concrete details (weave 3–6 naturally where relevant; copy facts faithfully; NEVER invent new statistics, names, or places):\n${lines.join("\n")}`;
+}
+
 function formatExamplesForPrompt(examples: ArticleRewriteExample[], composeMode?: boolean): string {
   if (!examples.length) return "";
   const excerptChars = composeMode ? COMPOSE_EXAMPLE_EXCERPT_CHARS : EXAMPLE_EXCERPT_CHARS;
   const selected = composeMode ? examples : examples.slice(0, 5);
   const blocks = selected.map((ex, i) => {
     const body = composeMode
-      ? buildRichExampleExcerpt(ex.html, excerptChars)
+      ? buildRichExampleExcerpt(ex.html, excerptChars, ex.composeStyleKit)
       : ex.html.length > excerptChars
         ? `${ex.html.slice(0, excerptChars)}…`
         : ex.html;
@@ -149,6 +168,7 @@ export type ReconstructArticleOpts = {
   includeFaq?: boolean;
   composeOutline?: ComposeOutline;
   composeArchetype?: ComposeArticleArchetype;
+  concreteLens?: string;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -190,12 +210,19 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
     opts.composeMode && opts.composeArchetype?.openingPattern?.trim()
       ? `\nOpening requirement: first or second paragraph must adapt this operator conviction (rhythm only, do not copy verbatim): ${opts.composeArchetype.openingPattern.trim()}`
       : "";
+  const rhythmBlock = opts.composeMode
+    ? composeRhythmPromptRules(resolvePrimaryKitRhythm(opts.examples))
+    : "";
+  const lensBlock =
+    opts.composeMode && opts.concreteLens?.trim()
+      ? `\nConcrete lens: anchor the article through "${opts.concreteLens.trim()}" — open with it, return to it, use it to make abstract guidelines tangible.`
+      : "";
   const composeTopicBlock =
     opts.composeMode && topic
       ? `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
-Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${openingBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${lensBlock}${openingBlock}${rhythmBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
       : "";
 
   const viewpointRule = opts.composeMode
@@ -222,7 +249,7 @@ Rules:
 - Do NOT rewrite any original draft text. You never saw the original wording.
 - Use ONLY extracted facts and brand interpretation below.
 ${viewpointRule}
-- Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <ol>, <a href="...">). No markdown. No <html>/<body>.
+- Output an HTML fragment only (<p>, <h2>, <h3>, <ul>, <li>, <ol>, <strong>, <a href="...">). No markdown. No <html>/<body>.
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
@@ -256,6 +283,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
     "Brand interpretation (JSON):",
     JSON.stringify(opts.interpretation, null, 2),
     formatExamplesForPrompt(opts.examples, opts.composeMode),
+    opts.composeMode ? formatBrandDetailsForPrompt(opts.examples) : "",
     linkBlock,
     retryBlock,
     "",

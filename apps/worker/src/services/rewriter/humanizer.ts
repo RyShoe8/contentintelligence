@@ -1,4 +1,8 @@
-import { rewriterBlacklistPromptBlock, type ComposeArticleArchetype } from "@content-resourcer/db";
+import {
+  rewriterBlacklistPromptBlock,
+  type ComposeArticleArchetype,
+  type ComposeStyleKitRhythm,
+} from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../../env.js";
@@ -8,6 +12,7 @@ import {
   COMPOSE_SBD_RHETORIC_RULES,
   COMPOSE_VOICE_RULES,
   composeFaqPromptRules,
+  composeRhythmPromptRules,
 } from "./compose-voice-rules.js";
 import { faqHeadingRole } from "./compose-outline.js";
 import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
@@ -25,6 +30,7 @@ export type HumanizeArticleOpts = {
   styleExampleExcerpt?: string;
   includeFaq?: boolean;
   composeArchetype?: ComposeArticleArchetype;
+  composeRhythm?: ComposeStyleKitRhythm;
 };
 
 export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<string> {
@@ -63,10 +69,11 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
     opts.composeMode && opts.composeArchetype?.openingPattern?.trim()
       ? `\n- First or second paragraph must keep adapted operator conviction from: ${opts.composeArchetype.openingPattern.trim()}`
       : "";
+  const rhythmBlock = opts.composeMode ? composeRhythmPromptRules(opts.composeRhythm) : "";
 
   const composeTopicBlock =
     opts.composeMode && opts.topic?.trim()
-      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${manifestoBlock}${openingBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${composeFaqBlock}`
+      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${manifestoBlock}${openingBlock}${rhythmBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${composeFaqBlock}`
       : "";
 
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.
