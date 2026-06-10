@@ -691,10 +691,16 @@ export const writerComposeMetaSchema = z.object({
 
 export type WriterComposeMeta = z.infer<typeof writerComposeMetaSchema>;
 
+const optionalTrimmedString = (max: number) =>
+  z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().trim().max(max).optional(),
+  );
+
 export const composeArticleArchetypeSchema = z.object({
   sectionCount: z.number().int().min(1).max(12),
   sampleHeadings: z.array(z.string().trim().min(1)).max(20).default([]),
-  openingPattern: z.string().trim().max(500).optional(),
+  openingPattern: optionalTrimmedString(500),
   singleThreaded: z.boolean().default(true),
 });
 
@@ -704,7 +710,7 @@ export const composeStyleKitSchema = z.object({
   headings: z.array(z.string().trim().min(1)).max(30).default([]),
   openingParagraphs: z.array(z.string().trim().min(1)).max(6).default([]),
   signatureParagraphs: z.array(z.string().trim().min(1)).max(8).default([]),
-  rhythmSample: z.string().trim().max(800).optional(),
+  rhythmSample: optionalTrimmedString(800),
   archetype: composeArticleArchetypeSchema.optional(),
 });
 

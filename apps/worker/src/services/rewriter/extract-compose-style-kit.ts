@@ -66,13 +66,15 @@ export function extractComposeStyleKitDeterministic(html: string): ComposeStyleK
   const signatureParagraphs = [...new Set(signatureCandidates)].slice(0, SIGNATURE_TARGET);
   const rhythmSample = midArticleRhythmSample(sanitized);
 
+  const kitInput: Record<string, unknown> = {
+    headings,
+    openingParagraphs,
+    signatureParagraphs,
+  };
+  if (rhythmSample) kitInput.rhythmSample = rhythmSample;
+
   return attachArchetypeToStyleKit(
-    composeStyleKitSchema.parse({
-      headings,
-      openingParagraphs,
-      signatureParagraphs,
-      rhythmSample,
-    }),
+    composeStyleKitSchema.parse(kitInput),
     sanitized,
   );
 }

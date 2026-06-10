@@ -80,6 +80,31 @@ describe("writerArticleSchema", () => {
     assert.equal(parsed.compose_meta, undefined);
     assert.equal(parsed.compose_requested_at, undefined);
   });
+
+  it("coerces null compose_style_kit.rhythmSample to undefined on style_example docs", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "style_example",
+      status: "saved",
+      generated_html: "",
+      final_html: "<h2>We sit in every chair</h2><p>Editorial body copy.</p>".repeat(8),
+      source_text: "",
+      compose_style_kit: {
+        headings: ["We sit in every chair"],
+        openingParagraphs: [],
+        signatureParagraphs: [],
+        rhythmSample: null,
+        archetype: {
+          sectionCount: 2,
+          sampleHeadings: ["We sit in every chair", "What we look for"],
+          openingPattern: null,
+          singleThreaded: true,
+        },
+      },
+    });
+    assert.equal(parsed.compose_style_kit?.rhythmSample, undefined);
+    assert.equal(parsed.compose_style_kit?.archetype?.openingPattern, undefined);
+  });
 });
 
 describe("resolveWriterComposeStatus", () => {
