@@ -70,6 +70,41 @@ describe("voiceSchema", () => {
     });
     assert.equal(parsed.persona_error, undefined);
   });
+
+  it("accepts brand_profile with null optional positioning.secondary", () => {
+    const parsed = voiceSchema.parse({
+      id: "11111111-1111-1111-1111-111111111111",
+      organization_id: "22222222-2222-2222-2222-222222222222",
+      name: "Brand",
+      persona_status: "ready",
+      brand_profile: {
+        positioning: { primary: "operator voice", secondary: null },
+        audienceRelationship: { style: "advisor" },
+        emotionalBaseline: { primary: "calm", secondary: null },
+        taboos: [],
+        rhetoricalPatterns: [],
+        contentObjectives: [],
+        contradictions: { primaryTrait: "analytical", secondaryTrait: "" },
+        contrastive: { soundsLike: [], doesNotSoundLike: [] },
+        memory: {
+          favoritePhrases: [],
+          recurringTopics: [],
+          recurringJokes: [],
+          recurringCTAs: [],
+          recurringEnemies: [],
+        },
+        confidence: 0.7,
+        corpusHash: null,
+      },
+      created_by: "user@example.com",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    assert.equal(parsed.brand_profile?.positioning.primary, "operator voice");
+    assert.equal(parsed.brand_profile?.positioning.secondary, undefined);
+    assert.equal(parsed.brand_profile?.emotionalBaseline.secondary, undefined);
+    assert.equal(parsed.brand_profile?.corpusHash, undefined);
+  });
 });
 
 describe("formatStyleExamplesSyncSummary", () => {

@@ -79,4 +79,31 @@ describe("brandProfileSchema", () => {
     assert.equal(parsed.visualPersonality.visualTone, "");
     assert.equal(parsed.sharedIdentity.audienceType, "");
   });
+
+  it("parses null optional secondary and coerces null primary strings", () => {
+    const parsed = brandProfileSchema.parse({
+      positioning: { primary: "operator voice", secondary: null },
+      audienceRelationship: { style: null },
+      emotionalBaseline: { primary: null, secondary: null },
+      taboos: [],
+      rhetoricalPatterns: [],
+      contentObjectives: [],
+      contradictions: { primaryTrait: null, secondaryTrait: null },
+      contrastive: { soundsLike: [], doesNotSoundLike: [] },
+      memory: {
+        favoritePhrases: [],
+        recurringTopics: [],
+        recurringJokes: [],
+        recurringCTAs: [],
+        recurringEnemies: [],
+      },
+      corpusHash: null,
+    });
+    assert.equal(parsed.positioning.primary, "operator voice");
+    assert.equal(parsed.positioning.secondary, undefined);
+    assert.equal(parsed.audienceRelationship.style, "");
+    assert.equal(parsed.emotionalBaseline.primary, "");
+    assert.equal(parsed.emotionalBaseline.secondary, undefined);
+    assert.equal(parsed.corpusHash, undefined);
+  });
 });

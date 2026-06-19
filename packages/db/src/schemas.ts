@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { brandProfileSchema } from "./brand-profile.js";
+import { brandProfileSchema, sanitizeBrandProfileInput } from "./brand-profile.js";
 import { keyPointsFieldSchema } from "./key-points.js";
 import {
   normalizeDistributionPlatforms,
@@ -396,7 +396,7 @@ export const voiceSchema = z.preprocess(
   /** Set when a generate/retry was last kicked off (stale-pending detection). */
   persona_requested_at: z.coerce.date().optional(),
   brand_profile: z.preprocess(
-    (v) => (v == null ? undefined : v),
+    (v) => (v == null ? undefined : sanitizeBrandProfileInput(v)),
     brandProfileSchema.optional(),
   ),
   corpus_hash: z.preprocess(

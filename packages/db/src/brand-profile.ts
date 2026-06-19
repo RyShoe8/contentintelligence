@@ -23,6 +23,47 @@ function coercedString(max = 500) {
   );
 }
 
+function optionalTrimmedString(max = 500) {
+  return z.preprocess(
+    (v) => (v == null || v === "" ? undefined : String(v).trim().slice(0, max)),
+    z.string().max(max).optional(),
+  );
+}
+
+function optionalCoercedDate() {
+  return z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.coerce.date().optional(),
+  );
+}
+
+const OPTIONAL_STRING_KEYS = new Set(["secondary", "corpusHash"]);
+const OPTIONAL_DATE_KEYS = new Set(["memoryUpdatedAt", "analyzedAt"]);
+
+function sanitizeNestedRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(record)) {
+    if (val === null) {
+      if (OPTIONAL_STRING_KEYS.has(key) || OPTIONAL_DATE_KEYS.has(key)) continue;
+      out[key] = "";
+      continue;
+    }
+    if (typeof val === "object" && !Array.isArray(val) && !(val instanceof Date)) {
+      out[key] = sanitizeNestedRecord(val as Record<string, unknown>);
+    } else {
+      out[key] = val;
+    }
+  }
+  return out;
+}
+
+/** Strip null/empty optional nested fields before Zod parse (Mongo legacy shape). */
+export function sanitizeBrandProfileInput(v: unknown): unknown {
+  if (v == null) return undefined;
+  if (typeof v !== "object" || Array.isArray(v)) return v;
+  return sanitizeNestedRecord(v as Record<string, unknown>);
+}
+
 const stringList = (max: number) =>
   z.preprocess(
     (val) => (Array.isArray(val) ? val.filter((x) => typeof x === "string") : []),
@@ -40,28 +81,28 @@ export const brandMemorySchema = z.object({
   favoriteTransitions: stringList(20),
   recurringOpinions: stringList(20),
   recurringWarnings: stringList(20),
-  memoryUpdatedAt: z.coerce.date().optional(),
+  memoryUpdatedAt: optionalCoercedDate(),
 });
 
 export type BrandMemory = z.infer<typeof brandMemorySchema>;
 
 export const brandPositioningSchema = z.object({
-  primary: z.string().default(""),
-  secondary: z.string().optional(),
+  primary: coercedString(),
+  secondary: optionalTrimmedString(),
 });
 
 export const brandAudienceRelationshipSchema = z.object({
-  style: z.string().default(""),
+  style: coercedString(),
 });
 
 export const brandEmotionalBaselineSchema = z.object({
-  primary: z.string().default(""),
-  secondary: z.string().optional(),
+  primary: coercedString(),
+  secondary: optionalTrimmedString(),
 });
 
 export const brandContradictionsSchema = z.object({
-  primaryTrait: z.string().default(""),
-  secondaryTrait: z.string().default(""),
+  primaryTrait: coercedString(),
+  secondaryTrait: coercedString(),
 });
 
 export const brandContrastiveSchema = z.object({
@@ -99,11 +140,11 @@ export const visualPersonalitySchema = z.object({
 export type VisualPersonality = z.infer<typeof visualPersonalitySchema>;
 
 export const sharedIdentitySchema = z.object({
-  audienceType: z.string().default(""),
-  internetCultureAlignment: z.string().default(""),
-  sophisticationLevel: z.string().default(""),
-  energyProfile: z.string().default(""),
-  trustStyle: z.string().default(""),
+  audienceType: coercedString(),
+  internetCultureAlignment: coercedString(),
+  sophisticationLevel: coercedString(),
+  energyProfile: coercedString(),
+  trustStyle: coercedString(),
 });
 
 export type SharedIdentity = z.infer<typeof sharedIdentitySchema>;
@@ -130,7 +171,7 @@ export const brandProfileSchema = z.object({
     recurringCTAs: [],
     recurringEnemies: [],
   }),
-  archetype: z.string().default(""),
+  archetype: coercedString(),
   visualPersonality: visualPersonalitySchema.default({
     visualTone: "",
     compositionStyle: [],
@@ -157,11 +198,16 @@ export const brandProfileSchema = z.object({
   }),
   confidence: z.number().min(0).max(1).default(0.5),
   visualConfidence: z.number().min(0).max(1).default(0.5),
-  analyzedAt: z.coerce.date().optional(),
-  corpusHash: z.string().optional(),
+  analyzedAt: optionalCoercedDate(),
+  corpusHash: optionalTrimmedString(),
 });
 
 export type BrandProfile = z.infer<typeof brandProfileSchema>;
+
+/** Normalize profile before Mongo write — never persist null optional strings. */
+export function sanitizeBrandProfileForStorage(profile: BrandProfile): BrandProfile {
+  return brandProfileSchema.parse(sanitizeBrandProfileInput(profile));
+}
 
 export const generationConstraintsSchema = z.object({
   positioning: z.string(),
