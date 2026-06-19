@@ -16,6 +16,11 @@ import OpenAI from "openai";
 import { env } from "./env.js";
 import { resolveVoiceGenerationContext } from "./voice-generation-context.js";
 import { runHumanizationEngine } from "./services/rewriter/humanization-engine.js";
+import {
+  loadPrimaryStyleExampleForTransfer,
+  runStyleTransferPass,
+  shouldRunStyleTransfer,
+} from "./services/rewriter/style-transfer.js";
 import { buildReconstructionSystemPrompt } from "./services/rewriter/reconstruction.js";
 import type { ArticleRewriteExample } from "./services/rewriter/types.js";
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
@@ -260,6 +265,23 @@ export async function generateArticleRewriteHtml(opts: BuildArticleRewritePrompt
 
   const rewriteDivergenceBelowMin =
     divergenceMin > 0 && rewriteDivergenceScore < divergenceMin;
+
+  const primaryStyle = await loadPrimaryStyleExampleForTransfer(
+    opts.db,
+    opts.organizationId,
+    opts.voice,
+  );
+  if (shouldRunStyleTransfer(primaryStyle?.html)) {
+    html = await runStyleTransferPass({
+      voice: opts.voice,
+      html,
+      referenceHtml: primaryStyle!.html,
+      referenceTitle: primaryStyle!.title,
+      composeStyleKit: primaryStyle!.composeStyleKit,
+      links: opts.links,
+      composeMode: false,
+    });
+  }
 
   return {
     html,

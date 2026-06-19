@@ -49,6 +49,11 @@ import {
 } from "./services/rewriter/extract-compose-style-kit.js";
 import { runComposeHardVoiceFixLoop } from "./services/rewriter/compose-hard-voice-retry.js";
 import {
+  loadPrimaryStyleExampleForTransfer,
+  runStyleTransferPass,
+  shouldRunStyleTransfer,
+} from "./services/rewriter/style-transfer.js";
+import {
   resolveComposeArticleArchetype,
   resolvePrimaryKitRhythm,
 } from "./services/rewriter/compose-article-archetype.js";
@@ -424,6 +429,28 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     });
     html = stripLeadingComposeChrome(html);
   }
+
+  const primaryStyle = await loadPrimaryStyleExampleForTransfer(
+    opts.db,
+    opts.organizationId,
+    opts.voice,
+  );
+  if (shouldRunStyleTransfer(primaryStyle?.html)) {
+    html = await runStyleTransferPass({
+      voice: opts.voice,
+      html,
+      referenceHtml: primaryStyle!.html,
+      referenceTitle: primaryStyle!.title,
+      composeStyleKit: primaryStyle!.composeStyleKit,
+      topic: opts.topic,
+      includeFaq,
+      knownExampleTitles,
+      links: opts.links,
+      composeMode: true,
+    });
+    html = stripLeadingComposeChrome(html);
+  }
+
   const finalGenericity = await analyzeGenericity(html);
   const finalQuality = evaluateComposeVoiceQuality({
     facts: humanized.facts,
