@@ -2,6 +2,12 @@ import { z } from "zod";
 import { brandProfileSchema, sanitizeBrandProfileInput } from "./brand-profile.js";
 import { keyPointsFieldSchema } from "./key-points.js";
 import {
+  WRITER_ARTICLE_DEPTH_DEFAULT,
+  WRITER_SUBTOPIC_MAX,
+  WRITER_SUBTOPIC_MAX_CHARS,
+  WRITER_SUBTOPIC_MIN_CHARS,
+} from "./writer-validation.js";
+import {
   normalizeDistributionPlatforms,
   normalizeSocialCopyByPlatform,
   primarySocialCopy,
@@ -755,6 +761,11 @@ export const writerArticleSchema = z.object({
   title: z.string().min(1).max(200),
   topic: z.string().trim().max(500).optional(),
   reference_urls: z.array(z.string().url()).max(15).default([]),
+  subtopics: z
+    .array(z.string().trim().min(WRITER_SUBTOPIC_MIN_CHARS).max(WRITER_SUBTOPIC_MAX_CHARS))
+    .max(WRITER_SUBTOPIC_MAX)
+    .default([]),
+  article_depth: z.coerce.number().int().min(0).max(100).default(WRITER_ARTICLE_DEPTH_DEFAULT),
   source_text: z.string(),
   links: z.array(writerArticleLinkSchema).max(5).default([]),
   generated_html: z.string().default(""),

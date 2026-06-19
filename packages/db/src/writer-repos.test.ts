@@ -86,6 +86,32 @@ describe("upsertWriterComposePending generated_html", () => {
     assert.equal(row.generated_html, priorHtml);
     assert.match(row.source_text, /Research brief/);
   });
+
+  it("stores subtopics and article_depth on pending compose rows", () => {
+    const row = writerArticleSchema.parse({
+      id: "00000000-0000-4000-8000-000000000011",
+      organization_id: "00000000-0000-4000-8000-000000000020",
+      voice_id: "00000000-0000-4000-8000-000000000030",
+      mode: "compose",
+      title: "Senior living design",
+      topic: "Senior living design trends",
+      reference_urls: [],
+      subtopics: ["Active adult living", "Memory care"],
+      article_depth: 75,
+      source_text: "",
+      links: [],
+      generated_html: "",
+      status: "draft",
+      compose_status: "pending",
+      compose_requested_at: new Date(),
+      compose_phase: "full",
+      created_by: "user@example.com",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+    assert.deepEqual(row.subtopics, ["Active adult living", "Memory care"]);
+    assert.equal(row.article_depth, 75);
+  });
 });
 
 describe("writerComposeStatusPayload", () => {

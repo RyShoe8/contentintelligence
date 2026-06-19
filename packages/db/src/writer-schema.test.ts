@@ -5,6 +5,7 @@ import {
   sanitizeComposeStyleKitForStorage,
   writerArticleSchema,
 } from "./schemas.js";
+import { WRITER_ARTICLE_DEPTH_DEFAULT } from "./writer-validation.js";
 
 const minimalWriterDoc = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -67,6 +68,28 @@ describe("writerArticleSchema", () => {
       compose_requested_at: new Date("2026-05-27T12:00:00Z"),
     });
     assert.equal(parsed.compose_phase, "write_only");
+  });
+
+  it("defaults subtopics and article_depth on legacy compose docs", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+    });
+    assert.deepEqual(parsed.subtopics, []);
+    assert.equal(parsed.article_depth, WRITER_ARTICLE_DEPTH_DEFAULT);
+  });
+
+  it("parses subtopics and article_depth on compose articles", () => {
+    const parsed = writerArticleSchema.parse({
+      ...minimalWriterDoc,
+      mode: "compose",
+      topic: "Topic with enough characters",
+      subtopics: ["Pricing models", "Implementation timeline"],
+      article_depth: 80,
+    });
+    assert.deepEqual(parsed.subtopics, ["Pricing models", "Implementation timeline"]);
+    assert.equal(parsed.article_depth, 80);
   });
 
   it("coerces null compose_error and compose_meta to undefined", () => {

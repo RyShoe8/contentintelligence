@@ -370,6 +370,8 @@ export type UpsertWriterComposePendingInput = {
   topic: string;
   reference_urls: string[];
   links: WriterLink[];
+  subtopics: string[];
+  article_depth: number;
   created_by: string;
   compose_phase: "full" | "write_only";
   preserve_compose_meta?: boolean;
@@ -414,6 +416,8 @@ export async function upsertWriterComposePending(
     mode: "compose",
     topic: data.topic.trim(),
     reference_urls: data.reference_urls,
+    subtopics: data.subtopics,
+    article_depth: data.article_depth,
     title:
       existing?.title?.trim() ||
       defaultComposeTitle(data.topic.trim()),

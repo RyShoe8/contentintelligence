@@ -62,6 +62,8 @@ export type WriterComposeVoiceOption = {
 export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
   topic: string;
   reference_urls: string[];
+  subtopics: string[];
+  article_depth: number;
   source_text: string;
   links: WriterLink[];
   generated_html: string;
@@ -270,8 +272,12 @@ export function WriterComposeForm({
   const [userReferencesFetched, setUserReferencesFetched] = useState<number | null>(null);
   const [webReferencesFetched, setWebReferencesFetched] = useState<number | null>(null);
   const [researchMode, setResearchMode] = useState<string | null>(null);
-  const [articleDepth, setArticleDepth] = useState(WRITER_ARTICLE_DEPTH_DEFAULT);
-  const [subtopicsText, setSubtopicsText] = useState("");
+  const [articleDepth, setArticleDepth] = useState(
+    selectedArticle?.article_depth ?? WRITER_ARTICLE_DEPTH_DEFAULT,
+  );
+  const [subtopicsText, setSubtopicsText] = useState(() =>
+    (selectedArticle?.subtopics ?? []).join("\n"),
+  );
   const [composeProgress, setComposeProgress] = useState<string | null>(
     pendingComposeInitial.composeProgress,
   );

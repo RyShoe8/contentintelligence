@@ -5,6 +5,7 @@ import {
   listWriterArticlesByOrgAndMode,
   resolveWriterComposeStatus,
 } from "@content-resourcer/db";
+import { WRITER_ARTICLE_DEPTH_DEFAULT } from "@content-resourcer/db/writer-validation";
 import {
   WriterComposeForm,
   type WriterComposeArticleDetail,
@@ -70,6 +71,8 @@ export default async function WriterPage({
           updated_at: selectedRaw.updated_at.toISOString(),
           topic: selectedRaw.topic ?? "",
           reference_urls: selectedRaw.reference_urls ?? [],
+          subtopics: selectedRaw.subtopics ?? [],
+          article_depth: selectedRaw.article_depth ?? WRITER_ARTICLE_DEPTH_DEFAULT,
           source_text: selectedRaw.source_text,
           links: selectedRaw.links,
           generated_html: selectedRaw.generated_html,
