@@ -2,7 +2,6 @@
 
 import {
   archivePost,
-  ensureIndexes,
   getContentSignal,
   updateContentSignalPostSettings,
 } from "@content-resourcer/db";
@@ -64,7 +63,6 @@ export async function savePostSettingsAction(formData: FormData) {
   if (!contentSignalId) redirect("/posts?error=missing_signal");
 
   const db = await connectMongo();
-  await ensureIndexes(db);
   const cs = await getContentSignal(db, contentSignalId);
   if (!cs || !canAccessContentSignal(cs, session)) {
     redirect("/posts?error=not_found");

@@ -44,6 +44,7 @@ import {
   extractKeyPointsWithLlm,
   summarizeEmailBody,
 } from "./summarize.js";
+import { shouldSkipProcessedMessage } from "./ingest-skip.js";
 
 export type IngestSourceError = {
   sourceId: string;
@@ -58,6 +59,7 @@ export type IngestStats = {
   skippedError: number;
   storedMinimal: number;
   storedFull: number;
+  updatedFull: number;
   purgedItems: number;
   archivedPosts: number;
   sourceErrors: IngestSourceError[];
@@ -109,6 +111,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
     skippedError: 0,
     storedMinimal: 0,
     storedFull: 0,
+    updatedFull: 0,
     purgedItems: 0,
     archivedPosts: 0,
     sourceErrors: [],
@@ -285,6 +288,15 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
 
         const existingRow = await findSignalByExternalId(db, messageId);
 
+        if (shouldSkipProcessedMessage(existingRow, env.ingestForceReprocess)) {
+          stats.skippedDuplicate++;
+          stats.updatedFull++;
+          if (verbose()) {
+            ingestLog("message_skip", { messageId, reason: "already_processed" });
+          }
+          continue;
+        }
+
         const fetched = await getNormalizedMessageAndPayload(gmail, messageId);
         if (!fetched) {
           stats.skippedError++;
@@ -399,6 +411,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
         try {
           const outcome = await upsertSignalItem(db, full);
           if (outcome === "inserted") stats.storedFull++;
+          else stats.updatedFull++;
           if (verbose()) {
             ingestLog("insert_ok", { messageId, kind: "full", outcome });
           }

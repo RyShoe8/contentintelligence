@@ -17,9 +17,14 @@ import { google } from "googleapis";
 import cron from "node-cron";
 import { env } from "./env.js";
 import { ingestLog } from "./ingest-log.js";
-import { runIngest, type IngestStats } from "./ingest.js";
+import { runIngest } from "./ingest.js";
+import { createIngestCoordinator } from "./ingest-coordinator.js";
 import { createOAuthState, consumeOAuthState } from "./oauth-state.js";
-import { addPostsForSignalItem, syncPostsForContentSignal } from "./posts-sync.js";
+import { addPostsForSignalItem } from "./posts-sync.js";
+import {
+  isPostsSyncInFlight,
+  runPostsSyncExclusive,
+} from "./posts-sync-lock.js";
 import { runGeneratePostImage } from "./jobs/generate-post-image.js";
 import { runVoicePersonaGeneration } from "./voice-generate.js";
 import { formatJobErrorMessage } from "./format-job-error.js";
@@ -114,88 +119,24 @@ async function main(): Promise<void> {
   });
 
   /** Avoid overlapping manual/cron ingests (long runs exceed HTTP gateway timeouts). */
-  let ingestInFlight: Promise<IngestStats> | null = null;
-
-  type IngestStatusSnapshot = {
-    running: boolean;
-    content_signal_id: string | null;
-    started_at: string | null;
-    finished_at: string | null;
-    stats: IngestStats | null;
-    error: string | null;
-  };
-
-  let ingestStatus: IngestStatusSnapshot = {
-    running: false,
-    content_signal_id: null,
-    started_at: null,
-    finished_at: null,
-    stats: null,
-    error: null,
-  };
-
-  const ingestSecretOk = (header: string | string[] | undefined): boolean =>
-    !env.ingestSecret || header === env.ingestSecret;
+  const ingestCoordinator = createIngestCoordinator({
+    runIngest,
+    runPostsSync: (contentSignalId, regeneratePosts) =>
+      runPostsSyncExclusive(contentSignalId, { forceRegenerate: regeneratePosts }),
+    log: ingestLog,
+    onError: (e) => app.log.error(e),
+  });
 
   const startIngest = (
     contentSignalId: string | undefined,
     source: "http_post" | "cron" | "schedule",
     regeneratePosts = false,
-  ) => {
-    ingestStatus = {
-      running: true,
-      content_signal_id: contentSignalId ?? null,
-      started_at: new Date().toISOString(),
-      finished_at: null,
-      stats: null,
-      error: null,
-    };
-    ingestInFlight = runIngest(contentSignalId)
-      .then(async (stats) => {
-        ingestLog("ingest_response", { source, contentSignalId: contentSignalId ?? null, ...stats });
-        if (contentSignalId) {
-          try {
-            const db = await getDb();
-            await ensureIndexes(db);
-            const postStats = await syncPostsForContentSignal(db, contentSignalId, {
-              forceRegenerate: regeneratePosts,
-            });
-            ingestLog("posts_sync_after_ingest", { contentSignalId, ...postStats });
-          } catch (e) {
-            const message = e instanceof Error ? e.message : String(e);
-            ingestLog("posts_sync_error", { contentSignalId, message });
-            app.log.error(e);
-          }
-        }
-        ingestStatus = {
-          running: false,
-          content_signal_id: contentSignalId ?? null,
-          started_at: ingestStatus.started_at,
-          finished_at: new Date().toISOString(),
-          stats,
-          error: null,
-        };
-        return stats;
-      })
-      .catch((e) => {
-        const message = e instanceof Error ? e.message : String(e);
-        ingestLog("ingest_fatal", { source, message });
-        app.log.error(e);
-        ingestStatus = {
-          running: false,
-          content_signal_id: contentSignalId ?? null,
-          started_at: ingestStatus.started_at,
-          finished_at: new Date().toISOString(),
-          stats: null,
-          error: message,
-        };
-        throw e;
-      })
-      .finally(() => {
-        ingestInFlight = null;
-      });
-    return ingestInFlight;
-  };
+  ) => ingestCoordinator.startIngest(contentSignalId, source, regeneratePosts);
+
+  const ingestInFlight = () => ingestCoordinator.isInFlight();
+  const ingestStatus = () => ingestCoordinator.getStatus();
+  const ingestSecretOk = (header: string | string[] | undefined): boolean =>
+    !env.ingestSecret || header === env.ingestSecret;
 
   type ScheduleTickResult = {
     due_count: number;
@@ -205,7 +146,7 @@ async function main(): Promise<void> {
   };
 
   const runScheduleTick = async (): Promise<ScheduleTickResult> => {
-    if (ingestInFlight) {
+    if (ingestInFlight()) {
       ingestLog("signal_schedule_skip", { reason: "ingest_already_running" });
       return {
         due_count: 0,
@@ -284,7 +225,7 @@ async function main(): Promise<void> {
     if (!ingestSecretOk(secretHeader)) {
       return reply.code(401).send({ error: "unauthorized" });
     }
-    return ingestStatus;
+    return ingestStatus();
   });
 
   app.post("/ingest", async (req, reply) => {
@@ -312,7 +253,7 @@ async function main(): Promise<void> {
       q.regenerate_posts === "true" ||
       q.regenerate_posts === "1";
 
-    if (ingestInFlight) {
+    if (ingestInFlight()) {
       return reply.code(409).send({
         error: "ingest_already_running",
         message: "A sync is already running. Wait a minute and refresh the feed.",
@@ -336,13 +277,22 @@ async function main(): Promise<void> {
     if (!contentSignalId) {
       return reply.code(400).send({ error: "content_signal_id is required" });
     }
+    if (isPostsSyncInFlight(contentSignalId)) {
+      return reply.code(409).send({ error: "posts_sync_already_running" });
+    }
     try {
-      const db = await getDb();
-      await ensureIndexes(db);
-      const result = await syncPostsForContentSignal(db, contentSignalId);
+      const result = await Promise.race([
+        runPostsSyncExclusive(contentSignalId),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("posts_sync_timeout")), env.postsSyncTimeoutMs);
+        }),
+      ]);
       return result;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      if (message === "posts_sync_timeout") {
+        return reply.code(503).send({ error: message });
+      }
       return reply.code(500).send({ error: message });
     }
   });
@@ -639,7 +589,7 @@ async function main(): Promise<void> {
 
   cron.schedule(env.ingestCron, () => {
     ingestLog("ingest_cron_tick", { cron: env.ingestCron });
-    if (ingestInFlight) {
+    if (ingestInFlight()) {
       ingestLog("ingest_cron_skip", { reason: "ingest_already_running" });
       return;
     }

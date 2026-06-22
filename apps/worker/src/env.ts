@@ -56,6 +56,9 @@ export const env = {
   signalScheduleCron: process.env.SIGNAL_SCHEDULE_CRON ?? "* * * * *",
   /** Minimum lookback window (hours) when using gap since last ingest (avoids zero-width double-sync). */
   ingestMinGapHours: num("INGEST_MIN_GAP_HOURS", 5 / 60),
+  /** When true, re-run LLM pipeline for messages already stored as ai_processed. */
+  ingestForceReprocess: bool("INGEST_FORCE_REPROCESS", false),
+  postsSyncTimeoutMs: num("POSTS_SYNC_TIMEOUT_MS", 120_000),
   /** When true, ingest fetches hotlinked https img URLs (SSRF-guarded) into email_images. */
   emailImageFetchRemote: bool("EMAIL_IMAGE_FETCH_REMOTE", true),
   emailImageFetchTimeoutMs: num("EMAIL_IMAGE_FETCH_TIMEOUT_MS", 10_000),

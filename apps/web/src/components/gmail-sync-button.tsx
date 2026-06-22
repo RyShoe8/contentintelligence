@@ -19,6 +19,7 @@ type IngestStats = {
   messagesListed?: number;
   storedFull?: number;
   storedMinimal?: number;
+  updatedFull?: number;
   sourceErrors?: IngestSourceError[];
   signalErrors?: IngestSourceError[];
 };
@@ -30,6 +31,9 @@ type IngestStatusResponse = {
   finished_at?: string | null;
   stats?: IngestStats | null;
   error?: string | null;
+  posts_sync_running?: boolean;
+  posts_sync_content_signal_id?: string | null;
+  posts_sync_error?: string | null;
 };
 
 type Props = {
@@ -46,9 +50,11 @@ type Props = {
 function formatSyncResult(
   stats: IngestStats,
   successSuffix?: string,
+  postsSyncError?: string | null,
 ): { status: "ok" | "err"; message: string } {
   const listed = stats.messagesListed ?? 0;
-  const stored = (stats.storedFull ?? 0) + (stats.storedMinimal ?? 0);
+  const stored =
+    (stats.storedFull ?? 0) + (stats.storedMinimal ?? 0) + (stats.updatedFull ?? 0);
   const errors = stats.sourceErrors ?? stats.signalErrors ?? [];
 
   if (errors.length > 0) {
@@ -75,10 +81,16 @@ function formatSyncResult(
     };
   }
 
-  return {
-    status: "ok",
-    message: `Sync finished: ${listed} listed, ${stored} stored.${successSuffix ?? ""}`,
-  };
+  let message = `Sync finished: ${listed} listed, ${stored} stored.${successSuffix ?? ""}`;
+  if (postsSyncError) {
+    message += ` Posts rebuild failed (${sanitizeIngestError(postsSyncError)}). Try Refresh posts.`;
+  }
+  return { status: "ok", message };
+}
+
+function statusAppliesToSignal(data: IngestStatusResponse, contentSignalId: string): boolean {
+  if (data.content_signal_id == null) return true;
+  return data.content_signal_id === contentSignalId;
 }
 
 export function GmailSyncButton({
@@ -109,48 +121,63 @@ export function GmailSyncButton({
       stopPolling();
       router.refresh();
       if (statusData.stats) {
-        const result = formatSyncResult(statusData.stats, successSuffix);
+        const result = formatSyncResult(
+          statusData.stats,
+          successSuffix,
+          statusData.posts_sync_error,
+        );
         setStatus(result.status);
         setMessage(result.message);
       } else if (statusData.error) {
         setStatus("err");
         setMessage(sanitizeIngestError(statusData.error));
       } else {
+        let okMessage = `Feed updated.${successSuffix ?? ""}`;
+        if (statusData.posts_sync_error) {
+          okMessage += ` Posts rebuild failed (${sanitizeIngestError(statusData.posts_sync_error)}). Try Refresh posts.`;
+        }
         setStatus("ok");
-        setMessage(`Feed updated.${successSuffix ?? ""}`);
+        setMessage(okMessage);
       }
     },
     [router, stopPolling, successSuffix],
   );
 
-  const startPolling = useCallback(() => {
-    stopPolling();
-    setStatus("loading");
-    setMessage(progressMessage);
-    pollStartedRef.current = Date.now();
+  const startPolling = useCallback(
+    (waitingMessage?: string) => {
+      stopPolling();
+      setStatus("loading");
+      setMessage(waitingMessage ?? progressMessage);
+      pollStartedRef.current = Date.now();
 
-    const tick = async () => {
-      if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
-        stopPolling();
-        setStatus("err");
-        setMessage("Sync is taking longer than expected — refresh manually.");
-        return;
-      }
-      try {
-        const r = await fetch("/api/worker/ingest/status");
-        const data = (await r.json().catch(() => ({}))) as IngestStatusResponse;
-        if (!r.ok) return;
-        if (data.running === false) {
-          finishPolling(data);
+      const tick = async () => {
+        if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
+          stopPolling();
+          setStatus("err");
+          setMessage("Sync is taking longer than expected — refresh manually.");
+          return;
         }
-      } catch {
-        // keep polling on transient network errors
-      }
-    };
+        try {
+          const r = await fetch("/api/worker/ingest/status");
+          const data = (await r.json().catch(() => ({}))) as IngestStatusResponse;
+          if (!r.ok) return;
+          if (data.running === false && statusAppliesToSignal(data, contentSignalId)) {
+            finishPolling(data);
+            return;
+          }
+          if (data.running && data.content_signal_id && data.content_signal_id !== contentSignalId) {
+            setMessage("Another sync is running — waiting…");
+          }
+        } catch {
+          // keep polling on transient network errors
+        }
+      };
 
-    void tick();
-    pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
-  }, [finishPolling, progressMessage, stopPolling]);
+      void tick();
+      pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
+    },
+    [contentSignalId, finishPolling, progressMessage, stopPolling],
+  );
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
@@ -170,7 +197,7 @@ export function GmailSyncButton({
       const data = (await r.json().catch(() => ({}))) as Record<string, unknown> & IngestStats;
 
       if (r.status === 409) {
-        startPolling();
+        startPolling("Another sync is running — waiting…");
         return;
       }
 
