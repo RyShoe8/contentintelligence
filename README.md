@@ -89,6 +89,19 @@ First user **`ryanschumacher@themediashop.co`** receives **`admin`** on first Go
 | `BREVO_API_KEY` | Optional; Brevo transactional API key for Team invite / member-added emails |
 | `INVITE_EMAIL_FROM` | Verified sender, e.g. `Content Intelligence <noreply@yourdomain.com>` (required when `BREVO_API_KEY` is set) |
 
+### MongoDB connection troubleshooting
+
+If **Feed**, **Posts**, or other pages return 500 and Vercel logs show `MongoNetworkTimeoutError` or `MongoServerSelectionError`:
+
+1. In **MongoDB Atlas**, confirm the cluster is **not paused** (M0 free tier pauses after inactivity).
+2. Under **Network Access**, allow Vercel egress — typically `0.0.0.0/0` unless you use Vercel static IPs.
+3. On **Vercel → Environment Variables**, verify `MONGODB_URI` is set for **Production** (and Preview if failing there) and matches the Atlas “Drivers” connection string.
+4. Redeploy the web app after env changes.
+
+The web app and worker share one MongoDB database. Index migrations run on **worker startup** and ingest — read-only pages no longer run migrations on every load.
+
+If **`GET /api/cron/ingest-due`** logged HTTP 409 with `ingest_already_running`, a sync was already running on the worker. That is expected overlap, not a feed failure (the cron route treats it as success).
+
 ### Brevo (org invite emails)
 
 Used when an org owner adds a member on **Team**, or when a platform admin creates an org with a pending owner invite. If `BREVO_API_KEY` is unset, invites and membership still work; the UI notes that email was skipped.

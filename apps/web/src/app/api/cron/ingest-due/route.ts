@@ -1,4 +1,4 @@
-import { runScheduleTickFetch } from "@/lib/schedule-tick-fetch";
+import { runScheduleTickFetch, resolveCronIngestDueHttpStatus } from "@/lib/schedule-tick-fetch";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 120;
@@ -51,10 +51,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const httpStatus =
-    result.schedule_tick_status != null && result.schedule_tick_status >= 400
-      ? result.schedule_tick_status
-      : 200;
+  const httpStatus = resolveCronIngestDueHttpStatus(
+    result.schedule_tick_status,
+    result.body,
+  );
 
   return NextResponse.json(
     {
@@ -67,6 +67,11 @@ export async function GET(req: NextRequest) {
       accepted: result.accepted,
       due_count: result.due_count,
       content_signal_id: result.content_signal_id,
+      ...(httpStatus === 200 &&
+      result.schedule_tick_status === 409 &&
+      result.body.error === "ingest_already_running"
+        ? { skipped: "ingest_already_running" as const }
+        : {}),
       ...result.body,
     },
     { status: httpStatus },

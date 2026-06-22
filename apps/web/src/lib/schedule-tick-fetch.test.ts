@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   MAX_TICK_ATTEMPTS,
+  resolveCronIngestDueHttpStatus,
   runScheduleTickFetch,
   TICK_RETRY_DELAY_MS,
 } from "./schedule-tick-fetch.js";
@@ -94,5 +95,24 @@ describe("runScheduleTickFetch", () => {
     assert.equal(result.error, "fetch failed");
     assert.equal(result.tick_attempts, 2);
     assert.equal(result.schedule_tick_status, null);
+  });
+});
+
+describe("resolveCronIngestDueHttpStatus", () => {
+  it("maps ingest overlap 409 to 200", () => {
+    assert.equal(
+      resolveCronIngestDueHttpStatus(409, { error: "ingest_already_running" }),
+      200,
+    );
+  });
+
+  it("forwards other worker 4xx/5xx", () => {
+    assert.equal(resolveCronIngestDueHttpStatus(401, { error: "unauthorized" }), 401);
+    assert.equal(resolveCronIngestDueHttpStatus(500, { error: "internal" }), 500);
+  });
+
+  it("returns 200 for successful tick", () => {
+    assert.equal(resolveCronIngestDueHttpStatus(200, { accepted: false }), 200);
+    assert.equal(resolveCronIngestDueHttpStatus(202, { accepted: true }), 200);
   });
 });

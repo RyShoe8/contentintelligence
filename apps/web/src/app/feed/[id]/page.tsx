@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ensureIndexes, getContentSignal, getSignalItem, isWithinLookback, listPosts } from "@content-resourcer/db";
+import { getContentSignal, getSignalItem, isWithinLookback, listPosts } from "@content-resourcer/db";
 import { FeedItemCard } from "@/components/feed-item-card";
 import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { Alert } from "@/components/ui/alert";
@@ -16,7 +16,6 @@ export default async function SignalDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const session = await requireOrgMember();
   const db = await connectMongo();
-  await ensureIndexes(db);
   const item = await getSignalItem(db, id);
   if (
     !item ||

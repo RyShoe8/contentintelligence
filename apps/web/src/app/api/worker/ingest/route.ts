@@ -25,7 +25,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "content_signal_id is required" }, { status: 400 });
   }
 
-  const db = await connectMongo();
+  let db;
+  try {
+    db = await connectMongo();
+  } catch {
+    return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
+  }
   const cs = await getContentSignal(db, contentSignalId);
   if (!cs || !canAccessContentSignal(cs, session)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

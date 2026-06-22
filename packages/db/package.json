@@ -31,7 +31,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "seed": "tsx src/seed.ts",
-    "test": "node --import tsx --test src/org-repos.test.ts src/deal-strength.test.ts src/retention.test.ts src/template-repos.test.ts src/voice-repos.test.ts src/brand-profile.test.ts src/email-from.test.ts src/key-points.test.ts src/social-platforms.test.ts src/gmail-oauth.test.ts src/writer-validation.test.ts src/writer-schema.test.ts src/writer-repos.test.ts src/writer-style-example-html.test.ts src/sanitize-article-html.test.ts src/rewriter-types.test.ts"
+    "test": "node --import tsx --test src/org-repos.test.ts src/deal-strength.test.ts src/retention.test.ts src/template-repos.test.ts src/voice-repos.test.ts src/brand-profile.test.ts src/email-from.test.ts src/key-points.test.ts src/social-platforms.test.ts src/gmail-oauth.test.ts src/writer-validation.test.ts src/writer-schema.test.ts src/writer-repos.test.ts src/writer-style-example-html.test.ts src/sanitize-article-html.test.ts src/rewriter-types.test.ts src/client.test.ts"
   },
   "dependencies": {
     "mongodb": "^6.12.0",

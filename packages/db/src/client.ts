@@ -3,34 +3,85 @@ import { COLLECTIONS } from "./collections.js";
 import { migrateLegacyCollections } from "./migrate.js";
 import { migrateOrganizations } from "./org-repos.js";
 
-let client: MongoClient | null = null;
-let dbInstance: Db | null = null;
+const MONGO_CLIENT_OPTIONS = {
+  maxPoolSize: 10,
+  minPoolSize: 0,
+  maxIdleTimeMS: 10_000,
+  serverSelectionTimeoutMS: 10_000,
+  connectTimeoutMS: 10_000,
+  socketTimeoutMS: 30_000,
+} as const;
 
-export async function getDb(uri?: string): Promise<Db> {
+declare global {
+  // eslint-disable-next-line no-var -- HMR / serverless singleton
+  var _mongoClientPromise: Promise<MongoClient> | undefined;
+  // eslint-disable-next-line no-var
+  var _mongoClientUri: string | undefined;
+}
+
+function resolveMongoUri(uri?: string): string {
   const connectionUri = uri ?? process.env.MONGODB_URI;
   if (!connectionUri) {
     throw new Error("MONGODB_URI is required");
   }
-  if (!dbInstance) {
-    client = new MongoClient(connectionUri, {
-      connectTimeoutMS: 30_000,
-      serverSelectionTimeoutMS: 30_000,
-      socketTimeoutMS: 45_000,
-      maxIdleTimeMS: 60_000,
-    });
-    await client.connect();
-    const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
-    dbInstance = client.db(dbName);
+  return connectionUri;
+}
+
+function connectMongoClient(connectionUri: string): Promise<MongoClient> {
+  const client = new MongoClient(connectionUri, MONGO_CLIENT_OPTIONS);
+  return client.connect().then(
+    () => client,
+    (err) => {
+      if (globalThis._mongoClientUri === connectionUri) {
+        globalThis._mongoClientPromise = undefined;
+        globalThis._mongoClientUri = undefined;
+      }
+      throw err;
+    },
+  );
+}
+
+/** Shared MongoClient for web auth adapter and getDb — one pool per warm instance. */
+export function getMongoClient(uri?: string): Promise<MongoClient> {
+  const connectionUri = resolveMongoUri(uri);
+  if (
+    globalThis._mongoClientPromise &&
+    globalThis._mongoClientUri === connectionUri
+  ) {
+    return globalThis._mongoClientPromise;
   }
-  return dbInstance;
+  globalThis._mongoClientUri = connectionUri;
+  globalThis._mongoClientPromise = connectMongoClient(connectionUri).catch((err) => {
+    globalThis._mongoClientPromise = undefined;
+    globalThis._mongoClientUri = undefined;
+    throw err;
+  });
+  return globalThis._mongoClientPromise;
+}
+
+/** Clear cached client (tests and recovery after connection failures). */
+export async function resetMongoClient(): Promise<void> {
+  const promise = globalThis._mongoClientPromise;
+  globalThis._mongoClientPromise = undefined;
+  globalThis._mongoClientUri = undefined;
+  if (promise) {
+    try {
+      const client = await promise;
+      await client.close();
+    } catch {
+      // ignore close errors on broken connections
+    }
+  }
+}
+
+export async function getDb(uri?: string): Promise<Db> {
+  const client = await getMongoClient(uri);
+  const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
+  return client.db(dbName);
 }
 
 export async function closeDb(): Promise<void> {
-  if (client) {
-    await client.close();
-    client = null;
-    dbInstance = null;
-  }
+  await resetMongoClient();
   ensureIndexesOnce = null;
 }
 

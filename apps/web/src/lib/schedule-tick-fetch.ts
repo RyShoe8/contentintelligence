@@ -27,6 +27,23 @@ export type ScheduleTickFetchResult = {
   error?: string;
 };
 
+/** Map worker schedule/tick HTTP status to cron route response status. */
+export function resolveCronIngestDueHttpStatus(
+  scheduleTickStatus: number | null,
+  body: Record<string, unknown>,
+): number {
+  if (
+    scheduleTickStatus === 409 &&
+    body.error === "ingest_already_running"
+  ) {
+    return 200;
+  }
+  if (scheduleTickStatus != null && scheduleTickStatus >= 400) {
+    return scheduleTickStatus;
+  }
+  return 200;
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

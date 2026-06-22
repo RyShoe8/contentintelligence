@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  ensureIndexes,
   findVoiceForContentSignal,
   getSignalItemsByIds,
   isContentOnlyPost,
@@ -64,7 +63,6 @@ export default async function PostsPage({
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
   const db = await connectMongo();
-  await ensureIndexes(db);
   const contentSignals = await listContentSignals(db, { organizationId: orgId });
   const selectedId = sp.content_signal_id || contentSignals[0]?.id || "";
   const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);

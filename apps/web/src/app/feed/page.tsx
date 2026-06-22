@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ensureIndexes, listContentSignals, listPosts, listSignalItems } from "@content-resourcer/db";
+import { listContentSignals, listPosts, listSignalItems } from "@content-resourcer/db";
 import { ClearFeedButton } from "@/components/clear-feed-button";
 import { FeedItemCard } from "@/components/feed-item-card";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
@@ -40,7 +40,6 @@ export default async function FeedPage({
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
   const db = await connectMongo();
-  await ensureIndexes(db);
   const contentSignals = await listContentSignals(db, { organizationId: orgId });
   const selectedId = sp.content_signal_id || sp.vertical_id || contentSignals[0]?.id || "";
   const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
