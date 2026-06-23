@@ -8,11 +8,13 @@ import type {
   GmailOAuthDoc,
   GmailSourceConfig,
   SignalItem,
+  SignalItemFeedRow,
   Source,
 } from "./schemas.js";
 import {
   contentSignalSchema,
   gmailSourceConfigSchema,
+  signalItemFeedRowSchema,
   signalItemSchema,
   sourceDisplayLabel,
   sourceSchema,
@@ -220,7 +222,31 @@ export type SignalFeedQuery = {
   limit?: number;
 };
 
-export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<SignalItem[]> {
+/** $project stage for feed list — omits heavy email body and image bytes. */
+export const signalItemFeedProjectStage = {
+  $project: {
+    raw_content: 0,
+    email_html_preview: 0,
+    email_images: {
+      $cond: {
+        if: { $gt: [{ $size: { $ifNull: ["$email_images", []] } }, 0] },
+        then: {
+          $map: {
+            input: "$email_images",
+            as: "img",
+            in: {
+              mime: "$$img.mime",
+              filename: "$$img.filename",
+            },
+          },
+        },
+        else: "$$REMOVE",
+      },
+    },
+  },
+} as const;
+
+function buildSignalFeedFilter(q: SignalFeedQuery): Record<string, unknown> {
   const clauses: Record<string, unknown>[] = [];
   if (q.organizationId) {
     clauses.push({ organization_id: q.organizationId });
@@ -276,9 +302,15 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
     clauses.push(maxAgeExprFilter(lookbackCutoffDate(q.max_age_hours)));
   }
 
-  const filter: Record<string, unknown> =
-    clauses.length === 0 ? {} : clauses.length === 1 ? (clauses[0] as Record<string, unknown>) : { $and: clauses };
+  return clauses.length === 0
+    ? {}
+    : clauses.length === 1
+      ? (clauses[0] as Record<string, unknown>)
+      : { $and: clauses };
+}
 
+export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<SignalItem[]> {
+  const filter = buildSignalFeedFilter(q);
   const limit = q.limit ?? 200;
 
   if (q.sort === "created_at") {
@@ -307,6 +339,45 @@ export async function listSignalItems(db: Db, q: SignalFeedQuery): Promise<Signa
   const cursor = signalItems(db).find(filter).sort(sort).limit(limit);
   const docs = await cursor.toArray();
   return docs.map((d) => signalItemSchema.parse(d));
+}
+
+/** Feed list rows without raw email, HTML preview, or attachment base64. */
+export async function listSignalItemsForFeed(
+  db: Db,
+  q: SignalFeedQuery,
+): Promise<SignalItemFeedRow[]> {
+  const filter = buildSignalFeedFilter(q);
+  const limit = q.limit ?? 200;
+
+  if (q.sort === "created_at") {
+    const docs = await signalItems(db)
+      .aggregate([
+        { $match: filter },
+        { $addFields: { _recency: { $ifNull: ["$email_sent_at", "$created_at"] } } },
+        { $sort: { _recency: -1 } },
+        { $limit: limit },
+        { $project: { _recency: 0 } },
+        signalItemFeedProjectStage,
+      ])
+      .toArray();
+    return docs.map((d) => signalItemFeedRowSchema.parse(d));
+  }
+
+  const sort: Record<string, 1 | -1> =
+    q.sort === "deal_savings"
+      ? {
+          "deal_metrics.effective_savings_pct": q.order === "asc" ? 1 : -1,
+          created_at: -1,
+        }
+      : {
+          relevance_score: q.order === "asc" ? 1 : -1,
+          created_at: -1,
+        };
+
+  const docs = await signalItems(db)
+    .aggregate([{ $match: filter }, { $sort: sort }, { $limit: limit }, signalItemFeedProjectStage])
+    .toArray();
+  return docs.map((d) => signalItemFeedRowSchema.parse(d));
 }
 
 export async function getSignalItem(db: Db, id: string): Promise<SignalItem | null> {

@@ -570,6 +570,33 @@ export const signalItemSchema = z.preprocess(normalizeSignalItemMongoDoc, signal
 
 export type SignalItem = z.infer<typeof signalItemShape>;
 
+/** Feed list attachment metadata without base64 payload. */
+export const emailImageMetaSchema = z.object({
+  mime: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  filename: z.preprocess(
+    (v) => (v === null || v === "" ? undefined : v),
+    z.string().optional(),
+  ),
+});
+
+export type EmailImageMeta = z.infer<typeof emailImageMetaSchema>;
+
+const signalItemFeedRowShape = signalItemShape
+  .omit({ raw_content: true, email_html_preview: true })
+  .extend({
+    email_images: z.preprocess(
+      (val) => (val == null ? undefined : val),
+      z.array(emailImageMetaSchema).max(25).optional(),
+    ),
+  });
+
+export const signalItemFeedRowSchema = z.preprocess(
+  normalizeSignalItemMongoDoc,
+  signalItemFeedRowShape,
+);
+
+export type SignalItemFeedRow = z.infer<typeof signalItemFeedRowShape>;
+
 export const postSourceSchema = z.enum(["auto", "manual"]);
 export type PostSource = z.infer<typeof postSourceSchema>;
 

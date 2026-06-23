@@ -4,7 +4,7 @@ import {
   KEY_POINT_CATEGORY_LABELS,
   type KeyPoint,
   type KeyPointCategory,
-} from "@content-resourcer/db";
+} from "@content-resourcer/db/key-points";
 
 export function prepareKeyPointsForDisplay(points: KeyPoint[]): KeyPoint[] {
   return expandKeyPoints(points);

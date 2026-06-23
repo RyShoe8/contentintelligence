@@ -1,5 +1,5 @@
-import type { KeyPoint } from "@content-resourcer/db";
-import { KEY_POINT_CATEGORIES } from "@content-resourcer/db";
+import type { KeyPoint } from "@content-resourcer/db/key-points";
+import { KEY_POINT_CATEGORIES } from "@content-resourcer/db/key-points";
 import { categoryLabel, groupKeyPointsByCategory } from "@/lib/key-points-display";
 
 type Props = {

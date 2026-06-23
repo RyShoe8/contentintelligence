@@ -1,5 +1,5 @@
-import type { DealMetrics } from "@content-resourcer/db";
-import { dealStrengthPct, dealStrengthPercent } from "@content-resourcer/db";
+import type { DealMetrics } from "@content-resourcer/db/schemas";
+import { dealStrengthPct, dealStrengthPercent } from "@content-resourcer/db/deal-strength";
 
 type DealItemLike = {
   deal_metrics?: DealMetrics | null;

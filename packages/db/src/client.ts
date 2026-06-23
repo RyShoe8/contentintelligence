@@ -20,11 +20,13 @@ const MONGO_FRESH_CLIENT_OPTIONS = {
   waitQueueTimeoutMS: 5_000,
   serverSelectionTimeoutMS: 10_000,
   connectTimeoutMS: 10_000,
-  socketTimeoutMS: 15_000,
+  socketTimeoutMS: 8_000,
 } as const;
 
 const MAX_DB_ATTEMPTS = 3;
+const MAX_FRESH_DB_ATTEMPTS = 5;
 const RETRY_BACKOFF_MS = [200, 500] as const;
+const FRESH_RETRY_BACKOFF_MS = [200, 500, 1000, 2000] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -67,9 +69,12 @@ export async function withFreshDbRetry<T>(fn: (db: Db) => Promise<T>, uri?: stri
   const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
   let lastError: unknown;
 
-  for (let attempt = 0; attempt < MAX_DB_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < MAX_FRESH_DB_ATTEMPTS; attempt++) {
     if (attempt > 0) {
-      await sleep(RETRY_BACKOFF_MS[attempt - 1] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
+      await sleep(
+        FRESH_RETRY_BACKOFF_MS[attempt - 1] ??
+          FRESH_RETRY_BACKOFF_MS[FRESH_RETRY_BACKOFF_MS.length - 1],
+      );
     }
 
     const client = new MongoClient(connectionUri, MONGO_FRESH_CLIENT_OPTIONS);

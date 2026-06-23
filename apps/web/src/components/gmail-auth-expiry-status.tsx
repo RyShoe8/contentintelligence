@@ -4,7 +4,7 @@ import {
   gmailDaysUntilRefreshExpiry,
   gmailEffectiveIssuedAt,
   gmailRefreshExpirySeverity,
-} from "@content-resourcer/db";
+} from "@content-resourcer/db/gmail-oauth";
 
 type Props = {
   connected: boolean;

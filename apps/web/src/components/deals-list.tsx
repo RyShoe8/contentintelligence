@@ -1,4 +1,4 @@
-import type { DealMetrics } from "@content-resourcer/db";
+import type { DealMetrics } from "@content-resourcer/db/schemas";
 import { formatDealRow } from "@/lib/deal-display";
 import { DealStrengthBadge } from "@/components/deal-strength-badge";
 

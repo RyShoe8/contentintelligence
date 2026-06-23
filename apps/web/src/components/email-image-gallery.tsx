@@ -1,4 +1,4 @@
-import type { EmailImage } from "@content-resourcer/db";
+import type { EmailImage } from "@content-resourcer/db/schemas";
 
 function extForMime(m: EmailImage["mime"]): string {
   switch (m) {

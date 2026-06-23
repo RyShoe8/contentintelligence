@@ -1,4 +1,4 @@
-import type { DealMetrics } from "@content-resourcer/db";
+import type { DealMetrics } from "@content-resourcer/db/schemas";
 import { dealStrengthPercent } from "@/lib/deal-display";
 
 export function DealStrengthBadge({ dealMetrics }: { dealMetrics: DealMetrics }) {

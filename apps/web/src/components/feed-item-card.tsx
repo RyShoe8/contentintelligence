@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { SignalItem } from "@content-resourcer/db";
+import type { EmailImage, SignalItem, SignalItemFeedRow } from "@content-resourcer/db/schemas";
 import { AddToPostsButton } from "@/components/add-to-posts-button";
 import { DealsList } from "@/components/deals-list";
 import { DealLinkRow } from "@/components/deal-link-row";
@@ -14,12 +14,25 @@ import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { isNonDealUrl } from "@/lib/deal-url";
 
 type Props = {
-  item: SignalItem;
+  item: SignalItem | SignalItemFeedRow;
   variant?: "feed" | "detail";
   contentSignalId?: string;
   workerIngestConfigured?: boolean;
   alreadyInPosts?: boolean;
 };
+
+function emailImagesWithData(
+  images: SignalItem["email_images"] | SignalItemFeedRow["email_images"],
+): EmailImage[] {
+  if (!images?.length) return [];
+  const withData: EmailImage[] = [];
+  for (const img of images) {
+    if ("data_base64" in img && typeof img.data_base64 === "string") {
+      withData.push(img);
+    }
+  }
+  return withData;
+}
 
 export function FeedItemCard({
   item,
@@ -35,6 +48,8 @@ export function FeedItemCard({
   const summaryText = item.ai_summary ? cleanEmailPreview(item.ai_summary) : null;
   const showDealLink = item.original_url && !isNonDealUrl(item.original_url);
   const isFeed = variant === "feed";
+  const attachmentCount = item.email_images?.length ?? 0;
+  const galleryImages = emailImagesWithData(item.email_images);
 
   return (
     <Card className={isFeed ? "transition-colors hover:border-[var(--primary)]" : undefined}>
@@ -120,9 +135,18 @@ export function FeedItemCard({
           </FeedItemSection>
         ) : null}
 
-        {item.email_images?.length ? (
-          <FeedItemSection title={`Attachments (${item.email_images.length})`}>
-            <EmailImageGallery images={item.email_images} variant={isFeed ? "feed" : "detail"} />
+        {attachmentCount > 0 ? (
+          <FeedItemSection title={`Attachments (${attachmentCount})`}>
+            {galleryImages.length > 0 ? (
+              <EmailImageGallery images={galleryImages} variant={isFeed ? "feed" : "detail"} />
+            ) : isFeed ? (
+              <p className="text-sm text-[var(--muted)]">
+                <Link href={`/feed/${item.id}`} className="text-[var(--primary)] hover:underline">
+                  Open item
+                </Link>{" "}
+                to view {attachmentCount} {attachmentCount === 1 ? "attachment" : "attachments"}.
+              </p>
+            ) : null}
           </FeedItemSection>
         ) : null}
       </CardContent>
