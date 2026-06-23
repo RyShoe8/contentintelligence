@@ -6,7 +6,7 @@ import { EmailHtmlPreview } from "@/components/email-html-preview";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageSection } from "@/components/ui/page-section";
-import { connectMongo } from "@/lib/mongo";
+import { withFreshMongo } from "@/lib/mongo";
 import { displayCasinoName } from "@/lib/email-from-display";
 import { canAccessOrganization, requireOrgMember, isPlatformAdmin } from "@/lib/org-auth";
 
@@ -15,30 +15,35 @@ export const dynamic = "force-dynamic";
 export default async function SignalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireOrgMember();
-  const db = await connectMongo();
-  const item = await getSignalItem(db, id);
-  if (
-    !item ||
-    (!isPlatformAdmin(session) && !canAccessOrganization(item.organization_id, session))
-  ) {
+  const { item, contentSignal, draftPosts } = await withFreshMongo(async (db) => {
+    const item = await getSignalItem(db, id);
+    if (
+      !item ||
+      (!isPlatformAdmin(session) && !canAccessOrganization(item.organization_id, session))
+    ) {
+      return { item: null, contentSignal: null, draftPosts: [] as Awaited<ReturnType<typeof listPosts>> };
+    }
+
+    const contentSignal = await getContentSignal(db, item.content_signal_id);
+    const draftPosts = await listPosts(db, {
+      organizationId: item.organization_id,
+      content_signal_id: item.content_signal_id,
+      status: "draft",
+      limit: 500,
+    });
+
+    return { item, contentSignal, draftPosts };
+  });
+
+  if (!item) {
     notFound();
   }
 
-  const contentSignal = await getContentSignal(db, item.content_signal_id);
-  if (
-    contentSignal &&
-    !isWithinLookback(item, contentSignal.lookback_window_hours)
-  ) {
+  if (contentSignal && !isWithinLookback(item, contentSignal.lookback_window_hours)) {
     notFound();
   }
 
   const workerIngestConfigured = !!process.env.WORKER_URL;
-  const draftPosts = await listPosts(db, {
-    organizationId: item.organization_id,
-    content_signal_id: item.content_signal_id,
-    status: "draft",
-    limit: 500,
-  });
   const alreadyInPosts = draftPosts.some((p) => p.signal_item_id === item.id);
 
   const casino = displayCasinoName(item);

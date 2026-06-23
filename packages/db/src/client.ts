@@ -12,6 +12,24 @@ const MONGO_CLIENT_OPTIONS = {
   socketTimeoutMS: 30_000,
 } as const;
 
+/** Per-request client for serverless SSR — avoids stale warm-instance pool sockets. */
+const MONGO_FRESH_CLIENT_OPTIONS = {
+  maxPoolSize: 1,
+  minPoolSize: 0,
+  maxIdleTimeMS: 5_000,
+  waitQueueTimeoutMS: 5_000,
+  serverSelectionTimeoutMS: 10_000,
+  connectTimeoutMS: 10_000,
+  socketTimeoutMS: 15_000,
+} as const;
+
+const MAX_DB_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = [200, 500] as const;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const MONGO_NETWORK_ERROR_NAMES = new Set([
   "MongoNetworkTimeoutError",
   "MongoServerSelectionError",
@@ -25,15 +43,50 @@ export function isMongoNetworkError(e: unknown): boolean {
   return MONGO_NETWORK_ERROR_NAMES.has(name);
 }
 
-/** Run fn(db); on network error reset client and retry once (serverless stale pool recovery). */
+/** Run fn(db); on network error reset singleton and retry (serverless stale pool recovery). */
 export async function withDbRetry<T>(fn: (db: Db) => Promise<T>, uri?: string): Promise<T> {
-  try {
-    return await fn(await getDb(uri));
-  } catch (e) {
-    if (!isMongoNetworkError(e)) throw e;
-    await resetMongoClient();
-    return await fn(await getDb(uri));
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_DB_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_BACKOFF_MS[attempt - 1] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
+      await resetMongoClient();
+    }
+    try {
+      return await fn(await getDb(uri));
+    } catch (e) {
+      if (!isMongoNetworkError(e)) throw e;
+      lastError = e;
+    }
   }
+  throw lastError;
+}
+
+/** Run fn(db) on a new client per attempt; close after each attempt (SSR pages on Vercel). */
+export async function withFreshDbRetry<T>(fn: (db: Db) => Promise<T>, uri?: string): Promise<T> {
+  const connectionUri = resolveMongoUri(uri);
+  const dbName = process.env.MONGODB_DB_NAME ?? "content_resourcer";
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_DB_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_BACKOFF_MS[attempt - 1] ?? RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]);
+    }
+
+    const client = new MongoClient(connectionUri, MONGO_FRESH_CLIENT_OPTIONS);
+    try {
+      await client.connect();
+      return await fn(client.db(dbName));
+    } catch (e) {
+      if (!isMongoNetworkError(e)) throw e;
+      lastError = e;
+    } finally {
+      await client.close().catch(() => {
+        // ignore close errors on broken connections
+      });
+    }
+  }
+
+  throw lastError;
 }
 
 declare global {

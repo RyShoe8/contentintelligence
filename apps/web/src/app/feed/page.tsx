@@ -4,7 +4,7 @@ import { ClearFeedButton } from "@/components/clear-feed-button";
 import { FeedItemCard } from "@/components/feed-item-card";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
-import { withMongo } from "@/lib/mongo";
+import { withFreshMongo } from "@/lib/mongo";
 import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export default async function FeedPage({
   const has_deal_metrics = sp.has_deal === "1";
 
   const { contentSignals, selectedId, selectedSignal, items, draftPosts, gmailOAuthSources } =
-    await withMongo(async (db) => {
+    await withFreshMongo(async (db) => {
       const contentSignals = await listContentSignals(db, { organizationId: orgId });
       const selectedId = sp.content_signal_id || sp.vertical_id || contentSignals[0]?.id || "";
       const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
@@ -78,27 +78,37 @@ export default async function FeedPage({
         };
       }
 
-      const [items, draftPosts, gmailOAuthSources] = await Promise.all([
-        listSignalItems(db, {
-          organizationId: orgId,
-          content_signal_id: selectedId,
-          keyword: sp.keyword || undefined,
-          min_score: Number.isFinite(min_score) ? min_score : undefined,
-          min_effective_savings_pct,
-          min_confidence,
-          has_deal_metrics: has_deal_metrics || undefined,
-          max_age_hours: selectedSignal?.lookback_window_hours,
-          sort,
-          order,
-          limit: 100,
-        }),
-        listPosts(db, {
+      const items = await listSignalItems(db, {
+        organizationId: orgId,
+        content_signal_id: selectedId,
+        keyword: sp.keyword || undefined,
+        min_score: Number.isFinite(min_score) ? min_score : undefined,
+        min_effective_savings_pct,
+        min_confidence,
+        has_deal_metrics: has_deal_metrics || undefined,
+        max_age_hours: selectedSignal?.lookback_window_hours,
+        sort,
+        order,
+        limit: 100,
+      });
+
+      let draftPosts: Awaited<ReturnType<typeof listPosts>> = [];
+      try {
+        draftPosts = await listPosts(db, {
           organizationId: orgId,
           content_signal_id: selectedId,
           status: "draft",
-        }),
-        loadContentSignalGmailOAuth(db, selectedId),
-      ]);
+        });
+      } catch {
+        // Non-critical: badge only; feed items should still render.
+      }
+
+      let gmailOAuthSources: Awaited<ReturnType<typeof loadContentSignalGmailOAuth>> = [];
+      try {
+        gmailOAuthSources = await loadContentSignalGmailOAuth(db, selectedId);
+      } catch {
+        // Non-critical: OAuth alerts only; feed items should still render.
+      }
 
       return { contentSignals, selectedId, selectedSignal, items, draftPosts, gmailOAuthSources };
     });

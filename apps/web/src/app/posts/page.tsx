@@ -17,7 +17,7 @@ import { KeyPointsList } from "@/components/key-points-list";
 import { LocalDateTime } from "@/components/local-date-time";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
-import { withMongo } from "@/lib/mongo";
+import { withFreshMongo } from "@/lib/mongo";
 import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { formatDealRow } from "@/lib/deal-display";
 import { displayCasinoName } from "@/lib/email-from-display";
@@ -72,7 +72,7 @@ export default async function PostsPage({
     posts,
     signalItemsById,
     gmailOAuthSources,
-  } = await withMongo(async (db) => {
+  } = await withFreshMongo(async (db) => {
     const contentSignals = await listContentSignals(db, { organizationId: orgId });
     const selectedId = sp.content_signal_id || contentSignals[0]?.id || "";
     const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
