@@ -132,6 +132,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
 
   return {
     startIngest,
+    startPostsSync: runPostsSyncInBackground,
     getStatus: () => ingestStatus,
     isInFlight: () => ingestInFlight !== null,
   };

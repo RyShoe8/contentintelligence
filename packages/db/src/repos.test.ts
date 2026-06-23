@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  listSignalItemsForFeed,
+  listSignalItemsForPostSync,
   signalItemFeedExcludeHeavyFieldsStage,
   signalItemFeedSlimStages,
   signalItemFeedTrimImagesStage,
 } from "./repos.js";
 import { signalItemFeedRowSchema } from "./schemas.js";
+
+describe("listSignalItemsForPostSync", () => {
+  it("reuses the feed slim query", () => {
+    assert.equal(listSignalItemsForPostSync, listSignalItemsForFeed);
+  });
+});
 
 describe("signalItemFeedTrimImagesStage", () => {
   it("trims email_images with $addFields and $map", () => {

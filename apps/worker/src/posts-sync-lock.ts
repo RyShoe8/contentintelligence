@@ -1,4 +1,4 @@
-import { getDb, resetMongoClient } from "@content-resourcer/db";
+import { withDbRetry } from "@content-resourcer/db";
 import {
   syncPostsForContentSignal,
   type PostsSyncOptions,
@@ -34,31 +34,11 @@ export function isPostsSyncInFlight(contentSignalId: string): boolean {
   return postsSyncRunner.isInFlight(contentSignalId);
 }
 
-function isMongoNetworkError(e: unknown): boolean {
-  if (!e || typeof e !== "object") return false;
-  const name = (e as { name?: string }).name ?? "";
-  return name === "MongoNetworkTimeoutError" || name === "MongoServerSelectionError";
-}
-
 export async function runPostsSyncWithRetry(
   contentSignalId: string,
   opts?: PostsSyncOptions,
 ): Promise<PostsSyncResult> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const db = await getDb();
-      return await syncPostsForContentSignal(db, contentSignalId, opts);
-    } catch (e) {
-      lastErr = e;
-      if (attempt === 0 && isMongoNetworkError(e)) {
-        await resetMongoClient();
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr;
+  return withDbRetry((db) => syncPostsForContentSignal(db, contentSignalId, opts));
 }
 
 /** Run posts sync for one content signal; rejects if that signal already has a job in flight. */

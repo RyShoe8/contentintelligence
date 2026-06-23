@@ -80,8 +80,12 @@ export async function savePostSettingsAction(formData: FormData) {
 
   try {
     await workerFetch("/posts/sync", contentSignalId);
-  } catch {
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
     revalidatePath("/posts");
+    if (err === "posts_sync_already_running") {
+      redirect(`/posts?content_signal_id=${contentSignalId}&saved=1&sync_in_progress=1`);
+    }
     redirect(`/posts?content_signal_id=${contentSignalId}&saved=1&sync_failed=1`);
   }
 

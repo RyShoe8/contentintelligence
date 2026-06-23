@@ -391,6 +391,9 @@ export async function listSignalItemsForFeed(
   return docs.map((d) => signalItemFeedRowSchema.parse(d));
 }
 
+/** Signal items for posts sync — slim rows without raw email/HTML/base64. */
+export const listSignalItemsForPostSync = listSignalItemsForFeed;
+
 export async function getSignalItem(db: Db, id: string): Promise<SignalItem | null> {
   const doc = await signalItems(db).findOne({ id });
   return doc ? signalItemSchema.parse(doc) : null;

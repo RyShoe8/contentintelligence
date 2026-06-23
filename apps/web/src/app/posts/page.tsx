@@ -56,6 +56,7 @@ export default async function PostsPage({
     saved?: string;
     archived?: string;
     sync_failed?: string;
+    sync_in_progress?: string;
     error?: string;
   }>;
 }) {
@@ -141,7 +142,9 @@ export default async function PostsPage({
           Settings saved.
           {sp.sync_failed === "1"
             ? " Post refresh failed — try Refresh posts."
-            : " Posts refreshed."}
+            : sp.sync_in_progress === "1"
+              ? " Post refresh already in progress — drafts will update shortly."
+              : " Posts refreshed."}
         </Alert>
       ) : null}
       {sp.archived === "1" ? <Alert variant="info">Post dismissed.</Alert> : null}

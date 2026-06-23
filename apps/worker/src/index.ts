@@ -136,6 +136,8 @@ async function main(): Promise<void> {
 
   const ingestInFlight = () => ingestCoordinator.isInFlight();
   const ingestStatus = () => ingestCoordinator.getStatus();
+  const startPostsSync = (contentSignalId: string, regeneratePosts = false) =>
+    ingestCoordinator.startPostsSync(contentSignalId, regeneratePosts);
   const ingestSecretOk = (header: string | string[] | undefined): boolean =>
     !env.ingestSecret || header === env.ingestSecret;
 
@@ -273,29 +275,28 @@ async function main(): Promise<void> {
     if (!ingestSecretOk(req.headers["x-ingest-secret"])) {
       return reply.code(401).send({ error: "unauthorized" });
     }
-    const q = req.query as { content_signal_id?: string };
-    const contentSignalId = q.content_signal_id?.trim();
+    const q = req.query as { content_signal_id?: string; regenerate_posts?: string };
+    const bodyJson = req.body as { content_signal_id?: string; regenerate_posts?: boolean } | undefined;
+    const contentSignalId =
+      (typeof q.content_signal_id === "string" && q.content_signal_id.trim()) ||
+      (typeof bodyJson?.content_signal_id === "string" && bodyJson.content_signal_id.trim()) ||
+      undefined;
     if (!contentSignalId) {
       return reply.code(400).send({ error: "content_signal_id is required" });
     }
     if (isPostsSyncInFlight(contentSignalId)) {
       return reply.code(409).send({ error: "posts_sync_already_running" });
     }
-    try {
-      const result = await Promise.race([
-        runPostsSyncExclusive(contentSignalId),
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("posts_sync_timeout")), env.postsSyncTimeoutMs);
-        }),
-      ]);
-      return result;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (message === "posts_sync_timeout") {
-        return reply.code(503).send({ error: message });
-      }
-      return reply.code(500).send({ error: message });
-    }
+    const regeneratePosts =
+      bodyJson?.regenerate_posts === true ||
+      q.regenerate_posts === "true" ||
+      q.regenerate_posts === "1";
+    startPostsSync(contentSignalId, regeneratePosts);
+    return reply.code(202).send({
+      accepted: true,
+      content_signal_id: contentSignalId,
+      message: "Post refresh started — drafts will update when finished.",
+    });
   });
 
   app.post("/posts/add", async (req, reply) => {

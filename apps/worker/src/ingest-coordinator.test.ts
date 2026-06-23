@@ -63,4 +63,33 @@ describe("createIngestCoordinator", () => {
     assert.equal(coordinator.getStatus().posts_sync_running, false);
     assert.equal(coordinator.getStatus().posts_sync_error, "connection timed out");
   });
+
+  it("startPostsSync runs background posts sync with status tracking", async () => {
+    let releasePosts!: () => void;
+    const postsGate = new Promise<void>((resolve) => {
+      releasePosts = resolve;
+    });
+
+    const coordinator = createIngestCoordinator({
+      runIngest: async () => baseStats,
+      runPostsSync: async () => {
+        await postsGate;
+        return { created: 1, updated: 0, archived: 0, skipped: 0 };
+      },
+      log: () => {},
+      onError: () => {},
+    });
+
+    coordinator.startPostsSync("signal-3", false);
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(coordinator.getStatus().posts_sync_running, true);
+    assert.equal(coordinator.getStatus().posts_sync_content_signal_id, "signal-3");
+
+    releasePosts();
+    await new Promise((r) => setTimeout(r, 10));
+
+    assert.equal(coordinator.getStatus().posts_sync_running, false);
+    assert.equal(coordinator.getStatus().posts_sync_error, null);
+  });
 });

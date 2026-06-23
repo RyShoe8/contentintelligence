@@ -3,14 +3,23 @@ import { COLLECTIONS } from "./collections.js";
 import { migrateLegacyCollections } from "./migrate.js";
 import { migrateOrganizations } from "./org-repos.js";
 
-const MONGO_CLIENT_OPTIONS = {
-  maxPoolSize: 5,
-  minPoolSize: 0,
-  maxIdleTimeMS: 10_000,
-  serverSelectionTimeoutMS: 10_000,
-  connectTimeoutMS: 10_000,
-  socketTimeoutMS: 30_000,
-} as const;
+function mongoSocketTimeoutMs(): number {
+  const raw = process.env.MONGO_SOCKET_TIMEOUT_MS;
+  if (raw == null || raw === "") return 30_000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 30_000;
+}
+
+function getMongoClientOptions() {
+  return {
+    maxPoolSize: 5,
+    minPoolSize: 0,
+    maxIdleTimeMS: 10_000,
+    serverSelectionTimeoutMS: 10_000,
+    connectTimeoutMS: 10_000,
+    socketTimeoutMS: mongoSocketTimeoutMs(),
+  };
+}
 
 /** Per-request client for serverless SSR — avoids stale warm-instance pool sockets. */
 const MONGO_FRESH_CLIENT_OPTIONS = {
@@ -110,7 +119,7 @@ function resolveMongoUri(uri?: string): string {
 }
 
 function connectMongoClient(connectionUri: string): Promise<MongoClient> {
-  const client = new MongoClient(connectionUri, MONGO_CLIENT_OPTIONS);
+  const client = new MongoClient(connectionUri, getMongoClientOptions());
   return client.connect().then(
     () => client,
     (err) => {

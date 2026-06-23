@@ -93,6 +93,21 @@ function statusAppliesToSignal(data: IngestStatusResponse, contentSignalId: stri
   return data.content_signal_id === contentSignalId;
 }
 
+function postsSyncAppliesToSignal(data: IngestStatusResponse, contentSignalId: string): boolean {
+  const id = data.posts_sync_content_signal_id;
+  if (id == null) return true;
+  return id === contentSignalId;
+}
+
+function isSyncComplete(data: IngestStatusResponse, contentSignalId: string): boolean {
+  if (data.running) return false;
+  if (!statusAppliesToSignal(data, contentSignalId)) return false;
+  if (data.posts_sync_running && postsSyncAppliesToSignal(data, contentSignalId)) {
+    return false;
+  }
+  return true;
+}
+
 export function GmailSyncButton({
   contentSignalId,
   disabled,
@@ -161,11 +176,13 @@ export function GmailSyncButton({
           const r = await fetch("/api/worker/ingest/status");
           const data = (await r.json().catch(() => ({}))) as IngestStatusResponse;
           if (!r.ok) return;
-          if (data.running === false && statusAppliesToSignal(data, contentSignalId)) {
+          if (isSyncComplete(data, contentSignalId)) {
             finishPolling(data);
             return;
           }
-          if (data.running && data.content_signal_id && data.content_signal_id !== contentSignalId) {
+          if (data.posts_sync_running && postsSyncAppliesToSignal(data, contentSignalId)) {
+            setMessage("Rebuilding posts…");
+          } else if (data.running && data.content_signal_id && data.content_signal_id !== contentSignalId) {
             setMessage("Another sync is running — waiting…");
           }
         } catch {

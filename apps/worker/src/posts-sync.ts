@@ -12,13 +12,15 @@ import {
   getSignalItem,
   isContentOnlyPost,
   listPosts,
-  listSignalItems,
+  listSignalItemsForPostSync,
   primarySocialCopy,
   resolveContentProviderName,
   upsertPost,
+  withDbRetry,
   type DealMetrics,
   type Post,
   type SignalItem,
+  type SignalItemFeedRow,
   type SocialPlatformId,
 } from "@content-resourcer/db";
 import {
@@ -44,11 +46,31 @@ export type PostsSyncOptions = {
   forceRegenerate?: boolean;
 };
 
+type PostSyncItem = Pick<
+  SignalItem,
+  | "id"
+  | "organization_id"
+  | "content_signal_id"
+  | "title"
+  | "ai_summary"
+  | "sender_from"
+  | "source_name"
+  | "email_sent_at"
+  | "original_url"
+  | "casino_name"
+  | "deal_metrics"
+  | "deals_found"
+>;
+
 type PostCopyBundle = {
   social_copy: string;
   social_copy_by_platform: Partial<Record<SocialPlatformId, string>>;
   allCopies: string[];
 };
+
+function asPostSyncItem(item: SignalItemFeedRow): PostSyncItem {
+  return item;
+}
 
 function voiceCopyOpts(ctx: VoiceGenerationContext) {
   return {
@@ -89,26 +111,33 @@ async function generatePostCopies(
 }
 
 async function regenerateAllDraftPostsForContentSignal(
-  db: Db,
   contentSignalId: string,
   ctx: VoiceGenerationContext,
   signalName: string,
 ): Promise<{ count: number; copies: string[] }> {
-  const signal = await getContentSignal(db, contentSignalId);
-  if (!signal) return { count: 0, copies: [] };
+  const { signal, drafts, signalItemById } = await withDbRetry(async (db) => {
+    const signal = await getContentSignal(db, contentSignalId);
+    if (!signal) {
+      return { signal: null, drafts: [] as Post[], signalItemById: new Map<string, SignalItem>() };
+    }
 
-  const drafts = await listPosts(db, {
-    organizationId: signal.organization_id,
-    content_signal_id: contentSignalId,
-    status: "draft",
-    limit: 500,
+    const drafts = await listPosts(db, {
+      organizationId: signal.organization_id,
+      content_signal_id: contentSignalId,
+      status: "draft",
+      limit: 500,
+    });
+
+    const signalItemIds = [...new Set(drafts.map((p) => p.signal_item_id))];
+    const signalItems = await Promise.all(signalItemIds.map((id) => getSignalItem(db, id)));
+    const signalItemById = new Map(signalItems.filter(Boolean).map((item) => [item!.id, item!]));
+    return { signal, drafts, signalItemById };
   });
+
+  if (!signal) return { count: 0, copies: [] };
 
   const copies: string[] = [];
   let count = 0;
-  const signalItemIds = [...new Set(drafts.map((p) => p.signal_item_id))];
-  const signalItems = await Promise.all(signalItemIds.map((id) => getSignalItem(db, id)));
-  const signalItemById = new Map(signalItems.filter(Boolean).map((item) => [item!.id, item!]));
 
   for (const post of drafts) {
     const contentOnly = isContentOnlyPost(post.deal_key, post.deal_metrics);
@@ -124,21 +153,23 @@ async function regenerateAllDraftPostsForContentSignal(
       ...copyOptsWithDealUrl(ctx, dealUrl),
     });
 
-    await upsertPost(db, {
-      organization_id: post.organization_id,
-      content_signal_id: post.content_signal_id,
-      signal_item_id: post.signal_item_id,
-      deal_key: post.deal_key,
-      source: post.source,
-      title: post.title,
-      social_copy: bundle.social_copy,
-      social_copy_by_platform: bundle.social_copy_by_platform,
-      deal_metrics: post.deal_metrics,
-      source_name: post.source_name,
-      sender_from: post.sender_from,
-      email_sent_at: post.email_sent_at,
-      ai_summary: post.ai_summary,
-    });
+    await withDbRetry((db) =>
+      upsertPost(db, {
+        organization_id: post.organization_id,
+        content_signal_id: post.content_signal_id,
+        signal_item_id: post.signal_item_id,
+        deal_key: post.deal_key,
+        source: post.source,
+        title: post.title,
+        social_copy: bundle.social_copy,
+        social_copy_by_platform: bundle.social_copy_by_platform,
+        deal_metrics: post.deal_metrics,
+        source_name: post.source_name,
+        sender_from: post.sender_from,
+        email_sent_at: post.email_sent_at,
+        ai_summary: post.ai_summary,
+      }),
+    );
     copies.push(...bundle.allCopies);
     count++;
   }
@@ -146,20 +177,17 @@ async function regenerateAllDraftPostsForContentSignal(
   return { count, copies };
 }
 
-async function upsertDealPost(
-  db: Db,
-  opts: {
-    item: SignalItem;
-    deal: DealMetrics;
-    source: "auto" | "manual";
-    signalName: string;
-    ctx: VoiceGenerationContext;
-    forceRegenerate?: boolean;
-  },
-): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopies?: string[] }> {
+async function upsertDealPost(opts: {
+  item: PostSyncItem;
+  deal: DealMetrics;
+  source: "auto" | "manual";
+  signalName: string;
+  ctx: VoiceGenerationContext;
+  forceRegenerate?: boolean;
+}): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopies?: string[] }> {
   const { item, deal, source, signalName, ctx, forceRegenerate } = opts;
   const dealKey = buildDealKey(deal);
-  const existing = await findPostByItemDeal(db, item.id, dealKey);
+  const existing = await withDbRetry((db) => findPostByItemDeal(db, item.id, dealKey));
 
   let bundle: PostCopyBundle | null = null;
   if (!postHasCopy(existing) || forceRegenerate) {
@@ -179,21 +207,23 @@ async function upsertDealPost(
   const social_copy_by_platform =
     bundle?.social_copy_by_platform ?? existing?.social_copy_by_platform ?? {};
 
-  const { created } = await upsertPost(db, {
-    organization_id: item.organization_id,
-    content_signal_id: item.content_signal_id,
-    signal_item_id: item.id,
-    deal_key: dealKey,
-    source,
-    title: item.title,
-    social_copy,
-    social_copy_by_platform,
-    deal_metrics: deal,
-    source_name: item.source_name,
-    sender_from: item.sender_from,
-    email_sent_at: item.email_sent_at,
-    ai_summary: item.ai_summary,
-  });
+  const { created } = await withDbRetry((db) =>
+    upsertPost(db, {
+      organization_id: item.organization_id,
+      content_signal_id: item.content_signal_id,
+      signal_item_id: item.id,
+      deal_key: dealKey,
+      source,
+      title: item.title,
+      social_copy,
+      social_copy_by_platform,
+      deal_metrics: deal,
+      source_name: item.source_name,
+      sender_from: item.sender_from,
+      email_sent_at: item.email_sent_at,
+      ai_summary: item.ai_summary,
+    }),
+  );
 
   const regenerated = !postHasCopy(existing) || forceRegenerate;
   return {
@@ -202,17 +232,14 @@ async function upsertDealPost(
   };
 }
 
-async function upsertContentOnlyPost(
-  db: Db,
-  opts: {
-    item: SignalItem;
-    signalName: string;
-    ctx: VoiceGenerationContext;
-    forceRegenerate?: boolean;
-  },
-): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopies?: string[] }> {
+async function upsertContentOnlyPost(opts: {
+  item: PostSyncItem;
+  signalName: string;
+  ctx: VoiceGenerationContext;
+  forceRegenerate?: boolean;
+}): Promise<{ outcome: "created" | "updated" | "skipped"; socialCopies?: string[] }> {
   const { item, signalName, ctx, forceRegenerate } = opts;
-  const existing = await findPostByItemDeal(db, item.id, CONTENT_ONLY_DEAL_KEY);
+  const existing = await withDbRetry((db) => findPostByItemDeal(db, item.id, CONTENT_ONLY_DEAL_KEY));
 
   let bundle: PostCopyBundle | null = null;
   if (!postHasCopy(existing) || forceRegenerate) {
@@ -231,21 +258,23 @@ async function upsertContentOnlyPost(
   const social_copy_by_platform =
     bundle?.social_copy_by_platform ?? existing?.social_copy_by_platform ?? {};
 
-  const { created } = await upsertPost(db, {
-    organization_id: item.organization_id,
-    content_signal_id: item.content_signal_id,
-    signal_item_id: item.id,
-    deal_key: CONTENT_ONLY_DEAL_KEY,
-    source: "manual",
-    title: item.title,
-    social_copy,
-    social_copy_by_platform,
-    deal_metrics: CONTENT_ONLY_DEAL_METRICS,
-    source_name: item.source_name,
-    sender_from: item.sender_from,
-    email_sent_at: item.email_sent_at,
-    ai_summary: item.ai_summary,
-  });
+  const { created } = await withDbRetry((db) =>
+    upsertPost(db, {
+      organization_id: item.organization_id,
+      content_signal_id: item.content_signal_id,
+      signal_item_id: item.id,
+      deal_key: CONTENT_ONLY_DEAL_KEY,
+      source: "manual",
+      title: item.title,
+      social_copy,
+      social_copy_by_platform,
+      deal_metrics: CONTENT_ONLY_DEAL_METRICS,
+      source_name: item.source_name,
+      sender_from: item.sender_from,
+      email_sent_at: item.email_sent_at,
+      ai_summary: item.ai_summary,
+    }),
+  );
 
   const regenerated = !postHasCopy(existing) || forceRegenerate;
   return {
@@ -268,7 +297,7 @@ export async function syncPostsForContentSignal(
   const minPct = (signal.post_min_deal_pct ?? 50) / 100;
   const voice = await findVoiceForContentSignal(db, contentSignalId);
   const ctx = resolveVoiceGenerationContext(voice);
-  const items = await listSignalItems(db, {
+  const items = await listSignalItemsForPostSync(db, {
     organizationId: signal.organization_id,
     content_signal_id: contentSignalId,
     max_age_hours: signal.lookback_window_hours,
@@ -281,7 +310,8 @@ export async function syncPostsForContentSignal(
   const keepKeys = new Set<string>();
   const newCopies: string[] = [];
 
-  for (const item of items) {
+  for (const row of items) {
+    const item = asPostSyncItem(row);
     const deals = dealsForPostEval(item);
     if (!deals.length) {
       result.skipped++;
@@ -294,7 +324,7 @@ export async function syncPostsForContentSignal(
       const dealKey = buildDealKey(deal);
       keepKeys.add(`${item.id}:${dealKey}`);
 
-      const { outcome, socialCopies } = await upsertDealPost(db, {
+      const { outcome, socialCopies } = await upsertDealPost({
         item,
         deal,
         source: "auto",
@@ -309,16 +339,18 @@ export async function syncPostsForContentSignal(
     }
   }
 
-  result.archived = await archiveAutoPostsForSignal(db, contentSignalId, keepKeys);
+  result.archived = await withDbRetry((innerDb) =>
+    archiveAutoPostsForSignal(innerDb, contentSignalId, keepKeys),
+  );
 
   if (forceRegenerate) {
-    const regen = await regenerateAllDraftPostsForContentSignal(db, contentSignalId, ctx, signal.name);
+    const regen = await regenerateAllDraftPostsForContentSignal(contentSignalId, ctx, signal.name);
     result.regenerated = regen.count;
     newCopies.push(...regen.copies);
   }
 
   if (ctx.voiceId && newCopies.length) {
-    await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
+    await withDbRetry((innerDb) => updateBrandMemoryFromCopies(innerDb, ctx.voiceId!, newCopies));
   }
 
   return result;
@@ -334,6 +366,7 @@ export async function addPostsForSignalItem(
     return { created: 0, updated: 0, archived: 0, skipped: 0, posts: [] };
   }
 
+  const syncItem = asPostSyncItem(item);
   const signal = await getContentSignal(db, item.content_signal_id);
   const signalName = signal?.name ?? "Content signal";
   const voice = await findVoiceForContentSignal(db, item.content_signal_id);
@@ -342,8 +375,8 @@ export async function addPostsForSignalItem(
 
   if (!deals.length) {
     const result: PostsSyncResult = { created: 0, updated: 0, archived: 0, skipped: 0 };
-    const { outcome, socialCopies } = await upsertContentOnlyPost(db, {
-      item,
+    const { outcome, socialCopies } = await upsertContentOnlyPost({
+      item: syncItem,
       signalName,
       ctx,
       forceRegenerate: true,
@@ -353,11 +386,13 @@ export async function addPostsForSignalItem(
     else if (outcome === "updated") result.updated++;
     else result.skipped++;
 
-    const post = await findPostByItemDeal(db, item.id, CONTENT_ONLY_DEAL_KEY);
+    const post = await withDbRetry((innerDb) =>
+      findPostByItemDeal(innerDb, item.id, CONTENT_ONLY_DEAL_KEY),
+    );
     const posts = post ? [post] : [];
 
     if (ctx.voiceId && newCopies.length) {
-      await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
+      await withDbRetry((innerDb) => updateBrandMemoryFromCopies(innerDb, ctx.voiceId!, newCopies));
     }
 
     return { ...result, posts };
@@ -371,8 +406,8 @@ export async function addPostsForSignalItem(
   const newCopies: string[] = [];
 
   for (const deal of targets) {
-    const { outcome, socialCopies } = await upsertDealPost(db, {
-      item,
+    const { outcome, socialCopies } = await upsertDealPost({
+      item: syncItem,
       deal,
       source: "manual",
       signalName,
@@ -385,12 +420,12 @@ export async function addPostsForSignalItem(
     else result.skipped++;
 
     const dealKey = buildDealKey(deal);
-    const post = await findPostByItemDeal(db, item.id, dealKey);
+    const post = await withDbRetry((innerDb) => findPostByItemDeal(innerDb, item.id, dealKey));
     if (post) posts.push(post);
   }
 
   if (ctx.voiceId && newCopies.length) {
-    await updateBrandMemoryFromCopies(db, ctx.voiceId, newCopies);
+    await withDbRetry((innerDb) => updateBrandMemoryFromCopies(innerDb, ctx.voiceId!, newCopies));
   }
 
   return { ...result, posts };
