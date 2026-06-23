@@ -222,11 +222,9 @@ export type SignalFeedQuery = {
   limit?: number;
 };
 
-/** $project stage for feed list — omits heavy email body and image bytes. */
-export const signalItemFeedProjectStage = {
-  $project: {
-    raw_content: 0,
-    email_html_preview: 0,
+/** Trim attachment metadata before excluding heavy feed fields. */
+export const signalItemFeedTrimImagesStage = {
+  $addFields: {
     email_images: {
       $cond: {
         if: { $gt: [{ $size: { $ifNull: ["$email_images", []] } }, 0] },
@@ -245,6 +243,19 @@ export const signalItemFeedProjectStage = {
     },
   },
 } as const;
+
+/** Exclusion-only projection — must not mix computed fields with `field: 0`. */
+export const signalItemFeedExcludeHeavyFieldsStage = {
+  $project: {
+    raw_content: 0,
+    email_html_preview: 0,
+  },
+} as const;
+
+export const signalItemFeedSlimStages = [
+  signalItemFeedTrimImagesStage,
+  signalItemFeedExcludeHeavyFieldsStage,
+] as const;
 
 function buildSignalFeedFilter(q: SignalFeedQuery): Record<string, unknown> {
   const clauses: Record<string, unknown>[] = [];
@@ -357,7 +368,7 @@ export async function listSignalItemsForFeed(
         { $sort: { _recency: -1 } },
         { $limit: limit },
         { $project: { _recency: 0 } },
-        signalItemFeedProjectStage,
+        ...signalItemFeedSlimStages,
       ])
       .toArray();
     return docs.map((d) => signalItemFeedRowSchema.parse(d));
@@ -375,7 +386,7 @@ export async function listSignalItemsForFeed(
         };
 
   const docs = await signalItems(db)
-    .aggregate([{ $match: filter }, { $sort: sort }, { $limit: limit }, signalItemFeedProjectStage])
+    .aggregate([{ $match: filter }, { $sort: sort }, { $limit: limit }, ...signalItemFeedSlimStages])
     .toArray();
   return docs.map((d) => signalItemFeedRowSchema.parse(d));
 }

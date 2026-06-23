@@ -1,14 +1,36 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { signalItemFeedProjectStage } from "./repos.js";
+import {
+  signalItemFeedExcludeHeavyFieldsStage,
+  signalItemFeedSlimStages,
+  signalItemFeedTrimImagesStage,
+} from "./repos.js";
 import { signalItemFeedRowSchema } from "./schemas.js";
 
-describe("signalItemFeedProjectStage", () => {
-  it("excludes raw_content and email_html_preview", () => {
-    const project = signalItemFeedProjectStage.$project as Record<string, unknown>;
+describe("signalItemFeedTrimImagesStage", () => {
+  it("trims email_images with $addFields and $map", () => {
+    const addFields = signalItemFeedTrimImagesStage.$addFields as Record<string, unknown>;
+    const emailImages = addFields.email_images as Record<string, unknown>;
+    assert.ok(emailImages.$cond);
+    const then = (emailImages.$cond as { then: Record<string, unknown> }).then;
+    assert.ok(then.$map);
+  });
+});
+
+describe("signalItemFeedExcludeHeavyFieldsStage", () => {
+  it("excludes only raw_content and email_html_preview", () => {
+    const project = signalItemFeedExcludeHeavyFieldsStage.$project as Record<string, unknown>;
     assert.equal(project.raw_content, 0);
     assert.equal(project.email_html_preview, 0);
-    assert.ok(project.email_images);
+    assert.equal(Object.keys(project).length, 2);
+  });
+});
+
+describe("signalItemFeedSlimStages", () => {
+  it("runs trim before exclude", () => {
+    assert.equal(signalItemFeedSlimStages.length, 2);
+    assert.ok("$addFields" in signalItemFeedSlimStages[0]);
+    assert.ok("$project" in signalItemFeedSlimStages[1]);
   });
 });
 
