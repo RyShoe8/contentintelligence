@@ -100,7 +100,13 @@ If **Feed**, **Posts**, or other pages return 500 and Vercel logs show `MongoNet
 
 The web app and worker share one MongoDB database. Index migrations run on **worker startup** and ingest — read-only pages no longer run migrations on every load.
 
+Read paths (Feed, Posts) use **`withDbRetry`**: on `MongoNetworkTimeoutError` the client pool is reset and the query is retried once. That recovers from stale connections after Atlas wake or idle serverless instances. If both attempts fail, the Feed error page appears instead of spinning indefinitely.
+
+On **M0 free tier**, connection limits are low (~500). The web client uses a small pool (`maxPoolSize: 5`). If timeouts persist, check Atlas **Metrics → Connections** — Render worker + many Vercel instances can exhaust the limit; consider upgrading the cluster tier.
+
 If **`GET /api/cron/ingest-due`** logged HTTP 409 with `ingest_already_running`, a sync was already running on the worker. That is expected overlap, not a feed failure (the cron route treats it as success).
+
+If cron logs **`skipped: worker_timeout`**, the Render worker did not respond to `/schedule/tick` within the fetch timeout. Ingest may still be running; this is not a feed page failure.
 
 ### Brevo (org invite emails)
 

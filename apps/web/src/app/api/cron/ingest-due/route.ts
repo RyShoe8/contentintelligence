@@ -37,6 +37,27 @@ export async function GET(req: NextRequest) {
   });
 
   if (result.error) {
+    const httpStatus = resolveCronIngestDueHttpStatus(
+      result.schedule_tick_status,
+      result.body,
+      result.error,
+    );
+    if (httpStatus === 200 && result.skipped === "worker_timeout") {
+      return NextResponse.json(
+        {
+          cron: true,
+          tick_attempts: result.tick_attempts,
+          worker_wake_ms: result.worker_wake_ms,
+          worker_wake_ok: result.worker_wake_ok,
+          schedule_tick_status: result.schedule_tick_status,
+          schedule_tick_ms: result.schedule_tick_ms,
+          skipped: "worker_timeout",
+          message: "Worker did not respond in time; sync may still be running.",
+          ...result.body,
+        },
+        { status: 200 },
+      );
+    }
     return NextResponse.json(
       {
         cron: true,

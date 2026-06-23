@@ -4,13 +4,37 @@ import { migrateLegacyCollections } from "./migrate.js";
 import { migrateOrganizations } from "./org-repos.js";
 
 const MONGO_CLIENT_OPTIONS = {
-  maxPoolSize: 10,
+  maxPoolSize: 5,
   minPoolSize: 0,
   maxIdleTimeMS: 10_000,
   serverSelectionTimeoutMS: 10_000,
   connectTimeoutMS: 10_000,
   socketTimeoutMS: 30_000,
 } as const;
+
+const MONGO_NETWORK_ERROR_NAMES = new Set([
+  "MongoNetworkTimeoutError",
+  "MongoServerSelectionError",
+  "MongoNetworkError",
+]);
+
+/** True when a Mongo driver/network failure may be recoverable by reconnecting. */
+export function isMongoNetworkError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const name = (e as { name?: string }).name ?? "";
+  return MONGO_NETWORK_ERROR_NAMES.has(name);
+}
+
+/** Run fn(db); on network error reset client and retry once (serverless stale pool recovery). */
+export async function withDbRetry<T>(fn: (db: Db) => Promise<T>, uri?: string): Promise<T> {
+  try {
+    return await fn(await getDb(uri));
+  } catch (e) {
+    if (!isMongoNetworkError(e)) throw e;
+    await resetMongoClient();
+    return await fn(await getDb(uri));
+  }
+}
 
 declare global {
   // eslint-disable-next-line no-var -- HMR / serverless singleton

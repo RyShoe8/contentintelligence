@@ -1,4 +1,4 @@
-export const TICK_FETCH_TIMEOUT_MS = 45_000;
+export const TICK_FETCH_TIMEOUT_MS = 25_000;
 export const TICK_RETRY_DELAY_MS = 12_000;
 export const HEALTH_FETCH_TIMEOUT_MS = 8_000;
 export const MAX_TICK_ATTEMPTS = 2;
@@ -23,6 +23,7 @@ export type ScheduleTickFetchResult = {
   accepted?: boolean;
   due_count?: number;
   content_signal_id?: string | null;
+  skipped?: "worker_timeout";
   body: Record<string, unknown>;
   error?: string;
 };
@@ -31,7 +32,11 @@ export type ScheduleTickFetchResult = {
 export function resolveCronIngestDueHttpStatus(
   scheduleTickStatus: number | null,
   body: Record<string, unknown>,
+  fetchError?: string,
 ): number {
+  if (fetchError && isWorkerTimeoutError(fetchError)) {
+    return 200;
+  }
   if (
     scheduleTickStatus === 409 &&
     body.error === "ingest_already_running"
@@ -42,6 +47,15 @@ export function resolveCronIngestDueHttpStatus(
     return scheduleTickStatus;
   }
   return 200;
+}
+
+function isWorkerTimeoutError(message: string): boolean {
+  return (
+    /AbortError/i.test(message) ||
+    /TimeoutError/i.test(message) ||
+    /timed out/i.test(message) ||
+    /fetch failed/i.test(message)
+  );
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -178,7 +192,8 @@ export async function runScheduleTickFetch(
     worker_wake_ok: workerWakeOk,
     schedule_tick_ms: 0,
     schedule_tick_status: null,
-    body: {},
+    skipped: lastError && isWorkerTimeoutError(lastError) ? "worker_timeout" : undefined,
+    body: lastError && isWorkerTimeoutError(lastError) ? { skipped: "worker_timeout" } : {},
     error: lastError ?? "fetch_failed",
   };
 }

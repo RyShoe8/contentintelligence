@@ -11,6 +11,7 @@ import {
   updateVoicePersonaStatus,
   recoverOrphanedComposeJobs,
   COMPOSE_ORPHAN_RECOVERY_GRACE_MS,
+  withDbRetry,
 } from "@content-resourcer/db";
 import Fastify from "fastify";
 import { google } from "googleapis";
@@ -156,31 +157,31 @@ async function main(): Promise<void> {
       };
     }
     try {
-      const db = await getDb();
-      await ensureIndexes(db);
-      const signals = await listScheduledContentSignals(db);
-      const due = signals.filter((s) => isContentSignalIngestDue(s));
-      if (!due.length) {
-        return { due_count: 0, started: false, content_signal_id: null };
-      }
-      const next = due.sort((a, b) => {
-        const aT = a.last_ingest_completed_at?.getTime() ?? 0;
-        const bT = b.last_ingest_completed_at?.getTime() ?? 0;
-        return aT - bT;
-      })[0];
-      if (!next) {
-        return { due_count: due.length, started: false, content_signal_id: null };
-      }
-      ingestLog("signal_schedule_start", {
-        contentSignalId: next.id,
-        intervalMinutes: next.ingest_interval_minutes,
+      return await withDbRetry(async (db) => {
+        const signals = await listScheduledContentSignals(db);
+        const due = signals.filter((s) => isContentSignalIngestDue(s));
+        if (!due.length) {
+          return { due_count: 0, started: false, content_signal_id: null };
+        }
+        const next = due.sort((a, b) => {
+          const aT = a.last_ingest_completed_at?.getTime() ?? 0;
+          const bT = b.last_ingest_completed_at?.getTime() ?? 0;
+          return aT - bT;
+        })[0];
+        if (!next) {
+          return { due_count: due.length, started: false, content_signal_id: null };
+        }
+        ingestLog("signal_schedule_start", {
+          contentSignalId: next.id,
+          intervalMinutes: next.ingest_interval_minutes,
+        });
+        void startIngest(next.id, "schedule");
+        return {
+          due_count: due.length,
+          started: true,
+          content_signal_id: next.id,
+        };
       });
-      void startIngest(next.id, "schedule");
-      return {
-        due_count: due.length,
-        started: true,
-        content_signal_id: next.id,
-      };
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       ingestLog("signal_schedule_error", { message });

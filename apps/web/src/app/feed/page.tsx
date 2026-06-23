@@ -4,7 +4,7 @@ import { ClearFeedButton } from "@/components/clear-feed-button";
 import { FeedItemCard } from "@/components/feed-item-card";
 import { GmailSyncButton } from "@/components/gmail-sync-button";
 import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
-import { connectMongo } from "@/lib/mongo";
+import { withMongo } from "@/lib/mongo";
 import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -39,10 +39,6 @@ export default async function FeedPage({
   const sp = await searchParams;
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
-  const db = await connectMongo();
-  const contentSignals = await listContentSignals(db, { organizationId: orgId });
-  const selectedId = sp.content_signal_id || sp.vertical_id || contentSignals[0]?.id || "";
-  const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
   const workerIngestConfigured = !!process.env.WORKER_URL;
   const clearedCount = sp.cleared ? Number(sp.cleared) : null;
 
@@ -65,34 +61,49 @@ export default async function FeedPage({
     Number.isFinite(minConfRaw) && minConfRaw! >= 0 && minConfRaw! <= 1 ? minConfRaw : undefined;
   const has_deal_metrics = sp.has_deal === "1";
 
-  const items = selectedId
-    ? await listSignalItems(db, {
-        organizationId: orgId,
-        content_signal_id: selectedId,
-        keyword: sp.keyword || undefined,
-        min_score: Number.isFinite(min_score) ? min_score : undefined,
-        min_effective_savings_pct,
-        min_confidence,
-        has_deal_metrics: has_deal_metrics || undefined,
-        max_age_hours: selectedSignal?.lookback_window_hours,
-        sort,
-        order,
-        limit: 100,
-      })
-    : [];
+  const { contentSignals, selectedId, selectedSignal, items, draftPosts, gmailOAuthSources } =
+    await withMongo(async (db) => {
+      const contentSignals = await listContentSignals(db, { organizationId: orgId });
+      const selectedId = sp.content_signal_id || sp.vertical_id || contentSignals[0]?.id || "";
+      const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
 
-  const draftPosts = selectedId
-    ? await listPosts(db, {
-        organizationId: orgId,
-        content_signal_id: selectedId,
-        status: "draft",
-      })
-    : [];
+      if (!selectedId) {
+        return {
+          contentSignals,
+          selectedId,
+          selectedSignal,
+          items: [] as Awaited<ReturnType<typeof listSignalItems>>,
+          draftPosts: [] as Awaited<ReturnType<typeof listPosts>>,
+          gmailOAuthSources: [] as Awaited<ReturnType<typeof loadContentSignalGmailOAuth>>,
+        };
+      }
+
+      const [items, draftPosts, gmailOAuthSources] = await Promise.all([
+        listSignalItems(db, {
+          organizationId: orgId,
+          content_signal_id: selectedId,
+          keyword: sp.keyword || undefined,
+          min_score: Number.isFinite(min_score) ? min_score : undefined,
+          min_effective_savings_pct,
+          min_confidence,
+          has_deal_metrics: has_deal_metrics || undefined,
+          max_age_hours: selectedSignal?.lookback_window_hours,
+          sort,
+          order,
+          limit: 100,
+        }),
+        listPosts(db, {
+          organizationId: orgId,
+          content_signal_id: selectedId,
+          status: "draft",
+        }),
+        loadContentSignalGmailOAuth(db, selectedId),
+      ]);
+
+      return { contentSignals, selectedId, selectedSignal, items, draftPosts, gmailOAuthSources };
+    });
+
   const itemIdsInPosts = new Set(draftPosts.map((p) => p.signal_item_id));
-
-  const gmailOAuthSources = selectedId
-    ? await loadContentSignalGmailOAuth(db, selectedId)
-    : [];
 
   const filterQs = new URLSearchParams();
   if (selectedId) filterQs.set("content_signal_id", selectedId);

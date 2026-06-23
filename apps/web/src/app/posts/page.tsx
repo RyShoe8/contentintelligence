@@ -17,7 +17,7 @@ import { KeyPointsList } from "@/components/key-points-list";
 import { LocalDateTime } from "@/components/local-date-time";
 import { SyncScheduleStatus } from "@/components/sync-schedule-status";
 import { ContentSignalGmailAuthAlerts } from "@/components/content-signal-gmail-auth-alerts";
-import { connectMongo } from "@/lib/mongo";
+import { withMongo } from "@/lib/mongo";
 import { loadContentSignalGmailOAuth } from "@/lib/content-signal-gmail-oauth";
 import { formatDealRow } from "@/lib/deal-display";
 import { displayCasinoName } from "@/lib/email-from-display";
@@ -62,30 +62,60 @@ export default async function PostsPage({
   const sp = await searchParams;
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;
-  const db = await connectMongo();
-  const contentSignals = await listContentSignals(db, { organizationId: orgId });
-  const selectedId = sp.content_signal_id || contentSignals[0]?.id || "";
-  const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
-  const linkedVoice = selectedId ? await findVoiceForContentSignal(db, selectedId) : null;
   const workerIngestConfigured = !!process.env.WORKER_URL;
 
-  const posts = selectedId
-    ? await listPosts(db, {
+  const {
+    contentSignals,
+    selectedId,
+    selectedSignal,
+    linkedVoice,
+    posts,
+    signalItemsById,
+    gmailOAuthSources,
+  } = await withMongo(async (db) => {
+    const contentSignals = await listContentSignals(db, { organizationId: orgId });
+    const selectedId = sp.content_signal_id || contentSignals[0]?.id || "";
+    const selectedSignal = contentSignals.find((cs) => cs.id === selectedId);
+
+    if (!selectedId) {
+      return {
+        contentSignals,
+        selectedId,
+        selectedSignal,
+        linkedVoice: null,
+        posts: [] as Awaited<ReturnType<typeof listPosts>>,
+        signalItemsById: new Map() as Awaited<ReturnType<typeof getSignalItemsByIds>>,
+        gmailOAuthSources: [] as Awaited<ReturnType<typeof loadContentSignalGmailOAuth>>,
+      };
+    }
+
+    const [linkedVoice, posts, gmailOAuthSources] = await Promise.all([
+      findVoiceForContentSignal(db, selectedId),
+      listPosts(db, {
         organizationId: orgId,
         content_signal_id: selectedId,
         status: "draft",
-      })
-    : [];
+      }),
+      loadContentSignalGmailOAuth(db, selectedId),
+    ]);
 
-  const signalItemsById = await getSignalItemsByIds(
-    db,
-    orgId,
-    posts.map((p) => p.signal_item_id),
-  );
+    const signalItemsById = await getSignalItemsByIds(
+      db,
+      orgId,
+      posts.map((p) => p.signal_item_id),
+    );
 
-  const gmailOAuthSources = selectedId
-    ? await loadContentSignalGmailOAuth(db, selectedId)
-    : [];
+    return {
+      contentSignals,
+      selectedId,
+      selectedSignal,
+      linkedVoice,
+      posts,
+      signalItemsById,
+      gmailOAuthSources,
+    };
+  });
+
   const primaryReconnectHref =
     gmailOAuthSources.find((s) => s.connected)?.oauthStartUrl ??
     gmailOAuthSources[0]?.oauthStartUrl;

@@ -93,12 +93,16 @@ describe("runScheduleTickFetch", () => {
     });
 
     assert.equal(result.error, "fetch failed");
+    assert.equal(result.skipped, "worker_timeout");
     assert.equal(result.tick_attempts, 2);
     assert.equal(result.schedule_tick_status, null);
   });
 });
 
 describe("resolveCronIngestDueHttpStatus", () => {
+  it("maps worker fetch timeout to 200", () => {
+    assert.equal(resolveCronIngestDueHttpStatus(null, {}, "The operation was aborted"), 200);
+  });
   it("maps ingest overlap 409 to 200", () => {
     assert.equal(
       resolveCronIngestDueHttpStatus(409, { error: "ingest_already_running" }),
