@@ -1,4 +1,5 @@
-import { getDb, withDbRetry, type Db } from "@content-resourcer/db";
+import { getDb, withDbRetry } from "@content-resourcer/db";
+import type { Db } from "mongodb";
 
 export async function connectMongo() {
   return getDb(process.env.MONGODB_URI);
