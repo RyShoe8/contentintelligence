@@ -399,6 +399,30 @@ export async function getSignalItem(db: Db, id: string): Promise<SignalItem | nu
   return doc ? signalItemSchema.parse(doc) : null;
 }
 
+/** Batch-load slim feed rows for Posts page (no raw email or image base64). */
+export async function getSignalFeedRowsByIds(
+  db: Db,
+  organizationId: string,
+  ids: string[],
+): Promise<Map<string, SignalItemFeedRow>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map();
+
+  const docs = await signalItems(db)
+    .aggregate([
+      { $match: { organization_id: organizationId, id: { $in: unique } } },
+      ...signalItemFeedSlimStages,
+    ])
+    .toArray();
+
+  const map = new Map<string, SignalItemFeedRow>();
+  for (const doc of docs) {
+    const item = signalItemFeedRowSchema.parse(doc);
+    map.set(item.id, item);
+  }
+  return map;
+}
+
 /** Batch-load feed rows for Posts page image join (keyed by signal item id). */
 export async function getSignalItemsByIds(
   db: Db,

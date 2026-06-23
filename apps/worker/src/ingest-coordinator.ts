@@ -1,5 +1,13 @@
 import type { IngestStats } from "./ingest.js";
 
+export type PostsSyncResultSnapshot = {
+  created?: number;
+  updated?: number;
+  archived?: number;
+  skipped?: number;
+  regenerated?: number;
+};
+
 export type IngestStatusSnapshot = {
   running: boolean;
   content_signal_id: string | null;
@@ -10,6 +18,7 @@ export type IngestStatusSnapshot = {
   posts_sync_running: boolean;
   posts_sync_content_signal_id: string | null;
   posts_sync_error: string | null;
+  posts_sync_result: PostsSyncResultSnapshot | null;
 };
 
 export type IngestCoordinatorDeps = {
@@ -18,6 +27,18 @@ export type IngestCoordinatorDeps = {
   log: (step: string, data: Record<string, unknown>) => void;
   onError: (err: unknown) => void;
 };
+
+function parsePostsSyncResult(value: unknown): PostsSyncResultSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const result: PostsSyncResultSnapshot = {};
+  if (typeof o.created === "number") result.created = o.created;
+  if (typeof o.updated === "number") result.updated = o.updated;
+  if (typeof o.archived === "number") result.archived = o.archived;
+  if (typeof o.skipped === "number") result.skipped = o.skipped;
+  if (typeof o.regenerated === "number") result.regenerated = o.regenerated;
+  return Object.keys(result).length ? result : null;
+}
 
 export function createInitialIngestStatus(): IngestStatusSnapshot {
   return {
@@ -30,6 +51,7 @@ export function createInitialIngestStatus(): IngestStatusSnapshot {
     posts_sync_running: false,
     posts_sync_content_signal_id: null,
     posts_sync_error: null,
+    posts_sync_result: null,
   };
 }
 
@@ -37,25 +59,35 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
   let ingestInFlight: Promise<IngestStats> | null = null;
   let ingestStatus: IngestStatusSnapshot = createInitialIngestStatus();
 
+  const postsSyncFields = (status: IngestStatusSnapshot) => ({
+    posts_sync_running: status.posts_sync_running,
+    posts_sync_content_signal_id: status.posts_sync_content_signal_id,
+    posts_sync_error: status.posts_sync_error,
+    posts_sync_result: status.posts_sync_result,
+  });
+
   const runPostsSyncInBackground = (contentSignalId: string, regeneratePosts: boolean) => {
     ingestStatus = {
       ...ingestStatus,
       posts_sync_running: true,
       posts_sync_content_signal_id: contentSignalId,
       posts_sync_error: null,
+      posts_sync_result: null,
     };
     void deps
       .runPostsSync(contentSignalId, regeneratePosts)
       .then((postStats) => {
+        const result = parsePostsSyncResult(postStats);
         deps.log("posts_sync_after_ingest", {
           contentSignalId,
-          ...(typeof postStats === "object" && postStats ? postStats : {}),
+          ...(result ?? {}),
         });
         ingestStatus = {
           ...ingestStatus,
           posts_sync_running: false,
           posts_sync_content_signal_id: null,
           posts_sync_error: null,
+          posts_sync_result: result,
         };
       })
       .catch((e) => {
@@ -67,6 +99,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
           posts_sync_running: false,
           posts_sync_content_signal_id: null,
           posts_sync_error: message,
+          posts_sync_result: null,
         };
       });
   };
@@ -76,6 +109,9 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
     source: "http_post" | "cron" | "schedule",
     regeneratePosts = false,
   ) => {
+    const preservePostsSync = ingestStatus.posts_sync_running;
+    const preserved = preservePostsSync ? postsSyncFields(ingestStatus) : postsSyncFields(createInitialIngestStatus());
+
     ingestStatus = {
       running: true,
       content_signal_id: contentSignalId ?? null,
@@ -83,9 +119,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
       finished_at: null,
       stats: null,
       error: null,
-      posts_sync_running: false,
-      posts_sync_content_signal_id: null,
-      posts_sync_error: null,
+      ...preserved,
     };
     ingestInFlight = deps
       .runIngest(contentSignalId)
@@ -98,11 +132,9 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
           finished_at: new Date().toISOString(),
           stats,
           error: null,
-          posts_sync_running: ingestStatus.posts_sync_running,
-          posts_sync_content_signal_id: ingestStatus.posts_sync_content_signal_id,
-          posts_sync_error: ingestStatus.posts_sync_error,
+          ...postsSyncFields(ingestStatus),
         };
-        if (contentSignalId) {
+        if (contentSignalId && !ingestStatus.posts_sync_running) {
           runPostsSyncInBackground(contentSignalId, regeneratePosts);
         }
         return stats;
@@ -118,9 +150,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
           finished_at: new Date().toISOString(),
           stats: null,
           error: message,
-          posts_sync_running: false,
-          posts_sync_content_signal_id: null,
-          posts_sync_error: null,
+          ...postsSyncFields(ingestStatus),
         };
         throw e;
       })

@@ -24,6 +24,13 @@ type IngestStats = {
   signalErrors?: IngestSourceError[];
 };
 
+type PostsSyncResult = {
+  created?: number;
+  updated?: number;
+  skipped?: number;
+  archived?: number;
+};
+
 type IngestStatusResponse = {
   running?: boolean;
   content_signal_id?: string | null;
@@ -34,6 +41,7 @@ type IngestStatusResponse = {
   posts_sync_running?: boolean;
   posts_sync_content_signal_id?: string | null;
   posts_sync_error?: string | null;
+  posts_sync_result?: PostsSyncResult | null;
 };
 
 type Props = {
@@ -45,13 +53,40 @@ type Props = {
   progressMessage?: string;
   successSuffix?: string;
   regeneratePosts?: boolean;
+  onComplete?: () => void;
 };
+
+function formatPostsSyncSuffix(
+  result: PostsSyncResult | null | undefined,
+  postsSyncError: string | null | undefined,
+  regeneratePosts?: boolean,
+): string {
+  if (postsSyncError) {
+    return ` Posts rebuild failed (${sanitizeIngestError(postsSyncError)}). Try Refresh posts.`;
+  }
+  if (!regeneratePosts) return "";
+  if (!result) return "";
+  const created = result.created ?? 0;
+  const updated = result.updated ?? 0;
+  if (created + updated > 0) {
+    const parts: string[] = [];
+    if (created > 0) parts.push(`${created} created`);
+    if (updated > 0) parts.push(`${updated} updated`);
+    return ` Posts: ${parts.join(", ")}.`;
+  }
+  return " Posts rebuild finished — 0 new drafts (check threshold).";
+}
 
 function formatSyncResult(
   stats: IngestStats,
-  successSuffix?: string,
-  postsSyncError?: string | null,
+  options?: {
+    successSuffix?: string;
+    postsSyncError?: string | null;
+    postsSyncResult?: PostsSyncResult | null;
+    regeneratePosts?: boolean;
+  },
 ): { status: "ok" | "err"; message: string } {
+  const { successSuffix, postsSyncError, postsSyncResult, regeneratePosts } = options ?? {};
   const listed = stats.messagesListed ?? 0;
   const stored =
     (stats.storedFull ?? 0) + (stats.storedMinimal ?? 0) + (stats.updatedFull ?? 0);
@@ -81,8 +116,12 @@ function formatSyncResult(
     };
   }
 
-  let message = `Sync finished: ${listed} listed, ${stored} stored.${successSuffix ?? ""}`;
-  if (postsSyncError) {
+  let message = `Sync finished: ${listed} listed, ${stored} stored.${
+    regeneratePosts
+      ? formatPostsSyncSuffix(postsSyncResult, postsSyncError, regeneratePosts)
+      : (successSuffix ?? "")
+  }`;
+  if (!regeneratePosts && postsSyncError) {
     message += ` Posts rebuild failed (${sanitizeIngestError(postsSyncError)}). Try Refresh posts.`;
   }
   return { status: "ok", message };
@@ -117,6 +156,7 @@ export function GmailSyncButton({
   progressMessage = "Sync in progress…",
   successSuffix,
   regeneratePosts,
+  onComplete,
 }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
@@ -135,12 +175,14 @@ export function GmailSyncButton({
     (statusData: IngestStatusResponse) => {
       stopPolling();
       router.refresh();
+      onComplete?.();
       if (statusData.stats) {
-        const result = formatSyncResult(
-          statusData.stats,
+        const result = formatSyncResult(statusData.stats, {
           successSuffix,
-          statusData.posts_sync_error,
-        );
+          postsSyncError: statusData.posts_sync_error,
+          postsSyncResult: statusData.posts_sync_result,
+          regeneratePosts,
+        });
         setStatus(result.status);
         setMessage(result.message);
       } else if (statusData.error) {
@@ -148,14 +190,20 @@ export function GmailSyncButton({
         setMessage(sanitizeIngestError(statusData.error));
       } else {
         let okMessage = `Feed updated.${successSuffix ?? ""}`;
-        if (statusData.posts_sync_error) {
+        if (regeneratePosts) {
+          okMessage += formatPostsSyncSuffix(
+            statusData.posts_sync_result,
+            statusData.posts_sync_error,
+            regeneratePosts,
+          );
+        } else if (statusData.posts_sync_error) {
           okMessage += ` Posts rebuild failed (${sanitizeIngestError(statusData.posts_sync_error)}). Try Refresh posts.`;
         }
         setStatus("ok");
         setMessage(okMessage);
       }
     },
-    [router, stopPolling, successSuffix],
+    [onComplete, regeneratePosts, router, stopPolling, successSuffix],
   );
 
   const startPolling = useCallback(
@@ -229,7 +277,7 @@ export function GmailSyncButton({
         return;
       }
 
-      const result = formatSyncResult(data, successSuffix);
+      const result = formatSyncResult(data, { successSuffix, regeneratePosts });
       setStatus(result.status);
       setMessage(result.message);
     } catch {
