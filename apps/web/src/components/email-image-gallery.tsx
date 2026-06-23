@@ -35,6 +35,7 @@ export function EmailImageGallery({
       }
     >
       {images.map((img, i) => {
+        if (!img.data_base64) return null;
         const ext = extForMime(img.mime);
         const name = img.filename?.replace(/[^\w.\-]+/g, "_") || `attachment-${i + 1}.${ext}`;
         const href = `data:${img.mime};base64,${img.data_base64}`;

@@ -1,11 +1,11 @@
 import {
   findVoiceForContentSignal,
-  getSignalFeedRowsByIds,
+  getSignalPostDisplayRowsByIds,
   listContentSignals,
   listPosts,
   type ContentSignal,
   type Post,
-  type SignalItemFeedRow,
+  type SignalItemPostDisplayRow,
   type Voice,
 } from "@content-resourcer/db";
 import { NextResponse } from "next/server";
@@ -27,7 +27,7 @@ function serializeContentSignal(cs: ContentSignal) {
   };
 }
 
-function serializeFeedRow(item: SignalItemFeedRow) {
+function serializePostDisplayRow(item: SignalItemPostDisplayRow) {
   return {
     ...item,
     email_sent_at: item.email_sent_at?.toISOString(),
@@ -86,7 +86,7 @@ export async function GET(req: Request) {
           selectedSignal,
           linkedVoice: null as Voice | null,
           posts: [] as Post[],
-          signalItemsById: new Map<string, SignalItemFeedRow>(),
+          signalItemsById: new Map<string, SignalItemPostDisplayRow>(),
           gmailOAuthSources: [] as ContentSignalSourceOAuth[],
         };
       }
@@ -98,7 +98,7 @@ export async function GET(req: Request) {
         status: "draft",
       });
 
-      const signalItemsById = await getSignalFeedRowsByIds(
+      const signalItemsById = await getSignalPostDisplayRowsByIds(
         db,
         orgId,
         posts.map((p) => p.signal_item_id),
@@ -122,9 +122,9 @@ export async function GET(req: Request) {
       };
     });
 
-    const signalItemsById: Record<string, ReturnType<typeof serializeFeedRow>> = {};
+    const signalItemsById: Record<string, ReturnType<typeof serializePostDisplayRow>> = {};
     for (const [id, row] of payload.signalItemsById) {
-      signalItemsById[id] = serializeFeedRow(row);
+      signalItemsById[id] = serializePostDisplayRow(row);
     }
 
     const body: PostsDataResponseJson = {

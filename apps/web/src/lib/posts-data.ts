@@ -1,4 +1,4 @@
-import type { ContentSignal, Post, SignalItemFeedRow, Voice } from "@content-resourcer/db/schemas";
+import type { ContentSignal, Post, SignalItemPostDisplayRow, Voice } from "@content-resourcer/db/schemas";
 import type { ContentSignalSourceOAuth } from "@/components/content-signal-gmail-auth-alerts";
 
 export type PostsSearchParams = {
@@ -15,7 +15,10 @@ type SerializedContentSignal = Omit<
   updated_at: string;
 };
 
-type SerializedSignalItemFeedRow = Omit<SignalItemFeedRow, "email_sent_at" | "created_at"> & {
+type SerializedSignalItemPostDisplayRow = Omit<
+  SignalItemPostDisplayRow,
+  "email_sent_at" | "created_at"
+> & {
   email_sent_at?: string;
   created_at: string;
 };
@@ -59,7 +62,7 @@ export type PostsDataResponseJson = {
   selectedSignal: SerializedContentSignal | null;
   linkedVoice: SerializedVoice | null;
   posts: SerializedPost[];
-  signalItemsById: Record<string, SerializedSignalItemFeedRow>;
+  signalItemsById: Record<string, SerializedSignalItemPostDisplayRow>;
   gmailOAuthSources: SerializedGmailOAuthSource[];
 };
 
@@ -69,7 +72,7 @@ export type PostsDataLoaded = {
   selectedSignal: ContentSignal | null;
   linkedVoice: Voice | null;
   posts: Post[];
-  signalItemsById: Map<string, SignalItemFeedRow>;
+  signalItemsById: Map<string, SignalItemPostDisplayRow>;
   gmailOAuthSources: ContentSignalSourceOAuth[];
 };
 
@@ -80,9 +83,9 @@ export function postsDataQueryString(sp: PostsSearchParams): string {
 }
 
 export function parsePostsDataResponse(json: PostsDataResponseJson): PostsDataLoaded {
-  const signalItemsById = new Map<string, SignalItemFeedRow>();
+  const signalItemsById = new Map<string, SignalItemPostDisplayRow>();
   for (const [id, row] of Object.entries(json.signalItemsById)) {
-    signalItemsById.set(id, parseFeedRow(row));
+    signalItemsById.set(id, parsePostDisplayRow(row));
   }
   return {
     contentSignals: json.contentSignals.map(parseContentSignal),
@@ -109,7 +112,7 @@ function parseContentSignal(cs: SerializedContentSignal): ContentSignal {
   };
 }
 
-function parseFeedRow(item: SerializedSignalItemFeedRow): SignalItemFeedRow {
+function parsePostDisplayRow(item: SerializedSignalItemPostDisplayRow): SignalItemPostDisplayRow {
   return {
     ...item,
     email_sent_at: item.email_sent_at ? new Date(item.email_sent_at) : undefined,

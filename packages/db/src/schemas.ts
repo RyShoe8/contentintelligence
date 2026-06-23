@@ -597,6 +597,19 @@ export const signalItemFeedRowSchema = z.preprocess(
 
 export type SignalItemFeedRow = z.infer<typeof signalItemFeedRowShape>;
 
+/** Posts display row: full email_images with base64, without raw email body fields. */
+const signalItemPostDisplayRowShape = signalItemShape.omit({
+  raw_content: true,
+  email_html_preview: true,
+});
+
+export const signalItemPostDisplayRowSchema = z.preprocess(
+  normalizeSignalItemMongoDoc,
+  signalItemPostDisplayRowShape,
+);
+
+export type SignalItemPostDisplayRow = z.infer<typeof signalItemPostDisplayRowShape>;
+
 export const postSourceSchema = z.enum(["auto", "manual"]);
 export type PostSource = z.infer<typeof postSourceSchema>;
 

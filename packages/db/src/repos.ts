@@ -9,12 +9,14 @@ import type {
   GmailSourceConfig,
   SignalItem,
   SignalItemFeedRow,
+  SignalItemPostDisplayRow,
   Source,
 } from "./schemas.js";
 import {
   contentSignalSchema,
   gmailSourceConfigSchema,
   signalItemFeedRowSchema,
+  signalItemPostDisplayRowSchema,
   signalItemSchema,
   sourceDisplayLabel,
   sourceSchema,
@@ -257,6 +259,9 @@ export const signalItemFeedSlimStages = [
   signalItemFeedExcludeHeavyFieldsStage,
 ] as const;
 
+/** Posts page: exclude raw email body fields but keep full attachment base64. */
+export const signalItemPostDisplayStages = [signalItemFeedExcludeHeavyFieldsStage] as const;
+
 function buildSignalFeedFilter(q: SignalFeedQuery): Record<string, unknown> {
   const clauses: Record<string, unknown>[] = [];
   if (q.organizationId) {
@@ -399,7 +404,7 @@ export async function getSignalItem(db: Db, id: string): Promise<SignalItem | nu
   return doc ? signalItemSchema.parse(doc) : null;
 }
 
-/** Batch-load slim feed rows for Posts page (no raw email or image base64). */
+/** Batch-load slim feed rows (no raw email or image base64). */
 export async function getSignalFeedRowsByIds(
   db: Db,
   organizationId: string,
@@ -418,6 +423,30 @@ export async function getSignalFeedRowsByIds(
   const map = new Map<string, SignalItemFeedRow>();
   for (const doc of docs) {
     const item = signalItemFeedRowSchema.parse(doc);
+    map.set(item.id, item);
+  }
+  return map;
+}
+
+/** Batch-load post display rows with attachment base64 (no raw email body). */
+export async function getSignalPostDisplayRowsByIds(
+  db: Db,
+  organizationId: string,
+  ids: string[],
+): Promise<Map<string, SignalItemPostDisplayRow>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map();
+
+  const docs = await signalItems(db)
+    .aggregate([
+      { $match: { organization_id: organizationId, id: { $in: unique } } },
+      ...signalItemPostDisplayStages,
+    ])
+    .toArray();
+
+  const map = new Map<string, SignalItemPostDisplayRow>();
+  for (const doc of docs) {
+    const item = signalItemPostDisplayRowSchema.parse(doc);
     map.set(item.id, item);
   }
   return map;

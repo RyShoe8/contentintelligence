@@ -18,6 +18,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { formatDealRow } from "@/lib/deal-display";
 import { displayCasinoName } from "@/lib/email-from-display";
+import { emailImagesWithData } from "@/lib/email-images";
 import {
   fetchPostsData,
   type PostsDataLoaded,
@@ -269,7 +270,7 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
               {posts.map((post) => {
                 const signalItem = signalItemsById.get(post.signal_item_id);
                 const casino = signalItem ? displayCasinoName(signalItem) : null;
-                const images = signalItem?.email_images;
+                const galleryImages = emailImagesWithData(signalItem?.email_images);
                 const dealUrl = signalItem?.original_url;
                 return (
                   <li key={post.id} className="ui-card p-4">
@@ -348,7 +349,7 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
                       </div>
                     ) : null}
                     {dealUrl ? <DealLinkRow url={dealUrl} variant="panel" /> : null}
-                    {images?.length ? <EmailImageGallery images={images} /> : null}
+                    {galleryImages.length ? <EmailImageGallery images={galleryImages} /> : null}
                   </li>
                 );
               })}

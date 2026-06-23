@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { EmailImage, SignalItem, SignalItemFeedRow } from "@content-resourcer/db/schemas";
+import type { SignalItem, SignalItemFeedRow } from "@content-resourcer/db/schemas";
 import { AddToPostsButton } from "@/components/add-to-posts-button";
 import { DealsList } from "@/components/deals-list";
 import { DealLinkRow } from "@/components/deal-link-row";
@@ -9,6 +9,7 @@ import { KeyPointsList } from "@/components/key-points-list";
 import { LocalDateTime } from "@/components/local-date-time";
 import { Card, CardContent } from "@/components/ui/card";
 import { displayCasinoName, displaySenderEmail } from "@/lib/email-from-display";
+import { emailImagesWithData } from "@/lib/email-images";
 import { cleanEmailPreview, cleanEmailPreviewPreserveLayout } from "@/lib/email-preview";
 import { dealsForDisplay, hasDeal } from "@/lib/deal-display";
 import { isNonDealUrl } from "@/lib/deal-url";
@@ -20,19 +21,6 @@ type Props = {
   workerIngestConfigured?: boolean;
   alreadyInPosts?: boolean;
 };
-
-function emailImagesWithData(
-  images: SignalItem["email_images"] | SignalItemFeedRow["email_images"],
-): EmailImage[] {
-  if (!images?.length) return [];
-  const withData: EmailImage[] = [];
-  for (const img of images) {
-    if ("data_base64" in img && typeof img.data_base64 === "string") {
-      withData.push(img);
-    }
-  }
-  return withData;
-}
 
 export function FeedItemCard({
   item,
