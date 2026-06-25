@@ -2,9 +2,19 @@ import {
   ensureIndexes,
   getWriterArticle,
   listVoices,
-  listWriterArticlesByOrgAndMode,
+  listWriterArticlesByOrg,
 } from "@content-resourcer/db";
-import { WriterForm, type WriterArticleDetail, type WriterArticleListItem } from "@/components/writer-form";
+import {
+  stripHtmlToPlainText,
+  writerArticleDisplayHtml,
+  WRITER_SOURCE_MIN_CHARS,
+} from "@content-resourcer/db/writer-validation";
+import {
+  WriterForm,
+  type WriterArticleDetail,
+  type WriterArticleListItem,
+  type WriterImportSource,
+} from "@/components/writer-form";
 import { PageHeader } from "@/components/ui/page-header";
 import { connectMongo } from "@/lib/mongo";
 import { requireOrgMember } from "@/lib/org-auth";
@@ -21,11 +31,16 @@ function voiceIsReady(voice: {
   return Boolean(voice.persona?.trim());
 }
 
+function articleMode(mode: string | undefined): "compose" | "rewrite" {
+  return mode === "compose" ? "compose" : "rewrite";
+}
+
 export default async function RewriterPage({
   searchParams,
 }: {
   searchParams: Promise<{
     article_id?: string;
+    import_from?: string;
     saved?: string;
     deleted?: string;
     error?: string;
@@ -39,35 +54,55 @@ export default async function RewriterPage({
 
   const [voices, articles] = await Promise.all([
     listVoices(db, orgId),
-    listWriterArticlesByOrgAndMode(db, orgId, "rewrite"),
+    listWriterArticlesByOrg(db, orgId),
   ]);
 
   const workerConfigured = !!process.env.WORKER_URL;
   const selectedId = sp.article_id?.trim() ?? "";
+  const importId = sp.import_from?.trim() ?? "";
   const selectedRaw = selectedId ? await getWriterArticle(db, selectedId, orgId) : null;
+  const importRaw =
+    importId && !selectedId ? await getWriterArticle(db, importId, orgId) : null;
 
-  const articleList: WriterArticleListItem[] = articles.map((a) => ({
-    id: a.id,
-    voice_id: a.voice_id,
-    title: a.title,
-    status: a.status,
-    updated_at: a.updated_at.toISOString(),
-  }));
+  const articleList: WriterArticleListItem[] = articles
+    .filter((a) => !a.mode || a.mode === "compose" || a.mode === "rewrite")
+    .map((a) => ({
+      id: a.id,
+      voice_id: a.voice_id,
+      title: a.title,
+      status: a.status,
+      updated_at: a.updated_at.toISOString(),
+      mode: articleMode(a.mode),
+    }));
 
   const selectedArticle: WriterArticleDetail | null =
-    selectedRaw && selectedRaw.mode === "rewrite"
+    selectedRaw && articleMode(selectedRaw.mode) === "rewrite"
       ? {
           id: selectedRaw.id,
           voice_id: selectedRaw.voice_id,
           title: selectedRaw.title,
           status: selectedRaw.status,
           updated_at: selectedRaw.updated_at.toISOString(),
+          mode: articleMode(selectedRaw.mode),
           source_text: selectedRaw.source_text,
           links: selectedRaw.links,
           generated_html: selectedRaw.generated_html,
           final_html: selectedRaw.final_html,
         }
       : null;
+
+  let importSource: WriterImportSource | null = null;
+  if (importRaw && !selectedArticle) {
+    const sourceText = stripHtmlToPlainText(writerArticleDisplayHtml(importRaw));
+    if (sourceText.length >= WRITER_SOURCE_MIN_CHARS) {
+      importSource = {
+        article_id: importRaw.id,
+        voice_id: importRaw.voice_id,
+        title: importRaw.title,
+        source_text: sourceText,
+      };
+    }
+  }
 
   const voiceOptions = voices.map((v) => ({
     id: v.id,
@@ -78,11 +113,19 @@ export default async function RewriterPage({
   const errorMsg =
     sp.error === "content_too_short"
       ? `Saved content must be at least 100 characters.`
-      : sp.error === "not_found"
-        ? "Article not found."
-        : sp.error === "missing_article"
-          ? "No article selected."
-          : null;
+      : sp.error === "import_too_short"
+        ? `That article has no output long enough to rewrite (minimum ${WRITER_SOURCE_MIN_CHARS} characters).`
+        : sp.error === "not_found"
+          ? "Article not found."
+          : sp.error === "missing_article"
+            ? "No article selected."
+            : importId && !importRaw && !selectedArticle
+              ? "Article not found."
+              : importId && importRaw && !importSource && !selectedArticle
+                ? `That article has no output long enough to rewrite (minimum ${WRITER_SOURCE_MIN_CHARS} characters).`
+                : null;
+
+  const formKey = selectedArticle?.id ?? importSource?.article_id ?? "new";
 
   return (
     <div className="space-y-8">
@@ -100,10 +143,11 @@ export default async function RewriterPage({
       {errorMsg ? <p className="ui-alert-error text-sm">{errorMsg}</p> : null}
 
       <WriterForm
-        key={selectedArticle?.id ?? "new"}
+        key={formKey}
         voices={voiceOptions}
         articles={articleList}
         selectedArticle={selectedArticle}
+        importSource={importSource}
         workerConfigured={workerConfigured}
       />
     </div>

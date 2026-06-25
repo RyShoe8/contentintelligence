@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
   WRITER_LINK_MAX,
@@ -21,6 +21,14 @@ export type WriterArticleListItem = {
   title: string;
   status: "draft" | "saved";
   updated_at: string;
+  mode: "compose" | "rewrite";
+};
+
+export type WriterImportSource = {
+  article_id: string;
+  voice_id: string;
+  title?: string;
+  source_text: string;
 };
 
 export type WriterVoiceOption = {
@@ -42,6 +50,7 @@ type Props = {
   voices: WriterVoiceOption[];
   articles: WriterArticleListItem[];
   selectedArticle: WriterArticleDetail | null;
+  importSource?: WriterImportSource | null;
   workerConfigured: boolean;
 };
 
@@ -76,10 +85,15 @@ function initialExpandedVoiceIds(
   voices: WriterVoiceOption[],
   articles: WriterArticleListItem[],
   selectedArticle: WriterArticleDetail | null,
+  importSource?: WriterImportSource | null,
 ): Set<string> {
   const ids = new Set<string>();
   const focus =
-    selectedArticle?.voice_id ?? voices.find((v) => v.ready)?.id ?? voices[0]?.id ?? "";
+    selectedArticle?.voice_id ??
+    importSource?.voice_id ??
+    voices.find((v) => v.ready)?.id ??
+    voices[0]?.id ??
+    "";
   if (focus) ids.add(focus);
   for (const a of articles) ids.add(a.voice_id);
   return ids;
@@ -89,20 +103,23 @@ export function WriterForm({
   voices,
   articles,
   selectedArticle,
+  importSource,
   workerConfigured,
 }: Props) {
   const router = useRouter();
   const readyVoices = voices.filter((v) => v.ready);
 
   const [voiceId, setVoiceId] = useState(
-    selectedArticle?.voice_id ?? readyVoices[0]?.id ?? "",
+    selectedArticle?.voice_id ?? importSource?.voice_id ?? readyVoices[0]?.id ?? "",
   );
   const [expandedVoiceIds, setExpandedVoiceIds] = useState<Set<string>>(() =>
-    initialExpandedVoiceIds(voices, articles, selectedArticle),
+    initialExpandedVoiceIds(voices, articles, selectedArticle, importSource),
   );
   const [articleId, setArticleId] = useState(selectedArticle?.id ?? "");
   const [title, setTitle] = useState(selectedArticle?.title ?? "");
-  const [sourceText, setSourceText] = useState(selectedArticle?.source_text ?? "");
+  const [sourceText, setSourceText] = useState(
+    selectedArticle?.source_text ?? importSource?.source_text ?? "",
+  );
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
@@ -148,6 +165,11 @@ export function WriterForm({
     [voices],
   );
 
+  const sortedReadyVoices = useMemo(
+    () => [...readyVoices].sort((a, b) => a.name.localeCompare(b.name)),
+    [readyVoices],
+  );
+
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
   const showRewriteColumn = Boolean(outputHtml.trim() || articleId);
@@ -181,8 +203,12 @@ export function WriterForm({
   }, [router]);
 
   const loadArticle = useCallback(
-    (id: string) => {
-      router.push(`/rewriter?article_id=${encodeURIComponent(id)}`);
+    (id: string, mode: "compose" | "rewrite") => {
+      if (mode === "compose") {
+        router.push(`/rewriter?import_from=${encodeURIComponent(id)}`);
+      } else {
+        router.push(`/rewriter?article_id=${encodeURIComponent(id)}`);
+      }
     },
     [router],
   );
@@ -200,6 +226,13 @@ export function WriterForm({
     setVoiceId(id);
     setExpandedVoiceIds((prev) => new Set(prev).add(id));
   }, []);
+
+  useEffect(() => {
+    if (readyVoices.length === 0) return;
+    if (!readyVoices.some((v) => v.id === voiceId)) {
+      selectVoice(readyVoices[0]!.id);
+    }
+  }, [readyVoices, voiceId, selectVoice]);
 
   function updateLinkRow(index: number, patch: Partial<LinkRow>) {
     setLinkRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -355,7 +388,7 @@ export function WriterForm({
     <div className="space-y-6">
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">Voices</h2>
+          <h2 className="text-sm font-medium text-[var(--fg)]">Articles by voice</h2>
           <button
             type="button"
             onClick={resetComposer}
@@ -411,18 +444,28 @@ export function WriterForm({
                     <p className="px-3 py-2 text-xs text-[var(--muted)]">No articles yet</p>
                   ) : (
                     <ul className="divide-y divide-[var(--border)]">
-                      {list.map((a) => (
+                      {list.map((a) => {
+                        const isActive =
+                          a.id === articleId ||
+                          (a.mode === "compose" &&
+                            importSource?.article_id === a.id &&
+                            !articleId);
+                        return (
                         <li key={a.id} className="flex items-stretch">
                           <button
                             type="button"
-                            onClick={() => loadArticle(a.id)}
+                            onClick={() => loadArticle(a.id, a.mode)}
                             className={cn(
                               "min-w-0 flex-1 px-3 py-2 text-left text-xs hover:bg-[var(--surface-light)]",
-                              a.id === articleId &&
-                                "bg-[var(--surface-light)] text-[var(--primary)]",
+                              isActive && "bg-[var(--surface-light)] text-[var(--primary)]",
                             )}
                           >
-                            <span className="block font-medium text-[var(--fg)]">{a.title}</span>
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-medium text-[var(--fg)]">{a.title}</span>
+                              <span className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-[var(--muted)]">
+                                {a.mode === "compose" ? "Writer" : "ReWriter"}
+                              </span>
+                            </span>
                             <span className="text-[var(--muted)]">
                               {a.status === "saved" ? "Saved" : "Draft"} ·{" "}
                               {new Date(a.updated_at).toLocaleDateString()}
@@ -440,7 +483,8 @@ export function WriterForm({
                             </Button>
                           </form>
                         </li>
-                      ))}
+                      );
+                      })}
                     </ul>
                   )
                 ) : null}
@@ -474,6 +518,42 @@ export function WriterForm({
       ) : null}
 
       <section className="ui-card space-y-4 p-6">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-[var(--muted)]">Voice</span>
+          <select
+            value={
+              sortedReadyVoices.some((v) => v.id === voiceId)
+                ? voiceId
+                : (sortedReadyVoices[0]?.id ?? "")
+            }
+            onChange={(e) => selectVoice(e.target.value)}
+            disabled={writing || sortedReadyVoices.length === 0}
+            className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          >
+            {sortedReadyVoices.length === 0 ? (
+              <option value="">No ready voices</option>
+            ) : (
+              sortedReadyVoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))
+            )}
+          </select>
+          <span className="text-xs text-[var(--muted)]">
+            Persona and style applied when you Write.
+            {sortedReadyVoices.length === 0 ? (
+              <>
+                {" "}
+                <Link href="/voices" className="text-[var(--primary)] hover:underline">
+                  Generate a persona on Voices
+                </Link>
+                .
+              </>
+            ) : null}
+          </span>
+        </label>
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-[var(--muted)]">
