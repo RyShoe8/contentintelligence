@@ -1,19 +1,28 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import type { HTMLAttributes } from "react";
 
-type Variant = "success" | "error" | "info" | "warning";
+type Variant = "success" | "error" | "warning" | "info";
 
 const variantClass: Record<Variant, string> = {
   success: "ui-alert-success",
-  error: "ui-alert-error",
-  info: "ui-alert-info",
+  error:   "ui-alert-error",
   warning: "ui-alert-warning",
+  info:    "ui-alert-info",
 };
 
-export function Alert({
-  variant = "info",
-  className,
-  ...props
-}: HTMLAttributes<HTMLParagraphElement> & { variant?: Variant }) {
-  return <p className={cn(variantClass[variant], className)} {...props} />;
+type Props = {
+  children: ReactNode;
+  variant?: Variant;
+  className?: string;
+};
+
+export function Alert({ children, variant = "info", className }: Props) {
+  return (
+    <div
+      role="alert"
+      className={cn(variantClass[variant], "animate-fade-in", className)}
+    >
+      {children}
+    </div>
+  );
 }

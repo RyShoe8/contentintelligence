@@ -53,8 +53,9 @@ export default async function FeedPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Signal feed"
-        description="Select a content signal, sync its sources, then filter results below."
+        eyebrow="Content"
+        title="Signal Feed"
+        description="Browse and filter content items pulled from your topic sources. Select a topic, sync, and explore results."
         actions={
           sort !== "created_at" ? (
             <Link

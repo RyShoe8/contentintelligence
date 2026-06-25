@@ -72,7 +72,7 @@ export function PersonaGenerationIndicator({
 
   const clearGeneratingParam = useCallback(() => {
     if (!voiceIdParam) return;
-    router.replace(`/voices?voice_id=${voiceIdParam}`);
+    router.replace(`/voices/${voiceIdParam}`);
   }, [router, voiceIdParam]);
 
   const finish = useCallback(

@@ -17,6 +17,25 @@ import {
 } from "./social-platforms.js";
 
 export const SOURCE_TYPE_EMAIL_GMAIL = "email_gmail" as const;
+export const SOURCE_TYPE_WEBSITE = "website" as const;
+
+/** Per-URL resolved discovery state stored by the worker after probing. */
+export const websiteUrlMetaSchema = z.object({
+  url: z.string().url(),
+  rss_url: z.string().url().optional(),
+  rss_discovered: z.boolean().default(false),
+  last_checked_at: z.coerce.date().optional(),
+  last_error: z.string().optional(),
+});
+export type WebsiteUrlMeta = z.infer<typeof websiteUrlMetaSchema>;
+
+/** Config for a website-based content source. */
+export const websiteSourceConfigSchema = z.object({
+  urls: z.array(z.string().url()).min(1).max(25),
+  url_meta: z.array(websiteUrlMetaSchema).optional(),
+  ai_summary_enabled: z.boolean().default(true),
+});
+export type WebsiteSourceConfig = z.infer<typeof websiteSourceConfigSchema>;
 
 /** Mongo often stores explicit null; Zod optional arrays reject null without preprocess. */
 function optionalStringArray() {
@@ -430,7 +449,7 @@ export const voiceSchema = z.preprocess(
 
 export type Voice = z.infer<typeof voiceSchema>;
 
-export const sourceSchema = z.object({
+export const gmailSourceSchema = z.object({
   id: z.string().uuid(),
   content_signal_id: z.string().uuid(),
   source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
@@ -440,6 +459,23 @@ export const sourceSchema = z.object({
   updated_at: z.coerce.date(),
 });
 
+export const websiteSourceSchema = z.object({
+  id: z.string().uuid(),
+  content_signal_id: z.string().uuid(),
+  source_type: z.literal(SOURCE_TYPE_WEBSITE),
+  enabled: z.boolean().default(true),
+  config: websiteSourceConfigSchema,
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export const sourceSchema = z.discriminatedUnion("source_type", [
+  gmailSourceSchema,
+  websiteSourceSchema,
+]);
+
+export type GmailSource = z.infer<typeof gmailSourceSchema>;
+export type WebsiteSource = z.infer<typeof websiteSourceSchema>;
 export type Source = z.infer<typeof sourceSchema>;
 
 export const dealMetricsModeSchema = z.enum([
@@ -533,7 +569,7 @@ const signalItemShape = z.object({
   organization_id: z.string().uuid(),
   content_signal_id: z.string().uuid(),
   source_id: z.string().uuid(),
-  source_type: z.literal(SOURCE_TYPE_EMAIL_GMAIL),
+  source_type: z.union([z.literal(SOURCE_TYPE_EMAIL_GMAIL), z.literal(SOURCE_TYPE_WEBSITE)]),
   source_name: z.string(),
   sender_from: z.string(),
   casino_name: z.preprocess(

@@ -37,7 +37,7 @@ export function StyleExamplesSyncIndicator({
 
   const clearSyncParam = useCallback(() => {
     if (!voiceIdParam) return;
-    router.replace(`/voices?voice_id=${voiceIdParam}`);
+    router.replace(`/voices/${voiceIdParam}`);
   }, [router, voiceIdParam]);
 
   const startPollingLoop = useCallback(() => {

@@ -165,7 +165,6 @@ export async function listEnabledSources(
 ): Promise<Source[]> {
   const filter: Record<string, unknown> = {
     enabled: true,
-    source_type: SOURCE_TYPE_EMAIL_GMAIL,
   };
   if (contentSignalId) filter.content_signal_id = contentSignalId;
   const docs = await sources(db).find(filter).toArray();

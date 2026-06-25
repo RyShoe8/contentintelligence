@@ -8,7 +8,7 @@ const scDeal: DealMetrics = {
   baseline_value: 45,
   effective_savings_pct: 0,
   bonus_pct: 0.286,
-  value_ratio: null,
+  value_ratio: undefined,
   mode: "pay_vs_credited_value",
   confidence: 0.55,
   source: "regex",

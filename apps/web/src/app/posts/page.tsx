@@ -33,8 +33,9 @@ export default async function PostsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Posts"
-        description="Social-ready drafts from feed deals that meet your threshold. Sync on a schedule to keep posts updated automatically."
+        eyebrow="Creation"
+        title="Social Drafts"
+        description="AI-generated social posts from your signal feed. Set a deal threshold and your posts update automatically when the feed runs."
       />
 
       {sp.saved === "1" ? (

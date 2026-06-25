@@ -272,12 +272,12 @@ export async function saveVoiceAction(formData: FormData) {
 
   if (shouldSyncStyleExamples) {
     if (!process.env.WORKER_URL?.trim()) {
-      redirect(`/voices?voice_id=${voice.id}&saved=1&error=style_sync_unconfigured`);
+      redirect(`/voices/${voice.id}?saved=1&error=style_sync_unconfigured`);
     }
-    redirect(`/voices?voice_id=${voice.id}&saved=1&style_sync=1`);
+    redirect(`/voices/${voice.id}?saved=1&style_sync=1`);
   }
 
-  redirect(`/voices?voice_id=${voice.id}&saved=1`);
+  redirect(`/voices/${voice.id}?saved=1`);
 }
 
 export async function generateVoicePersonaAction(formData: FormData) {
@@ -292,7 +292,7 @@ export async function generateVoicePersonaAction(formData: FormData) {
   if (!existing) redirect("/voices?error=not_found");
 
   const fields = parseVoiceFields(formData);
-  if (!fields.name) redirect(`/voices?voice_id=${voiceId}&error=name`);
+  if (!fields.name) redirect(`/voices/${voiceId}?error=name`);
 
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
   const isRegenerate = existing.persona_status === "ready";
@@ -325,11 +325,11 @@ export async function generateVoicePersonaAction(formData: FormData) {
     const detail = encodeURIComponent(
       (e instanceof Error ? e.message : String(e)).slice(0, 240),
     );
-    redirect(`/voices?voice_id=${voiceId}&error=generate_failed&error_detail=${detail}`);
+    redirect(`/voices/${voiceId}?error=generate_failed&error_detail=${detail}`);
   }
 
   revalidatePath("/voices");
-  redirect(`/voices?voice_id=${voiceId}&generating=1`);
+  redirect(`/voices/${voiceId}?generating=1`);
 }
 
 export async function retryVoicePersonaAction(formData: FormData) {
@@ -344,11 +344,11 @@ export async function retryVoicePersonaAction(formData: FormData) {
   if (!existing) redirect("/voices?error=not_found");
 
   if (existing.persona_status !== "pending" && existing.persona_status !== "failed") {
-    redirect(`/voices?voice_id=${voiceId}`);
+    redirect(`/voices/${voiceId}`);
   }
 
   const fields = parseVoiceFields(formData);
-  if (!fields.name) redirect(`/voices?voice_id=${voiceId}&error=name`);
+  if (!fields.name) redirect(`/voices/${voiceId}?error=name`);
 
   const signalIds = await validateSignalIds(db, orgId, fields.content_signal_ids, session);
   const force = existing.persona_generated_at != null;
@@ -381,11 +381,11 @@ export async function retryVoicePersonaAction(formData: FormData) {
     const detail = encodeURIComponent(
       (e instanceof Error ? e.message : String(e)).slice(0, 240),
     );
-    redirect(`/voices?voice_id=${voiceId}&error=generate_failed&error_detail=${detail}`);
+    redirect(`/voices/${voiceId}?error=generate_failed&error_detail=${detail}`);
   }
 
   revalidatePath("/voices");
-  redirect(`/voices?voice_id=${voiceId}&generating=1`);
+  redirect(`/voices/${voiceId}?generating=1`);
 }
 
 export async function deleteVoiceAction(formData: FormData) {
@@ -405,7 +405,7 @@ export async function deleteVoiceAction(formData: FormData) {
 }
 
 function styleExampleRedirect(voiceId: string, query: string): never {
-  redirect(`/voices?voice_id=${encodeURIComponent(voiceId)}&${query}`);
+  redirect(`/voices/${encodeURIComponent(voiceId)}?${query}`);
 }
 
 export async function deleteVoiceStyleExampleAction(voiceId: string, exampleId: string) {

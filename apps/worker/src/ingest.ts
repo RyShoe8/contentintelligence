@@ -45,6 +45,7 @@ import {
   summarizeEmailBody,
 } from "./summarize.js";
 import { shouldSkipProcessedMessage } from "./ingest-skip.js";
+import { runWebsiteIngest } from "./ingest-website.js";
 
 export type IngestSourceError = {
   sourceId: string;
@@ -137,7 +138,8 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       id: s.id,
       content_signal_id: s.content_signal_id,
       enabled: s.enabled,
-      email_address: s.config.email_address,
+      source_type: s.source_type,
+      email_address: s.source_type === "email_gmail" ? s.config.email_address : undefined,
     })),
   });
 
@@ -149,7 +151,8 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
     ingestLog("source_begin", {
       sourceId: source.id,
       content_signal_id: source.content_signal_id,
-      email_address: source.config.email_address,
+      source_type: source.source_type,
+      email_address: source.source_type === "email_gmail" ? source.config.email_address : undefined,
     });
 
     let contentSignal = contentSignalCache.get(source.content_signal_id);
@@ -170,7 +173,20 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
       continue;
     }
 
-    const email = source.config.email_address?.trim();
+    // Route website sources to the website ingest pipeline
+    if (source.source_type === "website") {
+      try {
+        await runWebsiteIngest(db, source, source.content_signal_id, stats, env.openaiApiKey);
+        noteSignalIngestCompleted(ingestAttempts, contentSignal.id);
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        noteSignalIngestError(ingestAttempts, contentSignal.id, errMsg);
+      }
+      continue;
+    }
+
+    // Gmail sources — check email and OAuth
+    const email = source.source_type === "email_gmail" ? source.config.email_address?.trim() : "";
     if (!email) {
       ingestLog("oauth_skip", {
         sourceId: source.id,
