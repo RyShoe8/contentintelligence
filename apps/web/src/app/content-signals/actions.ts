@@ -152,7 +152,7 @@ export async function saveSourceAction(formData: FormData) {
     content_signal_id,
     enabled,
     config: {
-      email_address: existing?.config.email_address ?? "",
+      email_address: (existing?.source_type === "email_gmail" ? existing.config.email_address : "") ?? "",
       labels: labels.length ? labels : undefined,
       sender_addresses: sender_addresses.length ? sender_addresses : undefined,
       sender_domains: sender_domains.length ? sender_domains : undefined,

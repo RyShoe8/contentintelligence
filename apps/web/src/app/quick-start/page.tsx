@@ -34,7 +34,7 @@ export default async function QuickStartPage() {
 
   const inboxEmails = [
     ...new Set(
-      sources.map((s) => s.config.email_address).filter(Boolean),
+      sources.map((s) => (s.source_type === "email_gmail" ? s.config.email_address : null)).filter(Boolean) as string[],
     ),
   ].sort();
 

@@ -44,7 +44,7 @@ export default async function ContentSignalDetailPage({
       const oauth = email ? await getGmailOAuth(db, email) : null;
       const oauthStartUrl = `/api/gmail/oauth/start?source_id=${encodeURIComponent(s.id)}&content_signal_id=${encodeURIComponent(id)}${email ? `&login_hint=${encodeURIComponent(email)}` : ""}`;
       return {
-        ...s,
+        source: s,
         connected: !!oauth?.refresh_token,
         lastIngestError: oauth?.last_ingest_error ?? null,
         refreshTokenIssuedAt: oauth?.refresh_token_issued_at ?? null,
@@ -128,47 +128,47 @@ export default async function ContentSignalDetailPage({
           <p className="text-sm text-[var(--muted)]">No sources yet. Add an email source to get started.</p>
         ) : (
           <ul className="divide-y divide-[var(--border)] rounded-md border border-[var(--border)] text-sm">
-            {sourcesWithOAuth.map((s) => (
-              <li key={s.id} className="px-3 py-3">
+            {sourcesWithOAuth.map((item) => (
+              <li key={item.source.id} className="px-3 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-medium text-[var(--fg)]">
-                      {s.source_type === "website" ? "Website URLs" : "Email"}
+                      {item.source.source_type === "website" ? "Website URLs" : "Email"}
                     </p>
-                    {s.source_type === "email_gmail" ? (
+                    {item.source.source_type === "email_gmail" ? (
                       <p className="text-xs text-[var(--muted)]">
-                        {s.config.email_address?.trim() || "Gmail not connected"} ·{" "}
-                        {sourceDisplayLabel(s.config)}
+                        {item.source.config.email_address?.trim() || "Gmail not connected"} ·{" "}
+                        {sourceDisplayLabel(item.source.config)}
                       </p>
                     ) : (
                       <p className="text-xs text-[var(--muted)]">
-                        {s.config.urls.length} URL{s.config.urls.length !== 1 ? "s" : ""}
+                        {item.source.config.urls.length} URL{item.source.config.urls.length !== 1 ? "s" : ""}
                       </p>
                     )}
                     <p className="text-xs text-[var(--muted)]">
-                      {s.enabled ? "Enabled" : "Disabled"}
-                      {s.source_type === "email_gmail" && (s.connected ? " · Gmail connected" : " · Not connected")}
+                      {item.source.enabled ? "Enabled" : "Disabled"}
+                      {item.source.source_type === "email_gmail" && (item.connected ? " · Gmail connected" : " · Not connected")}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
-                      href={`/content-signals/${id}/sources/${s.id}`}
+                      href={`/content-signals/${id}/sources/${item.source.id}`}
                       className="rounded border border-[var(--border)] px-3 py-1 text-xs hover:border-[var(--accent)]"
                     >
                       Configure
                     </Link>
                     <form action={toggleSourceAction}>
-                      <input type="hidden" name="id" value={s.id} />
+                      <input type="hidden" name="id" value={item.source.id} />
                       <input type="hidden" name="content_signal_id" value={id} />
                       <button
                         type="submit"
                         className="rounded border border-[var(--border)] px-3 py-1 text-xs"
                       >
-                        {s.enabled ? "Disable" : "Enable"}
+                        {item.source.enabled ? "Disable" : "Enable"}
                       </button>
                     </form>
                     <form action={deleteSourceAction}>
-                      <input type="hidden" name="id" value={s.id} />
+                      <input type="hidden" name="id" value={item.source.id} />
                       <input type="hidden" name="content_signal_id" value={id} />
                       <button type="submit" className="text-xs text-red-400 hover:underline">
                         Delete
@@ -177,16 +177,16 @@ export default async function ContentSignalDetailPage({
                   </div>
                 </div>
                 <GmailAuthExpiryStatus
-                  connected={s.connected}
-                  refreshTokenIssuedAt={s.refreshTokenIssuedAt}
-                  updatedAt={s.oauthUpdatedAt}
-                  lastIngestError={s.lastIngestError}
-                  reconnectHref={s.oauthStartUrl}
+                  connected={item.connected}
+                  refreshTokenIssuedAt={item.refreshTokenIssuedAt}
+                  updatedAt={item.oauthUpdatedAt}
+                  lastIngestError={item.lastIngestError}
+                  reconnectHref={item.oauthStartUrl}
                 />
-                {s.lastIngestError &&
-                !s.lastIngestError.includes("invalid_grant") &&
-                !s.lastIngestError.toLowerCase().includes("authorization expired") ? (
-                  <p className="mt-2 text-xs text-red-300/90">Last ingest error: {s.lastIngestError}</p>
+                {item.lastIngestError &&
+                !item.lastIngestError.includes("invalid_grant") &&
+                !item.lastIngestError.toLowerCase().includes("authorization expired") ? (
+                  <p className="mt-2 text-xs text-red-300/90">Last ingest error: {item.lastIngestError}</p>
                 ) : null}
               </li>
             ))}

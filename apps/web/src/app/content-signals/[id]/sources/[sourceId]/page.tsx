@@ -39,6 +39,22 @@ export default async function SourceEditorPage({
     notFound();
   }
 
+  if (source.source_type !== "email_gmail") {
+    return (
+      <div className="space-y-8">
+        <div>
+          <Link href={`/content-signals/${contentSignalId}`} className="text-sm font-medium text-[var(--primary)] hover:underline">
+            ← Back to Signal
+          </Link>
+          <h1 className="mt-2">Website Source</h1>
+          <p className="mt-4 text-sm text-[var(--muted)]">
+            Website sources are managed differently. Return to the signal page to edit URLs.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const email = source.config.email_address?.trim();
   const oauth = email ? await getGmailOAuth(db, email) : null;
   const connected = !!oauth?.refresh_token;
