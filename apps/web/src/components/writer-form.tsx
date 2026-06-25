@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   parseWriterLinks,
+  stripHtmlToPlainText,
   WRITER_LINK_MAX,
   WRITER_SOURCE_MIN_CHARS,
   writerArticleDisplayHtml,
@@ -12,6 +13,7 @@ import {
 } from "@content-resourcer/db/writer-validation";
 import { saveRewriterArticleAction, deleteRewriterArticleAction } from "@/app/rewriter/actions";
 import { Button } from "@/components/ui/button";
+import { WriterEditableHtml } from "@/components/writer-editable-html";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
 import { cn } from "@/lib/cn";
 
@@ -82,6 +84,32 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function plainToEditableHtml(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  return trimmed
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function initialSourceHtml(
+  importSource?: WriterImportSource | null,
+  selectedArticle?: WriterArticleDetail | null,
+): string {
+  if (importSource?.source_html?.trim()) return importSource.source_html;
+  const plain = selectedArticle?.source_text ?? importSource?.source_text ?? "";
+  return plainToEditableHtml(plain);
+}
+
 function initialExpandedVoiceIds(
   voices: WriterVoiceOption[],
   articles: WriterArticleListItem[],
@@ -118,12 +146,8 @@ export function WriterForm({
   );
   const [articleId, setArticleId] = useState(selectedArticle?.id ?? "");
   const [title, setTitle] = useState(selectedArticle?.title ?? "");
-  const [sourceText, setSourceText] = useState(
-    selectedArticle?.source_text ?? importSource?.source_text ?? "",
-  );
-  const [sourceHtml, setSourceHtml] = useState(importSource?.source_html ?? "");
-  const [showSourcePreview, setShowSourcePreview] = useState(
-    () => Boolean(importSource?.source_html?.trim()),
+  const [sourceHtml, setSourceHtml] = useState(() =>
+    initialSourceHtml(importSource, selectedArticle),
   );
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
@@ -181,13 +205,12 @@ export function WriterForm({
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
   const showRewriteColumn = Boolean(outputHtml.trim() || articleId);
+  const sourcePlain = useMemo(() => stripHtmlToPlainText(sourceHtml), [sourceHtml]);
 
   const resetComposer = useCallback(() => {
     setArticleId("");
     setTitle("");
-    setSourceText("");
     setSourceHtml("");
-    setShowSourcePreview(false);
     setLinkRows([emptyLinkRow()]);
     setOutputHtml("");
     setGeneratedHtml("");
@@ -265,7 +288,7 @@ export function WriterForm({
 
   async function handleWrite() {
     if (!canWrite) return;
-    const trimmed = sourceText.trim();
+    const trimmed = sourcePlain.trim();
     if (trimmed.length < WRITER_SOURCE_MIN_CHARS) {
       setWriteError(`Paste at least ${WRITER_SOURCE_MIN_CHARS} characters of source article.`);
       return;
@@ -740,56 +763,16 @@ export function WriterForm({
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="flex min-h-[360px] flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
-            <div className="flex rounded-md border border-[var(--border)] p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setShowSourcePreview(true)}
-                className={cn(
-                  "rounded px-2 py-1",
-                  showSourcePreview
-                    ? "bg-[var(--primary)] text-white"
-                    : "text-[var(--muted)] hover:text-[var(--fg)]",
-                )}
-              >
-                Preview
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSourcePreview(false)}
-                className={cn(
-                  "rounded px-2 py-1",
-                  !showSourcePreview
-                    ? "bg-[var(--primary)] text-white"
-                    : "text-[var(--muted)] hover:text-[var(--fg)]",
-                )}
-              >
-                Edit
-              </button>
-            </div>
-          </div>
-          {showSourcePreview ? (
-            <div className={cn(articlePaneClass, "flex-1 overflow-y-auto p-4")}>
-              {sourceHtml.trim() ? (
-                <WriterHtmlPreview html={sourceHtml} />
-              ) : sourceText.trim() ? (
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--fg)]">
-                  {sourceText}
-                </div>
-              ) : (
-                <p className="text-sm text-[var(--muted)]">Paste the full source article in Edit mode.</p>
-              )}
-            </div>
-          ) : (
-            <textarea
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-              rows={16}
-              placeholder="Paste the full source article…"
-              className={cn(articlePaneClass, "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]")}
-            />
-          )}
+          <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
+          <WriterEditableHtml
+            value={sourceHtml}
+            onChange={setSourceHtml}
+            placeholder="Paste or type the full source article…"
+            className={articlePaneClass}
+          />
+          <p className="text-xs text-[var(--muted)]">
+            Edit formatted text in place. Write uses plain text extracted from this content.
+          </p>
         </div>
 
         <div className="flex min-h-[360px] flex-col gap-2">
@@ -833,7 +816,7 @@ export function WriterForm({
             >
               <input type="hidden" name="writer_article_id" value={articleId} />
               <input type="hidden" name="voice_id" value={voiceId} />
-              <input type="hidden" name="source_text" value={sourceText} />
+              <input type="hidden" name="source_text" value={sourcePlain} />
               <input
                 type="hidden"
                 name="links"

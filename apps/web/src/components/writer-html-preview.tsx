@@ -2,7 +2,7 @@ import { sanitizeEmailHtmlPreview } from "@/lib/sanitize-email-html";
 
 type Props = { html: string; className?: string };
 
-const writerPreviewClass =
+export const writerPreviewClass =
   "writer-html-preview max-w-none text-sm leading-relaxed text-[var(--fg)] " +
   "[&_p]:mb-4 [&_p:last-child]:mb-0 " +
   "[&_h2]:mb-3 [&_h2]:mt-6 [&_h2]:text-lg [&_h2]:font-semibold " +
