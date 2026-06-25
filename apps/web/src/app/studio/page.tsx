@@ -121,6 +121,8 @@ export default async function StudioPage({
           compose_error: selectedRaw.compose_error,
           compose_phase: selectedRaw.compose_phase,
           compose_requested_at: selectedRaw.compose_requested_at?.toISOString(),
+          compose_researched_at: selectedRaw.compose_researched_at?.toISOString(),
+          compose_written_at: selectedRaw.compose_written_at?.toISOString(),
         }
       : null;
 

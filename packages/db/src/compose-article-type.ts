@@ -29,3 +29,30 @@ export function resolveComposeArticleType(
   if (explicit) return explicit;
   return isComposeHowToTopic(topic, subtopics) ? "how_to" : "editorial";
 }
+
+/** Editorial deep-research brief section labels that should not appear in how-to briefs. */
+export const COMPOSE_EDITORIAL_BRIEF_HEADER_RE =
+  /^(topic overview|key facts|angles to cover|angles|caveats and counterpoints)$/i;
+
+/** How-to research brief section labels. */
+export const COMPOSE_HOW_TO_BRIEF_HEADER_RE =
+  /^(setup steps|per-platform|per-platform\/subtopic procedures|troubleshooting)$/i;
+
+function briefSectionHeaders(brief: string): string[] {
+  const headers: string[] = [];
+  for (const line of brief.split(/\r?\n/)) {
+    const match = line.trim().match(/^([A-Za-z][^:]{2,80}):\s*$/);
+    if (match?.[1]) headers.push(match[1].trim());
+  }
+  return headers;
+}
+
+/** True when the brief uses editorial research structure (Topic overview, Angles to cover, etc.). */
+export function hasEditorialResearchBriefHeaders(brief: string): boolean {
+  return briefSectionHeaders(brief).some((h) => COMPOSE_EDITORIAL_BRIEF_HEADER_RE.test(h));
+}
+
+/** True when the brief uses how-to procedural structure. */
+export function hasHowToResearchBriefHeaders(brief: string): boolean {
+  return briefSectionHeaders(brief).some((h) => COMPOSE_HOW_TO_BRIEF_HEADER_RE.test(h));
+}

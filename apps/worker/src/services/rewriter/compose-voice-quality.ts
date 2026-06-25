@@ -10,6 +10,7 @@ import {
   writerComposeOperatorVoiceIssues,
   writerComposeRhythmIssues,
   writerComposeStyleIssueCounts,
+  type ComposeArticleType,
   type ComposeStyleIssueCounts,
   type ContentFacts,
   type GenericityAnalysis,
@@ -20,6 +21,10 @@ export type ComposeVoiceQualityOpts = {
   includeFaq?: boolean;
   knownExampleTitles?: string[];
   faqItems?: { question: string; answer: string }[];
+  brandName?: string;
+  brandMentionLevel?: number;
+  articleType?: ComposeArticleType;
+  topic?: string;
 };
 
 export function composeStyleIssueTotal(counts: ComposeStyleIssueCounts): number {

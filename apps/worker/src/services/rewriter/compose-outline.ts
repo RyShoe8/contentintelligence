@@ -19,6 +19,41 @@ export type ComposeOutline = {
   sections: ComposeOutlineSection[];
 };
 
+/** Procedural outline for how-to compose from extracted facts (no LLM). */
+export function buildComposeHowToOutline(opts: {
+  topic: string;
+  facts: { sections?: { title: string; steps: string[] }[]; narrativeSections?: { title: string; points: string[] }[] };
+  subtopics?: string[];
+}): ComposeOutline | undefined {
+  const proceduralSections = opts.facts.sections ?? [];
+  const narrativeSections = opts.facts.narrativeSections ?? [];
+  if (proceduralSections.length || narrativeSections.length) {
+    return {
+      title: opts.topic.trim(),
+      sections: [
+        ...narrativeSections.map((section) => ({
+          heading: section.title,
+          factSummary: section.points.slice(0, 4).join("; ") || "Cover key ideas in brand voice",
+        })),
+        ...proceduralSections.map((section) => ({
+          heading: section.title,
+          factSummary: section.steps.slice(0, 4).join("; ") || "Ordered setup steps",
+        })),
+      ],
+    };
+  }
+  if (opts.subtopics?.length) {
+    return {
+      title: opts.topic.trim(),
+      sections: opts.subtopics.map((subtopic) => ({
+        heading: subtopic,
+        factSummary: "Ordered setup steps for this subtopic",
+      })),
+    };
+  }
+  return undefined;
+}
+
 function archetypeHeadingRoles(archetype: ComposeArticleArchetype): string[] {
   return archetype.sampleHeadings.slice(0, archetype.sectionCount);
 }

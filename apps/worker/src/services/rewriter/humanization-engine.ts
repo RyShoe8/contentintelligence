@@ -20,8 +20,10 @@ import {
   rewriterQualityGatePassed,
   stripLeadingComposeChrome,
   writerComposeBriefOutlineIssues,
+  writerComposeBrandMentionIssues,
   writerComposeConcretenessIssues,
   writerComposeFaqStyleIssues,
+  writerComposeHowToStructureIssues,
   writerComposeOperatorVoiceIssues,
   writerComposeRhythmIssues,
   writerComposeReferenceLeakIssues,
@@ -51,6 +53,7 @@ import {
 } from "./compose-article-archetype.js";
 import {
   applyManifestoArchetypeOverride,
+  buildComposeHowToOutline,
   planComposeOutline,
   type ComposeOutline,
 } from "./compose-outline.js";
@@ -132,8 +135,20 @@ function qualityGatePassed(
   genericity: GenericityAnalysis,
   critique: SelfCritiqueResult,
   composeMode: boolean,
-  composeGateOpts?: { includeFaq?: boolean; knownExampleTitles?: string[]; faqItems?: { question: string; answer: string }[] },
+  composeGateOpts?: {
+    includeFaq?: boolean;
+    knownExampleTitles?: string[];
+    faqItems?: { question: string; answer: string }[];
+    brandName?: string;
+    brandMentionLevel?: number;
+    articleType?: ComposeArticleType;
+    topic?: string;
+  },
+  composeHowTo?: boolean,
 ): boolean {
+  if (composeMode && composeHowTo) {
+    return rewriterComposeQualityGatePassed(facts, html, critique, genericity, composeGateOpts);
+  }
   if (composeMode && isHybridContentFacts(facts)) {
     return rewriterHybridQualityGatePassed(facts, html, critique);
   }
@@ -209,6 +224,10 @@ export async function runHumanizationEngine(
     includeFaq: opts.includeFaq,
     knownExampleTitles,
     faqItems: facts.faqItems,
+    brandName: ctx.brandName,
+    brandMentionLevel: ctx.brandMentionLevel,
+    articleType: opts.articleType,
+    topic: opts.topic,
   };
 
   const composeArchetype =
@@ -225,31 +244,11 @@ export async function runHumanizationEngine(
     concreteLens =
       composeHowTo ? undefined : await pickConcreteLens(opts.topic, facts.keyDetails);
     if (composeHowTo) {
-      const proceduralSections = facts.sections ?? [];
-      const narrativeSections = facts.narrativeSections ?? [];
-      if (proceduralSections.length || narrativeSections.length) {
-        composeOutline = {
-          title: opts.topic.trim(),
-          sections: [
-            ...narrativeSections.map((section) => ({
-              heading: section.title,
-              factSummary: section.points.slice(0, 4).join("; ") || "Cover key ideas in brand voice",
-            })),
-            ...proceduralSections.map((section) => ({
-              heading: section.title,
-              factSummary: section.steps.slice(0, 4).join("; ") || "Ordered setup steps",
-            })),
-          ],
-        };
-      } else if (opts.subtopics?.length) {
-        composeOutline = {
-          title: opts.topic.trim(),
-          sections: opts.subtopics.map((subtopic) => ({
-            heading: subtopic,
-            factSummary: "Ordered setup steps for this subtopic",
-          })),
-        };
-      }
+      composeOutline = buildComposeHowToOutline({
+        topic: opts.topic.trim(),
+        facts,
+        subtopics: opts.subtopics,
+      });
     } else {
       composeOutline = await planComposeOutline({
         topic: opts.topic,
@@ -267,7 +266,7 @@ export async function runHumanizationEngine(
   let retryIssues: string[] = [];
   let attempts = 0;
   const maxAttempts = composeMode
-    ? REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS
+    ? REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS + (composeHowTo ? 2 : 0)
     : REWRITER_MAX_HUMANIZATION_ATTEMPTS;
 
   while (attempts < maxAttempts) {
@@ -317,7 +316,19 @@ export async function runHumanizationEngine(
       styleExampleExcerpt: composeStyleExcerpt,
       includeFaq: opts.includeFaq,
       knownExampleTitles,
+      articleType: opts.articleType,
     });
+    const proceduralCompletenessIssues =
+      composeMode && (isProceduralContentFacts(facts) || isHybridContentFacts(facts))
+        ? rewriterProceduralCompletenessIssues(facts, html)
+        : [];
+    const howToStructureIssues =
+      composeHowTo && opts.topic
+        ? writerComposeHowToStructureIssues(html, opts.topic)
+        : [];
+    const brandMentionIssues = composeMode
+      ? writerComposeBrandMentionIssues(html, ctx.brandName, ctx.brandMentionLevel)
+      : [];
     const completenessIssues = preserveMode
       ? composeMode && isHybridContentFacts(facts)
         ? rewriterInstructionPreserveCompletenessIssues(facts, html)
@@ -367,9 +378,12 @@ export async function runHumanizationEngine(
       composite,
       completenessIssueCount:
         completenessIssues.length +
+        proceduralCompletenessIssues.length +
         topicDriftIssues.length +
         topicSpecificityIssues.length +
         duplicateSectionIssues.length +
+        howToStructureIssues.length +
+        brandMentionIssues.length +
         briefOutlineIssues.length +
         voiceStyleIssues.length +
         operatorVoiceIssues.length +
@@ -391,6 +405,7 @@ export async function runHumanizationEngine(
       critique,
       composeMode,
       composeMode ? composeGateOpts : undefined,
+      composeHowTo,
     );
     const genericityOk =
       !composeMode ||
@@ -399,6 +414,9 @@ export async function runHumanizationEngine(
       topicDriftIssues.length === 0 &&
       topicSpecificityIssues.length === 0 &&
       duplicateSectionIssues.length === 0 &&
+      howToStructureIssues.length === 0 &&
+      brandMentionIssues.length === 0 &&
+      proceduralCompletenessIssues.length === 0 &&
       briefOutlineIssues.length === 0 &&
       voiceStyleIssues.length === 0 &&
       operatorVoiceIssues.length === 0 &&
@@ -424,9 +442,12 @@ export async function runHumanizationEngine(
 
     retryIssues = mergeRetryIssues(genericity, critique, [
       ...completenessIssues,
+      ...proceduralCompletenessIssues,
       ...topicDriftIssues,
       ...topicSpecificityIssues,
       ...duplicateSectionIssues,
+      ...howToStructureIssues,
+      ...brandMentionIssues,
       ...briefOutlineIssues,
       ...voiceStyleIssues,
       ...operatorVoiceIssues,
@@ -448,6 +469,7 @@ export async function runHumanizationEngine(
     final.critique,
     composeMode,
     composeMode ? composeGateOpts : undefined,
+    composeHowTo,
   );
   const voiceQualityWarning = composeMode
     ? buildVoiceQualityWarning({

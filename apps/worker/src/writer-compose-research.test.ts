@@ -23,6 +23,19 @@ describe("buildDeepResearchSectionPrompts", () => {
     assert.match(userPrompt, /User reference 1: https:\/\/ref\.example/);
     assert.match(userPrompt, /Web source 2: https:\/\/web\.example/);
   });
+
+  it("uses procedural how-to instructions when articleType is how_to", () => {
+    const { systemPrompt } = buildDeepResearchSectionPrompts({
+      topic: "How to setup your email signature in Apple Mail",
+      questions: ["What are the setup steps?"],
+      corpusSections: [],
+      hasUserReferences: false,
+      articleType: "how_to",
+    });
+    assert.match(systemPrompt, /how-to research sub-questions/);
+    assert.match(systemPrompt, /menu paths/);
+    assert.doesNotMatch(systemPrompt, /editorial research sub-questions/);
+  });
 });
 
 describe("buildDeepResearchConsolidationPrompts", () => {

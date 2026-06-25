@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   isStyleSourceUrlExcluded,
   normalizeStyleSourceUrl,
+  resolveComposeResearchedAtIso,
+  resolveComposeWrittenAtIso,
   writerArticleHtmlForLearning,
   writerComposeStatusPayload,
 } from "./writer-repos.js";
@@ -181,5 +183,134 @@ describe("writerComposeStatusPayload", () => {
       assert.equal(payload.references_fetched, 3);
       assert.equal(payload.research_mode, "standard");
     }
+  });
+
+  it("includes compose timestamp fields", () => {
+    const researched = new Date("2026-05-27T10:00:00Z");
+    const written = new Date("2026-05-27T11:00:00Z");
+    const article = writerArticleSchema.parse({
+      id: "00000000-0000-4000-8000-000000000014",
+      organization_id: "00000000-0000-4000-8000-000000000020",
+      voice_id: "00000000-0000-4000-8000-000000000030",
+      mode: "compose",
+      title: "Senior living",
+      topic: "Senior living",
+      reference_urls: [],
+      source_text: "Brief text",
+      links: [],
+      generated_html: "<p>Draft</p>",
+      status: "draft",
+      compose_status: "ready",
+      compose_phase: "full",
+      compose_researched_at: researched,
+      compose_written_at: written,
+      created_by: "user@example.com",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    const payload = writerComposeStatusPayload(article);
+    assert.equal(payload.compose_researched_at, researched.toISOString());
+    assert.equal(payload.compose_written_at, written.toISOString());
+  });
+});
+
+describe("resolveComposeResearchedAtIso", () => {
+  it("prefers compose_researched_at when set", () => {
+    const researched = new Date("2026-05-27T10:00:00Z");
+    const iso = resolveComposeResearchedAtIso({
+      compose_researched_at: researched,
+      source_text: "Brief",
+      updated_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(iso, researched.toISOString());
+  });
+
+  it("falls back to updated_at when brief exists without explicit timestamp", () => {
+    const updated = new Date("2026-05-27T12:00:00Z");
+    const iso = resolveComposeResearchedAtIso({
+      source_text: "Legacy brief",
+      updated_at: updated,
+    });
+    assert.equal(iso, updated.toISOString());
+  });
+});
+
+describe("resolveComposeWrittenAtIso", () => {
+  it("prefers compose_written_at when set", () => {
+    const written = new Date("2026-05-27T11:00:00Z");
+    const iso = resolveComposeWrittenAtIso({
+      compose_written_at: written,
+      generated_html: "<p>Draft</p>",
+      updated_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(iso, written.toISOString());
+  });
+
+  it("falls back to updated_at when HTML exists without explicit timestamp", () => {
+    const updated = new Date("2026-05-27T12:00:00Z");
+    const iso = resolveComposeWrittenAtIso({
+      generated_html: "<p>Legacy draft</p>",
+      updated_at: updated,
+    });
+    assert.equal(iso, updated.toISOString());
+  });
+});
+
+describe("compose result timestamp merge", () => {
+  const baseCompose = {
+    id: "00000000-0000-4000-8000-000000000015",
+    organization_id: "00000000-0000-4000-8000-000000000020",
+    voice_id: "00000000-0000-4000-8000-000000000030",
+    mode: "compose" as const,
+    title: "Topic article",
+    topic: "Topic with enough characters",
+    reference_urls: [] as string[],
+    source_text: "Brief text",
+    links: [],
+    generated_html: "<p>Draft</p>",
+    status: "draft" as const,
+    compose_status: "pending" as const,
+    created_by: "user@example.com",
+    created_at: new Date("2026-05-27T09:00:00Z"),
+    updated_at: new Date("2026-05-27T09:00:00Z"),
+  };
+
+  it("write_only result preserves prior compose_researched_at", () => {
+    const researched = new Date("2026-05-27T10:00:00Z");
+    const written = new Date("2026-05-27T11:00:00Z");
+    const existing = writerArticleSchema.parse({
+      ...baseCompose,
+      compose_phase: "write_only",
+      compose_researched_at: researched,
+    });
+    const row = writerArticleSchema.parse({
+      ...existing,
+      compose_status: "ready",
+      compose_written_at: written,
+      compose_researched_at: existing.compose_researched_at,
+      updated_at: written,
+    });
+    assert.equal(row.compose_researched_at?.toISOString(), researched.toISOString());
+    assert.equal(row.compose_written_at?.toISOString(), written.toISOString());
+  });
+
+  it("full result preserves checkpoint compose_researched_at", () => {
+    const researched = new Date("2026-05-27T10:00:00Z");
+    const written = new Date("2026-05-27T11:00:00Z");
+    const existing = writerArticleSchema.parse({
+      ...baseCompose,
+      compose_phase: "full",
+      compose_researched_at: researched,
+    });
+    const row = writerArticleSchema.parse({
+      ...existing,
+      compose_status: "ready",
+      compose_written_at: written,
+      compose_researched_at: existing.compose_researched_at ?? written,
+      updated_at: written,
+    });
+    assert.equal(row.compose_researched_at?.toISOString(), researched.toISOString());
+    assert.notEqual(row.compose_researched_at?.toISOString(), written.toISOString());
   });
 });

@@ -23,6 +23,8 @@ import {
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
   writerComposeTopicSpecificityIssues,
+  writerComposeHowToStructureIssues,
+  writerComposeBrandMentionIssues,
   writerComposeDuplicateSectionIssues,
   collectComposeHardVoiceRetryIssues,
   hasComposeHardVoiceFailures,
@@ -619,6 +621,53 @@ describe("writerComposeTopicSpecificityIssues", () => {
       ["Import a custom HTML signature file"],
     );
     assert.equal(issues.length, 0);
+  });
+});
+
+describe("writerComposeHowToStructureIssues", () => {
+  it("flags essay-style how-to without ordered steps", () => {
+    const html = `
+      <h2>Setting the Stage for Your Email Signature</h2>
+      <p>Your signature matters.</p>
+      <h2>Why a Well-Designed Signature Matters</h2>
+      <p>Brand consistency builds trust.</p>
+    `;
+    const issues = writerComposeHowToStructureIssues(
+      html,
+      "How to setup your email signature in Apple Mail",
+    );
+    assert.ok(issues.some((i) => /ordered list/i.test(i)));
+    assert.ok(issues.some((i) => /essay heading/i.test(i)));
+  });
+
+  it("passes when ordered steps and platform terms are present", () => {
+    const html = `
+      <h2>Apple Mail signature setup</h2>
+      <ol>
+        <li>Open Mail &gt; Settings &gt; Signatures.</li>
+        <li>Click + to add a signature.</li>
+        <li>Paste your HTML and send a test email.</li>
+      </ol>
+    `;
+    const issues = writerComposeHowToStructureIssues(
+      html,
+      "How to setup your email signature in Apple Mail",
+    );
+    assert.equal(issues.length, 0);
+  });
+});
+
+describe("writerComposeBrandMentionIssues", () => {
+  it("requires brand name when mention level is sometimes", () => {
+    const html = "<p>We set up Apple Mail signatures every week.</p>";
+    const issues = writerComposeBrandMentionIssues(html, "Acme Signs", 50);
+    assert.equal(issues.length, 1);
+    assert.match(issues[0]!, /Acme Signs/);
+  });
+
+  it("passes when brand name appears at sometimes level", () => {
+    const html = "<p>At Acme Signs, we configure Apple Mail signatures daily.</p>";
+    assert.equal(writerComposeBrandMentionIssues(html, "Acme Signs", 50).length, 0);
   });
 });
 

@@ -8,9 +8,11 @@ import {
   rewriterProceduralCompletenessIssues,
   selfCritiqueResultSchema,
   stripHtmlToPlainText,
+  writerComposeHowToStructureIssues,
   writerComposeOperatorVoiceIssues,
   writerComposeReferenceLeakIssues,
   writerComposeVoiceStyleIssues,
+  type ComposeArticleType,
   type ContentFacts,
   type SelfCritiqueResult,
 } from "@content-resourcer/db";
@@ -33,6 +35,7 @@ export async function runSelfCritique(
     styleExampleExcerpt?: string;
     includeFaq?: boolean;
     knownExampleTitles?: string[];
+    articleType?: ComposeArticleType;
   } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
@@ -40,8 +43,18 @@ export async function runSelfCritique(
   const hybrid = isHybridContentFacts(facts);
   const composeNarrative = isComposeNarrativeFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
+  const composeHowTo = opts.composeMode && opts.articleType === "how_to";
+  const topic = opts.topic?.trim();
   const deterministicIssues =
-    opts.composeMode && composeNarrative
+    opts.composeMode && composeHowTo && topic
+      ? [
+          ...rewriterProceduralCompletenessIssues(facts, html),
+          ...writerComposeHowToStructureIssues(html, topic),
+          ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
+          ...writerComposeVoiceStyleIssues(html),
+          ...writerComposeOperatorVoiceIssues(html),
+        ]
+      : opts.composeMode && composeNarrative
       ? [
           ...rewriterComposeCompletenessIssues(facts, html),
           ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
@@ -55,7 +68,9 @@ export async function runSelfCritique(
           : [];
 
   let preserveBlock = "";
-  if (opts.composeMode && composeNarrative) {
+  if (opts.composeMode && composeHowTo) {
+    preserveBlock = `This is a procedural how-to tutorial. Check that EVERY procedural section has ordered steps in <ol><li> lists, section titles name the platform/tool, and step counts match the facts JSON. Essay-style headings (Setting the Stage, Why X Matters) are failures.`;
+  } else if (opts.composeMode && composeNarrative) {
     preserveBlock = `This is a topic-first compose article. Check that ALL research facts and keyDetails appear in editorial prose — but do NOT require research-brief section titles (Topic overview, Key facts, etc.) as headings. Fail if the article reads like a labeled research summary instead of brand-voice editorial.`;
   } else if (hybrid) {
     preserveBlock = `This is a hybrid article with both narrative editorial blocks and procedural how-to sections. Check that EVERY narrative section title and key points appear, and EVERY procedural section has all steps. Missing blocks or merged sections are failures.`;
@@ -63,14 +78,15 @@ export async function runSelfCritique(
     preserveBlock = `This is a procedural how-to article. Check that EVERY section title appears and step counts match the facts JSON. Missing steps or merged sections are failures.`;
   }
 
-  const topic = opts.topic?.trim();
   const faqCritiqueBlock =
     opts.composeMode && opts.includeFaq
       ? " Fail if FAQ reads like an industry guide Q&A dump (many long answers, boilerplate titles like Your Questions Answered) instead of short editorial FAQ with punchy section title."
       : "";
   const composeBlock =
     opts.composeMode && topic
-      ? `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks). Compare the article opening and heading rhythm side-by-side with the style reference — short paragraphs and "we" alone are insufficient if tone still reads like a neutral industry guide. Fail if the article copies reference chrome (Back to Blog, share buttons, publication dates) or style example post titles. If copy reads like a generic guide, FAQ survey, or copies reference metadata, brandConsistency must be below 70 even when "we" is present. Fail if genericity would exceed ${REWRITER_COMPOSE_GENERICITY_MAX} even when humanAuthenticity/brandConsistency look acceptable.${faqCritiqueBlock}`
+      ? composeHowTo
+        ? `This is a how-to tutorial about "${topic}". Fail if the article lacks ordered procedural steps (<ol><li>), uses essay/survey headings instead of platform-specific sections, or generalizes to generic "email client" advice when the topic names a specific app. Fail if copy reads like a neutral industry guide — genericity must exceed ${REWRITER_COMPOSE_GENERICITY_MAX} when steps are missing or headings are generic. Fail if the brand name is required by voice settings but absent.${faqCritiqueBlock}`
+        : `This is a topic-first editorial article about "${topic}". Fail if the article is primarily about the brand/community/content strategy rather than the topic. Fail if copy is generic, neutral, or reads like a research brief outline or industry guide — brand voice must shape perspective, headings, and framing from persona and examples, not just word choice. Fail if H2/H3 headings mirror research-brief labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions). Fail if paragraph rhythm does not match the brand style example (short punchy paragraphs vs long textbook blocks). Compare the article opening and heading rhythm side-by-side with the style reference — short paragraphs and "we" alone are insufficient if tone still reads like a neutral industry guide. Fail if the article copies reference chrome (Back to Blog, share buttons, publication dates) or style example post titles. If copy reads like a generic guide, FAQ survey, or copies reference metadata, brandConsistency must be below 70 even when "we" is present. Fail if genericity would exceed ${REWRITER_COMPOSE_GENERICITY_MAX} even when humanAuthenticity/brandConsistency look acceptable.${faqCritiqueBlock}`
       : "";
 
   const raw = await completeJson<unknown>({

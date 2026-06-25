@@ -20,9 +20,14 @@ import {
   WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
   writerArticleDisplayHtml,
   resolveComposeArticleType,
+  hasEditorialResearchBriefHeaders,
   type ComposeArticleType,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
+import {
+  resolveComposeResearchedAtIso,
+  resolveComposeWrittenAtIso,
+} from "@content-resourcer/db";
 import { saveWriterArticleAction, deleteWriterArticleAction, deleteUnsavedWriterDraftAction } from "@/app/writer/actions";
 import {
   COMPOSE_STALL_MESSAGE,
@@ -45,6 +50,7 @@ import {
   type ComposeResultPhase,
 } from "@/app/writer/compose-poll";
 import { Button } from "@/components/ui/button";
+import { LocalDateTime } from "@/components/local-date-time";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
 import { cn } from "@/lib/cn";
 
@@ -76,6 +82,8 @@ export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
   compose_error?: string;
   compose_phase?: "full" | "write_only";
   compose_requested_at?: string;
+  compose_researched_at?: string;
+  compose_written_at?: string;
 };
 
 type ComposeStatusResponse = {
@@ -85,6 +93,8 @@ type ComposeStatusResponse = {
   compose_error?: string;
   compose_phase?: "full" | "write_only";
   compose_requested_at?: string;
+  compose_researched_at?: string;
+  compose_written_at?: string;
   server_now?: string;
   accepted?: boolean;
   generated_html?: string;
@@ -172,6 +182,30 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
   }
 }
 
+function composeTimestampsFromDetail(article: WriterComposeArticleDetail | null): {
+  researched?: string;
+  written?: string;
+} {
+  if (!article) return {};
+  const updatedAt = new Date(article.updated_at);
+  return {
+    researched: resolveComposeResearchedAtIso({
+      compose_researched_at: article.compose_researched_at
+        ? new Date(article.compose_researched_at)
+        : undefined,
+      source_text: article.source_text,
+      updated_at: updatedAt,
+    }),
+    written: resolveComposeWrittenAtIso({
+      compose_written_at: article.compose_written_at
+        ? new Date(article.compose_written_at)
+        : undefined,
+      generated_html: article.generated_html,
+      updated_at: updatedAt,
+    }),
+  };
+}
+
 function initialExpandedVoiceIds(
   _voices: WriterComposeVoiceOption[],
   _articles: WriterComposeArticleListItem[],
@@ -218,6 +252,7 @@ export function WriterComposeForm({
   const router = useRouter();
   const readyVoices = voices.filter((v) => v.ready);
   const pendingComposeInitial = initialPendingComposeState(selectedArticle);
+  const initialTimestamps = composeTimestampsFromDetail(selectedArticle);
 
   const [voiceId, setVoiceId] = useState(
     selectedArticle?.voice_id ?? readyVoices[0]?.id ?? "",
@@ -235,6 +270,12 @@ export function WriterComposeForm({
     referenceUrlsToRows(selectedArticle?.reference_urls ?? []),
   );
   const [researchBrief, setResearchBrief] = useState(selectedArticle?.source_text ?? "");
+  const [lastResearchedAt, setLastResearchedAt] = useState<string | undefined>(
+    initialTimestamps.researched,
+  );
+  const [lastWrittenAt, setLastWrittenAt] = useState<string | undefined>(
+    initialTimestamps.written,
+  );
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
@@ -324,6 +365,12 @@ export function WriterComposeForm({
       setResearchBrief((prev) =>
         data.research_brief !== prev ? data.research_brief! : prev,
       );
+    }
+    if (data.compose_researched_at) {
+      setLastResearchedAt(data.compose_researched_at);
+    }
+    if (data.compose_written_at) {
+      setLastWrittenAt(data.compose_written_at);
     }
     if (data.compose_phase === "full" || data.compose_phase === "write_only") {
       setResultComposePhase(data.compose_phase);
@@ -585,6 +632,10 @@ export function WriterComposeForm({
   const selectedVoice = voices.find((v) => v.id === voiceId);
   const canWrite = Boolean(workerConfigured && voiceId && selectedVoice?.ready);
   const trimmedResearchBrief = researchBrief.trim();
+  const staleEditorialResearchBrief =
+    articleType === "how_to" &&
+    trimmedResearchBrief.length >= WRITER_SOURCE_MIN_CHARS &&
+    hasEditorialResearchBriefHeaders(trimmedResearchBrief);
   const canWriteFromBrief = Boolean(
     canWrite &&
       articleId &&
@@ -601,6 +652,8 @@ export function WriterComposeForm({
     setTopic("");
     setReferenceUrlRows([emptyReferenceUrlRow()]);
     setResearchBrief("");
+    setLastResearchedAt(undefined);
+    setLastWrittenAt(undefined);
     setLinkRows([emptyLinkRow()]);
     setOutputHtml("");
     setWriteError(null);
@@ -1058,6 +1111,11 @@ export function WriterComposeForm({
               Step-by-step tutorial with platform-specific instructions
             </span>
           ) : null}
+          {staleEditorialResearchBrief ? (
+            <span className="text-xs text-amber-600 dark:text-amber-400">
+              Research brief looks editorial — run Research + Write to regenerate procedural steps.
+            </span>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 text-sm">
@@ -1356,7 +1414,14 @@ export function WriterComposeForm({
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="flex min-h-[360px] flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">Research brief</h2>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-sm font-medium text-[var(--fg)]">Research brief</h2>
+            {lastResearchedAt && researchBrief.trim() ? (
+              <p className="text-xs text-[var(--muted)]">
+                Last researched: <LocalDateTime iso={lastResearchedAt} />
+              </p>
+            ) : null}
+          </div>
           <textarea
             value={researchBrief}
             onChange={(e) => setResearchBrief(e.target.value)}
@@ -1372,8 +1437,15 @@ export function WriterComposeForm({
         </div>
 
         <div className="flex min-h-[360px] flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-[var(--fg)]">Article</h2>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-sm font-medium text-[var(--fg)]">Article</h2>
+              {lastWrittenAt && outputHtml.trim() ? (
+                <p className="text-xs text-[var(--muted)]">
+                  Last written: <LocalDateTime iso={lastWrittenAt} />
+                </p>
+              ) : null}
+            </div>
             {showOutputColumn ? (
               <div className="flex rounded-md border border-[var(--border)] p-0.5 text-xs">
                 <button

@@ -134,7 +134,10 @@ async function extractComposeResearchFacts(
 
 const HYBRID_EXTRACT_MAX_TOKENS = 6000;
 const COMPOSE_BRIEF_HEADER_RE =
-  /^(topic overview|key facts|angles to cover|angles|caveats|faq|open questions|weak evidence)/i;
+  /^(topic overview|key facts|angles to cover|angles|caveats|faq|open questions|weak evidence|setup steps|per-platform|per-platform\/subtopic procedures|troubleshooting|caveats and counterpoints)$/i;
+
+const HOW_TO_STEP_SECTION_RE =
+  /^(setup steps|per-platform|per-platform\/subtopic procedures|troubleshooting|key facts)$/i;
 
 export function parseBriefSectionsByHeaders(brief: string): NarrativeSection[] {
   const lines = brief.split(/\r?\n/);
@@ -170,6 +173,124 @@ export function parseBriefSectionsByHeaders(brief: string): NarrativeSection[] {
   }
   flush();
   return sections;
+}
+
+/** Deterministically parse numbered/bullet items from how-to brief sections into procedural steps. */
+export function parseBriefStepsFromHeaders(
+  brief: string,
+  defaultSectionTitle: string,
+): ProceduralSection[] {
+  const sections = parseBriefSectionsByHeaders(brief);
+  const procedural: ProceduralSection[] = [];
+
+  for (const section of sections) {
+    if (!HOW_TO_STEP_SECTION_RE.test(section.title.trim())) continue;
+    const steps = section.points
+      .map((p) => p.replace(/^\*\*[^*]+\*\*:?\s*/, "").trim())
+      .filter((p) => p.length > 8);
+    if (steps.length >= 2) {
+      procedural.push({
+        title: /key facts/i.test(section.title) ? defaultSectionTitle : section.title,
+        steps,
+      });
+    }
+  }
+
+  if (procedural.length === 0) {
+    const keyFacts = sections.find((s) => /^key facts$/i.test(s.title.trim()));
+    if (keyFacts && keyFacts.points.length >= 2) {
+      procedural.push({
+        title: defaultSectionTitle,
+        steps: keyFacts.points
+          .map((p) => p.replace(/^\*\*[^*]+\*\*:?\s*/, "").trim())
+          .filter(Boolean),
+      });
+    }
+  }
+
+  return procedural;
+}
+
+function buildHowToStepsExtractSystemPrompt(topic?: string, subtopics?: string[]): string {
+  const topicBlock = topic?.trim() ? `\nArticle topic: ${topic.trim()}` : "";
+  const subtopicBlock = subtopics?.length
+    ? `\nRequired subtopics (one procedural section each when applicable):\n${subtopics.map((s) => `- ${s}`).join("\n")}`
+    : "";
+  return `Extract procedural how-to steps from a research brief as JSON only.
+Schema:
+{"contentType":"procedural","sections":[{"title":string,"steps":string[]}]}
+Rules:
+- sections: one object per platform/subtopic. Title must name the platform or tool (e.g. "Apple Mail").
+- steps: 4+ ordered actions per section with menu paths, button names, and settings preserved.
+- Convert narrative facts into imperative steps where needed.
+- Do NOT return keyDetails-only or narrativeSections — procedural sections are required.${topicBlock}${subtopicBlock}`;
+}
+
+async function extractHowToStepsFromBrief(
+  trimmed: string,
+  topic?: string,
+  subtopics?: string[],
+): Promise<ContentFacts | null> {
+  const raw = await completeJson<unknown>({
+    system: buildHowToStepsExtractSystemPrompt(topic, subtopics),
+    user: trimmed,
+    temperature: 0.15,
+    maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
+  });
+
+  const proceduralSections = parseProceduralSections(
+    raw && typeof raw === "object" && "sections" in raw
+      ? (raw as { sections?: unknown }).sections
+      : undefined,
+  );
+  if (proceduralSections.length === 0) return null;
+
+  return contentFactsSchema.parse({
+    contentType: "procedural",
+    sections: proceduralSections,
+    keyDetails: [],
+  });
+}
+
+async function ensureHowToProceduralFacts(
+  trimmed: string,
+  topic?: string,
+  subtopics?: string[],
+  includeFaq?: boolean,
+): Promise<ContentFacts> {
+  const hybrid = await extractHybridProceduralFacts(trimmed, topic, subtopics);
+  if (hybrid?.sections?.length) return hybrid;
+
+  const stepsExtract = await extractHowToStepsFromBrief(trimmed, topic, subtopics);
+  if (stepsExtract?.sections?.length) {
+    const faqItems = includeFaq
+      ? parseFaqFromBriefSections(parseBriefSectionsByHeaders(trimmed)).faqItems
+      : [];
+    return contentFactsSchema.parse({
+      ...stepsExtract,
+      ...(hybrid?.narrativeSections?.length
+        ? { narrativeSections: hybrid.narrativeSections, contentType: "hybrid" as const }
+        : {}),
+      ...(faqItems.length ? { faqItems } : {}),
+    });
+  }
+
+  const parsed = parseBriefStepsFromHeaders(trimmed, topic?.trim() || "Setup");
+  if (parsed.length > 0) {
+    let faqItems: FaqItem[] = [];
+    if (includeFaq) {
+      faqItems = parseFaqFromBriefSections(parseBriefSectionsByHeaders(trimmed)).faqItems;
+    }
+    return contentFactsSchema.parse({
+      contentType: "procedural",
+      sections: parsed,
+      keyDetails: hybrid?.keyDetails?.length ? hybrid.keyDetails : [],
+      ...(faqItems.length ? { faqItems } : {}),
+    });
+  }
+
+  if (hybrid) return hybrid;
+  return extractComposeResearchFacts(trimmed, includeFaq);
 }
 
 export function parseContentFacts(raw: unknown): ContentFacts | null {
@@ -273,8 +394,12 @@ export async function extractContentFacts(
 
   if (opts.composeMode) {
     if (opts.articleType === "how_to") {
-      const hybrid = await extractHybridProceduralFacts(trimmed, opts.topic, opts.subtopics);
-      if (hybrid) return hybrid;
+      return ensureHowToProceduralFacts(
+        trimmed,
+        opts.topic,
+        opts.subtopics,
+        opts.includeFaq,
+      );
     }
     return extractComposeResearchFacts(trimmed, opts.includeFaq);
   }

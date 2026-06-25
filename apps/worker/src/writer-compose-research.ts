@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import {
+  hasEditorialResearchBriefHeaders,
   writerArticleDepthGuidance,
   writerComposeFaqCountGuidance,
   writerComposeResearchConfig,
@@ -158,11 +159,24 @@ export function buildDeepResearchSectionPrompts(opts: {
   hasUserReferences: boolean;
   subtopics?: string[];
   minCitationsPerSection?: number;
+  articleType?: "editorial" | "how_to";
 }): { systemPrompt: string; userPrompt: string } {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
   const minCitations = opts.minCitationsPerSection ?? 1;
+  const howTo = opts.articleType === "how_to";
 
-  const systemPrompt = `You answer editorial research sub-questions using provided source excerpts.
+  const systemPrompt = howTo
+    ? `You answer how-to research sub-questions using provided source excerpts.
+Rules:
+- Output plain text only (no markdown fences, no HTML).
+- For each question, write a heading with the question text, then ordered step notes or bullet procedures.
+- Preserve menu paths (e.g. Mail > Preferences), button names, file types, and platform/app names verbatim when sources provide them.
+- Include at least ${minCitations} inline source URL citation(s) per question when sources support the answer.
+- Mark weak or uncertain claims explicitly (e.g. "uncertain — not found in sources").
+- Do not write editorial angles, brand essays, or thought-leadership framing.
+- If a question cannot be answered from sources, write "Not found in sources" and optionally add cautious general context (may/often) only when no user references exist.
+- Do not invent specific stats or quotes unsupported by sources.`
+    : `You answer editorial research sub-questions using provided source excerpts.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - For each question, write a heading with the question text, then bullet notes.
@@ -261,10 +275,20 @@ function buildGapFillPrompts(opts: {
   plan: TopicResearchPlan;
   sectionNotes: string;
   corpusSections: ReferenceCorpusSection[];
+  articleType?: "editorial" | "how_to";
 }): { systemPrompt: string; userPrompt: string } {
   const corpusBlock = formatReferenceCorpusForPrompt(opts.corpusSections);
+  const howTo = opts.articleType === "how_to";
   return {
-    systemPrompt: `You fill gaps in editorial research using only provided source excerpts.
+    systemPrompt: howTo
+      ? `You fill gaps in how-to research using only provided source excerpts.
+Rules:
+- Output plain text only (no markdown fences, no HTML).
+- Address troubleshooting, caveats, and compatibility issues from the plan using corpus evidence only.
+- Focus on procedural fixes, error messages, and platform-specific limitations — not editorial angles.
+- Cite source URLs for every factual claim; mark uncertain items explicitly.
+- Do not invent stats or quotes.`
+      : `You fill gaps in editorial research using only provided source excerpts.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - Address caveats and open questions from the plan using corpus evidence only.
@@ -306,6 +330,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       hasUserReferences,
       subtopics: opts.subtopics,
       minCitationsPerSection: researchConfig.minCitationsPerSection,
+      articleType: opts.articleType,
     });
     const notes = await callOpenAiText(
       systemPrompt,
@@ -348,6 +373,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       plan: opts.plan,
       sectionNotes,
       corpusSections: opts.corpusSections,
+      articleType: opts.articleType,
     });
     const gapNotes = await callOpenAiText(
       gap.systemPrompt,
@@ -357,6 +383,17 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     if (gapNotes.trim()) {
       brief = `${brief.trim()}\n\nAdditional gap-fill research:\n${gapNotes.trim()}`;
     }
+  }
+
+  if (opts.articleType === "how_to" && hasEditorialResearchBriefHeaders(brief)) {
+    brief = await synthesizeResearchBrief({
+      topic: opts.topic,
+      corpusSections: opts.corpusSections,
+      articleDepth: opts.articleDepth,
+      subtopics: opts.subtopics,
+      includeFaq: opts.includeFaq,
+      articleType: "how_to",
+    });
   }
 
   if (!brief || brief.length < 100) {

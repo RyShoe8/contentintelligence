@@ -511,6 +511,30 @@ export type UpdateWriterComposeResultInput = {
   compose_meta: WriterComposeMeta;
 };
 
+export type UpdateWriterComposeResearchCheckpointInput = {
+  research_brief: string;
+};
+
+export async function updateWriterComposeResearchCheckpoint(
+  db: Db,
+  id: string,
+  organizationId: string,
+  data: UpdateWriterComposeResearchCheckpointInput,
+): Promise<WriterArticle | null> {
+  const existing = await getWriterArticle(db, id, organizationId);
+  if (!existing) return null;
+
+  const now = new Date();
+  const row = writerArticleSchema.parse({
+    ...existing,
+    source_text: data.research_brief,
+    compose_researched_at: now,
+    updated_at: now,
+  });
+  await writerArticles(db).replaceOne({ id, organization_id: organizationId }, row);
+  return row;
+}
+
 export async function updateWriterComposeResult(
   db: Db,
   id: string,
@@ -528,6 +552,11 @@ export async function updateWriterComposeResult(
     compose_status: "ready",
     compose_error: undefined,
     compose_meta: result.compose_meta,
+    compose_written_at: now,
+    compose_researched_at:
+      existing.compose_phase === "full"
+        ? (existing.compose_researched_at ?? now)
+        : existing.compose_researched_at,
     updated_at: now,
   });
   await writerArticles(db).replaceOne({ id, organization_id: organizationId }, row);
@@ -616,6 +645,8 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     compose_error: article.compose_error,
     compose_phase: article.compose_phase,
     compose_requested_at: article.compose_requested_at?.toISOString(),
+    compose_researched_at: article.compose_researched_at?.toISOString(),
+    compose_written_at: article.compose_written_at?.toISOString(),
     server_now: new Date().toISOString(),
     generated_html: article.generated_html,
     research_brief: article.source_text,
@@ -649,6 +680,36 @@ export function writerComposeStatusPayload(article: WriterArticle) {
     research_questions: meta?.research_questions,
     research_mode: meta?.research_mode,
   };
+}
+
+type ComposeTimestampFields = {
+  compose_researched_at?: Date | null;
+  compose_written_at?: Date | null;
+  source_text?: string;
+  generated_html?: string;
+  updated_at: Date;
+};
+
+/** ISO timestamp for last research, with legacy fallback when brief exists. */
+export function resolveComposeResearchedAtIso(article: ComposeTimestampFields): string | undefined {
+  if (article.compose_researched_at) {
+    return article.compose_researched_at.toISOString();
+  }
+  if (article.source_text?.trim()) {
+    return article.updated_at.toISOString();
+  }
+  return undefined;
+}
+
+/** ISO timestamp for last article generation, with legacy fallback when HTML exists. */
+export function resolveComposeWrittenAtIso(article: ComposeTimestampFields): string | undefined {
+  if (article.compose_written_at) {
+    return article.compose_written_at.toISOString();
+  }
+  if (article.generated_html?.trim()) {
+    return article.updated_at.toISOString();
+  }
+  return undefined;
 }
 
 export async function updateWriterArticle(

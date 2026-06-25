@@ -3,7 +3,7 @@ import { composeArticleTypeSchema, type ComposeArticleType } from "./compose-art
 import { composeReferenceLeakPlainTextIssues } from "./sanitize-article-html.js";
 
 export { composeArticleTypeSchema, type ComposeArticleType } from "./compose-article-type.js";
-export { isComposeHowToTopic, resolveComposeArticleType } from "./compose-article-type.js";
+export { isComposeHowToTopic, resolveComposeArticleType, hasEditorialResearchBriefHeaders } from "./compose-article-type.js";
 
 export const WRITER_LINK_MAX = 5;
 export const WRITER_REFERENCE_URL_MAX = 15;
@@ -225,10 +225,15 @@ const COMPOSE_GENERIC_HOWTO_HEADING_RES = [
   /^understanding (the )?/i,
   /^what (is|are) /i,
   /^why (you should|your)/i,
+  /^why .+ matters/i,
   /^best practices/i,
   /^introduction to/i,
   /^email (client|signature)/i,
   /^getting started with email/i,
+  /^setting the stage/i,
+  /^final touches/i,
+  /^crafting your/i,
+  /^navigating /i,
 ] as const;
 
 function extractComposeSpecificityTerms(topic: string, subtopics?: string[]): string[] {
@@ -295,6 +300,68 @@ export function writerComposeTopicSpecificityIssues(
   }
 
   return [...new Set(issues)].slice(0, 6);
+}
+
+/** Flags when how-to compose output lacks ordered steps or uses essay-style headings. */
+export function writerComposeHowToStructureIssues(html: string, topic: string): string[] {
+  const issues: string[] = [];
+  const plain = stripHtmlToPlainText(html).toLowerCase();
+
+  const olMatches = [...html.matchAll(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi)];
+  let maxListItems = 0;
+  for (const match of olMatches) {
+    const items = [...(match[1] ?? "").matchAll(/<li\b/gi)].length;
+    if (items > maxListItems) maxListItems = items;
+  }
+  if (maxListItems < 3) {
+    issues.push(
+      "How-to article must include at least one ordered list with 3+ steps — not essay-only sections",
+    );
+  }
+
+  const headingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const text = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (text && COMPOSE_GENERIC_HOWTO_HEADING_RES.some((re) => re.test(text))) {
+      issues.push(`How-to article uses generic essay heading "${text}" instead of procedural sections`);
+    }
+  }
+
+  const platformTerms = extractComposeSpecificityTerms(topic);
+  const hasPlatformMention = platformTerms.some((term) => plain.includes(term));
+  if (!hasPlatformMention && platformTerms.length > 0) {
+    issues.push(
+      `How-to article missing platform-specific terms from topic (${platformTerms.slice(0, 3).join(", ")})`,
+    );
+  }
+
+  return [...new Set(issues)].slice(0, 6);
+}
+
+/** Flags when brand mention level requires the brand name in the article body. */
+export function writerComposeBrandMentionIssues(
+  html: string,
+  brandName: string | undefined,
+  level: number | undefined,
+): string[] {
+  const name = brandName?.trim();
+  if (!name) return [];
+
+  const l = Math.max(0, Math.min(100, Math.round(level ?? 50)));
+  if (l === 0) return [];
+
+  const plain = stripHtmlToPlainText(html);
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentions = (plain.match(new RegExp(`\\b${escaped}\\b`, "gi")) ?? []).length;
+
+  if (l >= 50 && mentions < 1) {
+    return [`Brand name "${name}" must appear at least once (mention level ${l})`];
+  }
+  if (l >= 75 && mentions < 2) {
+    return [`Brand name "${name}" must appear at least twice (mention level ${l})`];
+  }
+  return [];
 }
 
 /** Flags repeated FAQ-style or duplicate headings in how-to compose output. */
@@ -528,6 +595,10 @@ export type ComposeHardVoiceOpts = {
   includeFaq?: boolean;
   knownExampleTitles?: string[];
   faqItems?: { question: string; answer: string }[];
+  articleType?: ComposeArticleType;
+  topic?: string;
+  brandName?: string;
+  brandMentionLevel?: number;
 };
 
 /** Deterministic compose blockers that must be retried before shipping. */
@@ -541,7 +612,11 @@ export function writerComposeHardVoiceIssues(
     ...writerComposeSectionRoleIssues(html),
     ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
     ...(opts.includeFaq ? writerComposeFaqStyleIssues(html, opts.faqItems ?? []) : []),
-  ].slice(0, 12);
+    ...(opts.articleType === "how_to" && opts.topic
+      ? writerComposeHowToStructureIssues(html, opts.topic)
+      : []),
+    ...writerComposeBrandMentionIssues(html, opts.brandName, opts.brandMentionLevel),
+  ].slice(0, 14);
 }
 
 /** Operator voice gaps — retried in engine loop but not post-link reconstruct blockers alone. */

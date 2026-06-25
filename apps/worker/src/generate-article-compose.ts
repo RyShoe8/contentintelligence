@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import {
   listWriterStyleExamplesForVoice,
   resolveComposeArticleType,
+  updateWriterComposeResearchCheckpoint,
   type ComposeArticleType,
   type Voice,
   type WriterLink,
@@ -45,6 +46,7 @@ import {
 } from "./writer-web-search.js";
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
 import { preprocessResearchBriefForVoice } from "./services/rewriter/compose-voice-brief.js";
+import { resolveVoiceGenerationContext } from "./voice-generation-context.js";
 import {
   extractComposeStyleKitDeterministic,
   summarizeComposeStyleKits,
@@ -214,6 +216,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
           maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
           userSubtopics: subtopics,
           articleDepth,
+          articleType,
         })
       : null;
 
@@ -262,6 +265,15 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   const sourceTruncatedFinal = sourceTruncated;
   const rawResearchBrief = researchBrief;
 
+  if (!skipResearch && opts.writerArticleId && rawResearchBrief.trim()) {
+    await updateWriterComposeResearchCheckpoint(
+      opts.db,
+      opts.writerArticleId,
+      opts.organizationId,
+      { research_brief: rawResearchBrief },
+    );
+  }
+
   const styleArticles = await listWriterStyleExamplesForVoice(
     opts.db,
     opts.organizationId,
@@ -305,6 +317,16 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
 
   const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);
   const knownExampleTitles = humanized.examples.map((ex) => ex.title).filter(Boolean);
+  const voiceCtx = resolveVoiceGenerationContext(opts.voice);
+  const composeGateOpts = {
+    includeFaq,
+    knownExampleTitles,
+    faqItems: humanized.facts.faqItems,
+    brandName: voiceCtx.brandName,
+    brandMentionLevel: voiceCtx.brandMentionLevel,
+    articleType,
+    topic: opts.topic,
+  };
   const composeArchetype = applyManifestoArchetypeOverride(
     resolveComposeArticleArchetype(humanized.examples),
     opts.topic,
@@ -361,11 +383,6 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       composeRhythm,
     });
   } else {
-    const composeGateOpts = {
-      includeFaq,
-      knownExampleTitles,
-      faqItems: humanized.facts.faqItems,
-    };
     const prePolishStyleCounts = writerComposeStyleIssueCounts(html, composeGateOpts);
     let needsPolish = shouldRunComposeVoicePolish({
       linksWoven: pipeline.linksWoven,
@@ -409,14 +426,10 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     subtopics,
     styleExampleExcerpt,
     knownExampleTitles,
+    articleType,
   });
 
   html = stripLeadingComposeChrome(html);
-  const composeGateOpts = {
-    includeFaq,
-    knownExampleTitles,
-    faqItems: humanized.facts.faqItems,
-  };
   const postHardGenericity = await analyzeGenericity(html);
   if (
     shouldRunComposeFinalPolish({

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { writerComposeResearchConfig } from "@content-resourcer/db";
+import { type ComposeArticleType, writerComposeResearchConfig } from "@content-resourcer/db";
 import { env } from "./env.js";
 import { completeJson } from "./services/llm/json-completion.js";
 
@@ -16,6 +16,7 @@ export type PlanTopicResearchOpts = {
   maxSearchQueries?: number;
   userSubtopics?: string[];
   articleDepth?: number;
+  articleType?: ComposeArticleType;
 };
 
 export function mergeUserSubtopicsIntoPlan(
@@ -63,7 +64,18 @@ export function buildTopicResearchPlanPrompts(opts: PlanTopicResearchOpts): {
       ? "- search_queries: 3-5 concise web search strings to find authoritative sources on the topic."
       : "- search_queries: 2-3 concise web search strings to find authoritative sources on the topic.";
 
-  const systemPrompt = `You plan editorial research for article writing.
+  const howTo = opts.articleType === "how_to";
+  const systemPrompt = howTo
+    ? `You plan procedural how-to research for tutorial writing.
+Output JSON only with keys: research_questions, angles, caveats_to_investigate, search_queries.
+Rules:
+- research_questions: 4-6 focused sub-questions about setup steps, menu paths, files, settings, testing, and troubleshooting for the stated topic/platform.
+- angles: 2-4 procedure focus areas (platform names or subtopics — NOT editorial narratives).
+- caveats_to_investigate: 2-4 limitations, compatibility issues, or troubleshooting angles to verify.
+${searchQueryRule}
+- Questions must be about HOW to perform the task — not thought leadership or branding.
+- If the user may supply reference pages, plan what procedural facts to extract — do not assume page content.`
+    : `You plan editorial research for article writing.
 Output JSON only with keys: research_questions, angles, caveats_to_investigate, search_queries.
 Rules:
 - research_questions: 4-6 focused sub-questions that deeply investigate the topic (not generic).
@@ -88,8 +100,24 @@ ${searchQueryRule}
   return { systemPrompt, userPrompt };
 }
 
-function fallbackPlan(topic: string): TopicResearchPlan {
+function fallbackPlan(topic: string, articleType?: ComposeArticleType): TopicResearchPlan {
   const trimmed = topic.trim();
+  if (articleType === "how_to") {
+    return {
+      research_questions: [
+        `What are the ordered setup steps for "${trimmed}"?`,
+        `What menu paths, buttons, and settings are required?`,
+        `What files, formats, or hosting are needed (e.g. HTML, images)?`,
+        `What common errors or troubleshooting steps apply?`,
+      ],
+      angles: [trimmed, "Troubleshooting and testing"],
+      caveats_to_investigate: [
+        "Verify steps against primary sources",
+        "Note platform/version differences",
+      ],
+      search_queries: [trimmed, `${trimmed} step by step`, `${trimmed} troubleshooting`],
+    };
+  }
   return {
     research_questions: [
       `What are the core facts and definitions needed to explain "${trimmed}"?`,
@@ -120,12 +148,20 @@ export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<To
   });
 
   if (!raw) {
-    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics, maxQuestions);
+    return mergeUserSubtopicsIntoPlan(
+      fallbackPlan(opts.topic, opts.articleType),
+      opts.userSubtopics,
+      maxQuestions,
+    );
   }
 
   const parsed = planSchema.safeParse(raw);
   if (!parsed.success) {
-    return mergeUserSubtopicsIntoPlan(fallbackPlan(opts.topic), opts.userSubtopics, maxQuestions);
+    return mergeUserSubtopicsIntoPlan(
+      fallbackPlan(opts.topic, opts.articleType),
+      opts.userSubtopics,
+      maxQuestions,
+    );
   }
 
   const llmQuestionCap = Math.min(6, maxQuestions);

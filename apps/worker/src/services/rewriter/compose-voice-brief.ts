@@ -50,7 +50,17 @@ export async function preprocessResearchBriefForVoice(
       }`
     : "";
 
-  const systemPrompt = `Rewrite a neutral research brief into editorial briefing notes in the brand operator voice.
+  const systemPrompt = opts.howToTopic
+    ? `Rewrite a neutral research brief into procedural briefing notes in the brand operator voice.
+Rules:
+- Output plain text only (no markdown fences, no HTML).
+- Preserve ALL facts, ordered steps, menu paths, caveats, and FAQ Q/A from the input — do not invent or drop claims.
+- Remove research-brief section labels (Topic overview, Key facts, Angles to cover, Setup steps headers, etc.).
+- Write as voice-shaped procedural notes: ordered steps and platform-specific actions in first-person plural "we" where natural.
+- Do not write the finished article — only briefing notes for a how-to writer.
+- Do not add editorial angles, thought-leadership framing, or brand-essay sections.${howToBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${faqBlock}
+${styleLines.length ? `\n${styleLines.join("\n")}` : ""}`
+    : `Rewrite a neutral research brief into editorial briefing notes in the brand operator voice.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - Preserve ALL facts, stats, caveats, and FAQ Q/A content from the input — do not invent or drop claims.

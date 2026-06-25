@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  hasEditorialResearchBriefHeaders,
+  hasHowToResearchBriefHeaders,
   isComposeHowToTopic,
   resolveComposeArticleType,
 } from "./compose-article-type.js";
@@ -47,5 +49,33 @@ describe("resolveComposeArticleType", () => {
       resolveComposeArticleType(undefined, "Senior living tax planning"),
       "editorial",
     );
+  });
+});
+
+describe("research brief header detection", () => {
+  it("detects editorial brief structure", () => {
+    const brief = `Topic Overview:
+A summary here.
+
+Key Facts:
+1. Fact one
+
+Angles to Cover:
+1. Beginner guide`;
+    assert.equal(hasEditorialResearchBriefHeaders(brief), true);
+    assert.equal(hasHowToResearchBriefHeaders(brief), false);
+  });
+
+  it("detects how-to brief structure", () => {
+    const brief = `Setup steps:
+1. Open Mail > Preferences
+
+Per-platform/subtopic procedures:
+Apple Mail steps here.
+
+Troubleshooting:
+Images may not display.`;
+    assert.equal(hasHowToResearchBriefHeaders(brief), true);
+    assert.equal(hasEditorialResearchBriefHeaders(brief), false);
   });
 });

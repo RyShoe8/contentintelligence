@@ -863,6 +863,14 @@ export const writerArticleSchema = z.object({
     z.coerce.date().optional(),
   ),
   compose_phase: writerComposePhaseSchema.optional(),
+  compose_researched_at: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.coerce.date().optional(),
+  ),
+  compose_written_at: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.coerce.date().optional(),
+  ),
   compose_meta: z.preprocess(
     (v) => (v == null ? undefined : v),
     writerComposeMetaSchema.optional(),

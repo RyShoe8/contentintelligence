@@ -5,6 +5,7 @@ import {
   filterFaqNarrativeSections,
   flattenBriefToKeyDetails,
   parseBriefSectionsByHeaders,
+  parseBriefStepsFromHeaders,
   parseContentFacts,
 } from "./fact-extractor.js";
 
@@ -94,6 +95,29 @@ describe("parseBriefSectionsByHeaders", () => {
     assert.ok(sections.length >= 2);
     assert.equal(sections[0]?.title, "Topic Overview");
     assert.match(sections[1]?.points.join(" "), /taxable under federal law/);
+  });
+});
+
+describe("parseBriefStepsFromHeaders", () => {
+  it("parses key facts into procedural steps for editorial-shaped briefs", () => {
+    const brief = [
+      "Topic Overview:",
+      "Apple Mail signatures use HTML.",
+      "",
+      "Key Facts:",
+      "1. Create an HTML file with your signature design",
+      "2. Open Mail > Preferences > Signatures",
+      "3. Click + and paste the HTML into the signature editor",
+      "4. Send a test email to verify formatting",
+    ].join("\n");
+
+    const sections = parseBriefStepsFromHeaders(
+      brief,
+      "How to setup your email signature in Apple Mail",
+    );
+    assert.equal(sections.length, 1);
+    assert.equal(sections[0]!.steps.length, 4);
+    assert.match(sections[0]!.steps[1]!, /Preferences/i);
   });
 });
 

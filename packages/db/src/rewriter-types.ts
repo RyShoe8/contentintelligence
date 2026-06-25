@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
   stripHtmlToPlainText,
+  writerComposeBrandMentionIssues,
   writerComposeFaqStyleIssues,
   writerComposeOperatorVoiceIssues,
   writerComposeReferenceLeakIssues,
   writerComposeVoiceStyleIssues,
 } from "./writer-validation.js";
+import type { ComposeArticleType } from "./compose-article-type.js";
 
 export const proceduralSectionSchema = z.object({
   title: z.string().trim().min(1),
@@ -341,7 +343,13 @@ export type ComposeStyleIssueCounts = {
 
 export function writerComposeStyleIssueCounts(
   html: string,
-  opts: { includeFaq?: boolean; knownExampleTitles?: string[]; faqItems?: { question: string; answer: string }[] } = {},
+  opts: {
+    includeFaq?: boolean;
+    knownExampleTitles?: string[];
+    faqItems?: { question: string; answer: string }[];
+    brandName?: string;
+    brandMentionLevel?: number;
+  } = {},
 ): ComposeStyleIssueCounts {
   const voiceStyleIssues = writerComposeVoiceStyleIssues(html);
   const operatorVoiceIssues = writerComposeOperatorVoiceIssues(html);
@@ -366,6 +374,10 @@ export function rewriterComposeQualityGatePassed(
     includeFaq?: boolean;
     knownExampleTitles?: string[];
     faqItems?: { question: string; answer: string }[];
+    brandName?: string;
+    brandMentionLevel?: number;
+    articleType?: ComposeArticleType;
+    topic?: string;
   } = {},
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);
@@ -378,6 +390,9 @@ export function rewriterComposeQualityGatePassed(
       styleCounts.faqStyleIssueCount >
     0
   ) {
+    return false;
+  }
+  if (writerComposeBrandMentionIssues(html, opts.brandName, opts.brandMentionLevel).length > 0) {
     return false;
   }
   const effectiveBc = composeEffectiveBrandConsistency(critique, styleCounts);
