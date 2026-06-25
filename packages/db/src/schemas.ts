@@ -842,6 +842,9 @@ export const writerArticleSchema = z.object({
     .max(WRITER_SUBTOPIC_MAX)
     .default([]),
   article_depth: z.coerce.number().int().min(0).max(100).default(WRITER_ARTICLE_DEPTH_DEFAULT),
+  article_type: z
+    .enum(["editorial", "how_to"])
+    .optional(),
   source_text: z.string(),
   links: z.array(writerArticleLinkSchema).max(5).default([]),
   generated_html: z.string().default(""),

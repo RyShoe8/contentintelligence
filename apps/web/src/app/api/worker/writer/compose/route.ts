@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
     include_faq: body.include_faq,
+    article_type: body.article_type,
     skip_research: body.skip_research,
     research_brief: body.research_brief,
   });

@@ -17,6 +17,7 @@ export type SynthesizeResearchBriefOpts = {
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
+  articleType?: "editorial" | "how_to";
 };
 
 function subtopicsBlock(subtopics?: string[]): string {
@@ -24,7 +25,13 @@ function subtopicsBlock(subtopics?: string[]): string {
   return `\nRequired subtopics to cover in the brief:\n${subtopics.map((s) => `- ${s}`).join("\n")}`;
 }
 
-function briefStructureLine(includeFaq?: boolean): string {
+function briefStructureLine(includeFaq?: boolean, articleType?: "editorial" | "how_to"): string {
+  if (articleType === "how_to") {
+    if (includeFaq) {
+      return "- Structure with short labeled sections: Setup steps, Per-platform/subtopic procedures, Troubleshooting, Caveats, FAQ.";
+    }
+    return "- Structure with short labeled sections: Setup steps, Per-platform/subtopic procedures, Troubleshooting, Caveats. Do not include FAQ or Q&A content.";
+  }
   if (includeFaq) {
     return "- Structure with short labeled sections: Key facts, Angles to cover, Caveats.";
   }
@@ -41,7 +48,16 @@ function faqBriefRules(includeFaq?: boolean, articleDepth?: number): string {
 - Ground answers in reference excerpts when available; mark uncertain answers explicitly.`;
 }
 
-function deepConsolidationStructureLine(includeFaq?: boolean): string {
+function deepConsolidationStructureLine(
+  includeFaq?: boolean,
+  articleType?: "editorial" | "how_to",
+): string {
+  if (articleType === "how_to") {
+    if (includeFaq) {
+      return "- Structure with labeled sections: Setup steps, Per-platform/subtopic procedures, Troubleshooting, Caveats, FAQ, Open questions and weak evidence.";
+    }
+    return "- Structure with labeled sections: Setup steps, Per-platform/subtopic procedures, Troubleshooting, Caveats, Open questions and weak evidence. Do not include FAQ or Q&A content.";
+  }
   if (includeFaq) {
     return "- Structure with labeled sections: Topic overview, Key facts, Angles to cover, Caveats and counterpoints, FAQ, Open questions and weak evidence.";
   }
@@ -61,15 +77,21 @@ export function buildResearchBriefPrompts(opts: SynthesizeResearchBriefOpts): {
       ? writerArticleDepthGuidance(opts.articleDepth)
       : writerArticleDepthGuidance(50);
 
-  const systemPrompt = `You synthesize research briefs for editorial article writing.
+  const systemPrompt = `You synthesize research briefs for ${opts.articleType === "how_to" ? "how-to tutorial" : "editorial article"} writing.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
-${briefStructureLine(opts.includeFaq)}
+${briefStructureLine(opts.includeFaq, opts.articleType)}
 ${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 - When reference excerpts are provided, treat them as primary evidence. Do not invent specific facts, stats, or quotes not supported by the references.
 - When no references are provided, use general knowledge but mark uncertain claims with phrasing like "may" or "often".
 - Write enough detail for a full article (${depth.researchBriefPrompt}).
-- Do not write the finished article; only the research brief.`;
+- Do not write the finished article; only the research brief.${
+    opts.articleType === "how_to"
+      ? `
+- Focus on ordered setup steps, menu paths, button names, and platform-specific procedures.
+- Do not include editorial angles, thought-leadership framing, or brand-essay sections.`
+      : ""
+  }`;
 
   const userPrompt = [
     `Topic: ${topic}`,
@@ -118,6 +140,7 @@ export type RunDeepTopicResearchOpts = {
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
+  articleType?: "editorial" | "how_to";
 };
 
 function chunkQuestions(questions: string[], size: number): string[][] {
@@ -172,31 +195,42 @@ export function buildDeepResearchConsolidationPrompts(opts: {
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
+  articleType?: "editorial" | "how_to";
 }): { systemPrompt: string; userPrompt: string } {
   const depth =
     opts.articleDepth != null
       ? writerArticleDepthGuidance(opts.articleDepth)
       : writerArticleDepthGuidance(50);
 
-  const systemPrompt = `You consolidate editorial research notes into one deep research brief.
+  const systemPrompt = `You consolidate ${opts.articleType === "how_to" ? "how-to tutorial" : "editorial"} research notes into one deep research brief.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
-${deepConsolidationStructureLine(opts.includeFaq)}
+${deepConsolidationStructureLine(opts.includeFaq, opts.articleType)}
 ${faqBriefRules(opts.includeFaq, opts.articleDepth)}
 - Preserve evidence-backed facts and source URL citations from the notes.
 - Target ${depth.researchBriefPrompt}.
-- Do not write the finished article; only the research brief.`;
+- Do not write the finished article; only the research brief.${
+    opts.articleType === "how_to"
+      ? `
+- Preserve step order, menu paths, and platform-specific procedures from the notes.
+- Do not add editorial angles or thought-leadership framing.`
+      : ""
+  }`;
 
   const userPrompt = [
     `Topic: ${opts.topic.trim()}`,
     subtopicsBlock(opts.subtopics),
     "",
-    "Planned angles:",
-    ...opts.plan.angles.map((a) => `- ${a}`),
-    "",
-    "Caveats to investigate:",
-    ...opts.plan.caveats_to_investigate.map((c) => `- ${c}`),
-    "",
+    ...(opts.articleType === "how_to"
+      ? []
+      : [
+          "Planned angles:",
+          ...opts.plan.angles.map((a) => `- ${a}`),
+          "",
+          "Caveats to investigate:",
+          ...opts.plan.caveats_to_investigate.map((c) => `- ${c}`),
+          "",
+        ]),
     "Research notes by question:",
     opts.sectionNotes,
   ].join("\n");
@@ -289,6 +323,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
       articleDepth: opts.articleDepth,
       subtopics: opts.subtopics,
       includeFaq: opts.includeFaq,
+      articleType: opts.articleType,
     });
   }
 
@@ -299,6 +334,7 @@ export async function runDeepTopicResearch(opts: RunDeepTopicResearchOpts): Prom
     articleDepth: opts.articleDepth,
     subtopics: opts.subtopics,
     includeFaq: opts.includeFaq,
+    articleType: opts.articleType,
   });
   let brief = await callOpenAiText(
     systemPrompt,

@@ -1,5 +1,9 @@
 import { z } from "zod";
+import { composeArticleTypeSchema, type ComposeArticleType } from "./compose-article-type.js";
 import { composeReferenceLeakPlainTextIssues } from "./sanitize-article-html.js";
+
+export { composeArticleTypeSchema, type ComposeArticleType } from "./compose-article-type.js";
+export { isComposeHowToTopic, resolveComposeArticleType } from "./compose-article-type.js";
 
 export const WRITER_LINK_MAX = 5;
 export const WRITER_REFERENCE_URL_MAX = 15;
@@ -291,6 +295,53 @@ export function writerComposeTopicSpecificityIssues(
   }
 
   return [...new Set(issues)].slice(0, 6);
+}
+
+/** Flags repeated FAQ-style or duplicate headings in how-to compose output. */
+export function writerComposeDuplicateSectionIssues(
+  html: string,
+  articleType?: ComposeArticleType,
+  includeFaq?: boolean,
+): string[] {
+  if (articleType !== "how_to") return [];
+
+  const issues: string[] = [];
+  const headings: string[] = [];
+  const headingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const text = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (text) headings.push(text);
+  }
+
+  const seen = new Map<string, number>();
+  for (const h of headings) {
+    const key = h.toLowerCase();
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of seen) {
+    if (count > 1) {
+      issues.push(`Duplicate section heading "${key}" appears ${count} times`);
+    }
+  }
+
+  if (includeFaq) {
+    const faqSectionIdx = headings.findIndex((h) =>
+      /^(faq|frequently asked questions)$/i.test(h),
+    );
+    if (faqSectionIdx >= 0) {
+      const questionHeadingsBeforeFaq = headings
+        .slice(0, faqSectionIdx)
+        .filter((h) => h.endsWith("?"));
+      if (questionHeadingsBeforeFaq.length >= 2) {
+        issues.push(
+          "FAQ-style question headings appear in the body before the FAQ section — keep Q&A only in the structured FAQ",
+        );
+      }
+    }
+  }
+
+  return [...new Set(issues)].slice(0, 4);
 }
 
 const COMPOSE_BRIEF_HEADING_RE =
@@ -792,6 +843,7 @@ export const writerComposeInputSchema = z.object({
     .max(WRITER_SUBTOPIC_MAX)
     .default([]),
   include_faq: z.boolean().default(false),
+  article_type: composeArticleTypeSchema.default("editorial"),
   skip_research: z.boolean().default(false),
   research_brief: z.string().trim().optional(),
 }).superRefine((data, ctx) => {

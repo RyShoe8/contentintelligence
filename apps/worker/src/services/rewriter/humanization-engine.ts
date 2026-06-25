@@ -27,8 +27,10 @@ import {
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
   writerComposeTopicSpecificityIssues,
+  writerComposeDuplicateSectionIssues,
   writerComposeVoiceStyleIssues,
   writerComposeStyleIssueCounts,
+  type ComposeArticleType,
   type ContentFacts,
   type GenericityAnalysis,
   type SelfCritiqueResult,
@@ -56,7 +58,7 @@ import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import { buildVoiceQualityWarning } from "./compose-voice-quality.js";
-import { pickConcreteLens, isComposeHowToTopic } from "./compose-topic-mode.js";
+import { pickConcreteLens } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 export { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
@@ -75,6 +77,7 @@ export type HumanizationEngineOpts = {
   composeMode?: boolean;
   topic?: string;
   includeFaq?: boolean;
+  articleType?: ComposeArticleType;
 };
 
 export type HumanizationEngineResult = {
@@ -179,10 +182,9 @@ export async function runHumanizationEngine(
     includeFaq: opts.includeFaq,
     topic: opts.topic,
     subtopics: opts.subtopics,
+    articleType: opts.articleType,
   });
-  const composeHowTo =
-    composeMode && Boolean(opts.topic?.trim()) && isComposeHowToTopic(opts.topic!, opts.subtopics);
-  const hasProceduralCompose = (facts.sections?.length ?? 0) > 0;
+  const composeHowTo = composeMode && opts.articleType === "how_to";
   const hybrid = isHybridContentFacts(facts);
   const composeNarrative = isComposeNarrativeFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
@@ -220,23 +222,34 @@ export async function runHumanizationEngine(
   let composeOutline: ComposeOutline | undefined;
   let concreteLens: string | undefined;
   if (composeMode && opts.topic?.trim()) {
-    concreteLens = await pickConcreteLens(opts.topic, facts.keyDetails);
-    if (composeHowTo && hasProceduralCompose) {
+    concreteLens =
+      composeHowTo ? undefined : await pickConcreteLens(opts.topic, facts.keyDetails);
+    if (composeHowTo) {
       const proceduralSections = facts.sections ?? [];
       const narrativeSections = facts.narrativeSections ?? [];
-      composeOutline = {
-        title: opts.topic.trim(),
-        sections: [
-          ...narrativeSections.map((section) => ({
-            heading: section.title,
-            factSummary: section.points.slice(0, 4).join("; ") || "Cover key ideas in brand voice",
+      if (proceduralSections.length || narrativeSections.length) {
+        composeOutline = {
+          title: opts.topic.trim(),
+          sections: [
+            ...narrativeSections.map((section) => ({
+              heading: section.title,
+              factSummary: section.points.slice(0, 4).join("; ") || "Cover key ideas in brand voice",
+            })),
+            ...proceduralSections.map((section) => ({
+              heading: section.title,
+              factSummary: section.steps.slice(0, 4).join("; ") || "Ordered setup steps",
+            })),
+          ],
+        };
+      } else if (opts.subtopics?.length) {
+        composeOutline = {
+          title: opts.topic.trim(),
+          sections: opts.subtopics.map((subtopic) => ({
+            heading: subtopic,
+            factSummary: "Ordered setup steps for this subtopic",
           })),
-          ...proceduralSections.map((section) => ({
-            heading: section.title,
-            factSummary: section.steps.slice(0, 4).join("; ") || "Ordered setup steps",
-          })),
-        ],
-      };
+        };
+      }
     } else {
       composeOutline = await planComposeOutline({
         topic: opts.topic,
@@ -277,6 +290,7 @@ export async function runHumanizationEngine(
       composeOutline,
       composeArchetype,
       concreteLens,
+      articleType: opts.articleType,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -321,6 +335,10 @@ export async function runHumanizationEngine(
       composeMode && composeHowTo && opts.topic
         ? writerComposeTopicSpecificityIssues(html, opts.topic, opts.subtopics)
         : [];
+    const duplicateSectionIssues =
+      composeMode && composeHowTo
+        ? writerComposeDuplicateSectionIssues(html, opts.articleType, opts.includeFaq)
+        : [];
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
     const operatorVoiceIssues = composeMode ? writerComposeOperatorVoiceIssues(html) : [];
@@ -351,6 +369,7 @@ export async function runHumanizationEngine(
         completenessIssues.length +
         topicDriftIssues.length +
         topicSpecificityIssues.length +
+        duplicateSectionIssues.length +
         briefOutlineIssues.length +
         voiceStyleIssues.length +
         operatorVoiceIssues.length +
@@ -379,6 +398,7 @@ export async function runHumanizationEngine(
     const noDrift =
       topicDriftIssues.length === 0 &&
       topicSpecificityIssues.length === 0 &&
+      duplicateSectionIssues.length === 0 &&
       briefOutlineIssues.length === 0 &&
       voiceStyleIssues.length === 0 &&
       operatorVoiceIssues.length === 0 &&
@@ -406,6 +426,7 @@ export async function runHumanizationEngine(
       ...completenessIssues,
       ...topicDriftIssues,
       ...topicSpecificityIssues,
+      ...duplicateSectionIssues,
       ...briefOutlineIssues,
       ...voiceStyleIssues,
       ...operatorVoiceIssues,

@@ -274,4 +274,36 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Do NOT generalize to "email clients"/i);
     assert.doesNotMatch(prompt, /author-first editorial voice — not a research summary/i);
   });
+
+  it("includes how-to rules when articleType is how_to without procedural fact sections", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        keyDetails: [
+          "Open Mail > Settings > Signatures in Apple Mail",
+          "Drag an HTML file into the signature preview",
+        ],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful guide",
+        qualityScore: 8,
+        bestFor: "Apple Mail users",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+      composeMode: true,
+      topic: "How to setup your email signature in Apple Mail",
+      subtopics: ["Import a custom HTML signature file"],
+      articleType: "how_to",
+    });
+
+    assert.match(prompt, /Compose how-to article \(tutorial in brand voice/i);
+    assert.match(prompt, /Procedural instructions \(strict\)/i);
+    assert.match(prompt, /Cap the intro to 1–2 short paragraphs/i);
+    assert.doesNotMatch(prompt, /author-first editorial voice — not a research summary/i);
+  });
 });

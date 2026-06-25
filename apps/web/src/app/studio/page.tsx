@@ -112,6 +112,7 @@ export default async function StudioPage({
           reference_urls: selectedRaw.reference_urls ?? [],
           subtopics: selectedRaw.subtopics ?? [],
           article_depth: selectedRaw.article_depth ?? WRITER_ARTICLE_DEPTH_DEFAULT,
+          article_type: selectedRaw.article_type,
           source_text: selectedRaw.source_text,
           links: selectedRaw.links,
           generated_html: selectedRaw.generated_html,

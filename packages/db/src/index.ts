@@ -14,6 +14,7 @@ export * from "./repos.js";
 export * from "./voice-repos.js";
 export * from "./schemas.js";
 export * from "./gmail-oauth.js";
+export * from "./compose-article-type.js";
 export * from "./writer-validation.js";
 export * from "./writer-repos.js";
 export * from "./writer-style-example-html.js";

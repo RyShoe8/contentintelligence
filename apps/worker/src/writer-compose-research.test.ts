@@ -106,6 +106,17 @@ describe("buildResearchBriefPrompts with source labels", () => {
     });
     assert.match(systemPrompt, /Include a labeled FAQ section with 4–6 question-and-answer pairs/);
   });
+
+  it("uses how-to brief sections without angles when articleType is how_to", () => {
+    const { systemPrompt } = buildResearchBriefPrompts({
+      topic: "How to setup your email signature in Apple Mail",
+      corpusSections: [],
+      articleType: "how_to",
+    });
+    assert.match(systemPrompt, /Setup steps, Per-platform\/subtopic procedures, Troubleshooting, Caveats/);
+    assert.doesNotMatch(systemPrompt, /Angles to cover/);
+    assert.match(systemPrompt, /how-to tutorial/);
+  });
 });
 
 describe("buildDeepResearchSectionPrompts citations", () => {

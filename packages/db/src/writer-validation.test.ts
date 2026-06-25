@@ -23,6 +23,7 @@ import {
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
   writerComposeTopicSpecificityIssues,
+  writerComposeDuplicateSectionIssues,
   collectComposeHardVoiceRetryIssues,
   hasComposeHardVoiceFailures,
   writerComposeHardVoiceIssues,
@@ -300,6 +301,25 @@ describe("writerComposeInputSchema", () => {
     assert.equal(parsed.data?.web_search, true);
     assert.equal(parsed.data?.web_search_max_queries, WRITER_WEB_SEARCH_MAX_QUERIES_DEFAULT);
     assert.equal(parsed.data?.web_search_max_results, WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT);
+  });
+
+  it("defaults article_type to editorial", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.article_type, "editorial");
+  });
+
+  it("accepts explicit how_to article_type", () => {
+    const parsed = writerComposeInputSchema.safeParse({
+      voice_id: "00000000-0000-4000-8000-000000000001",
+      topic: "x".repeat(WRITER_TOPIC_MIN_CHARS),
+      article_type: "how_to",
+    });
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data?.article_type, "how_to");
   });
 
   it("defaults deep_research and web_search to true", () => {
@@ -599,6 +619,38 @@ describe("writerComposeTopicSpecificityIssues", () => {
       ["Import a custom HTML signature file"],
     );
     assert.equal(issues.length, 0);
+  });
+});
+
+describe("writerComposeDuplicateSectionIssues", () => {
+  it("ignores duplicate headings for editorial articles", () => {
+    const html = `
+      <h2>Overview</h2><p>One</p>
+      <h2>Overview</h2><p>Two</p>
+    `;
+    assert.equal(writerComposeDuplicateSectionIssues(html, "editorial").length, 0);
+  });
+
+  it("flags duplicate headings for how-to articles", () => {
+    const html = `
+      <h2>Apple Mail setup</h2><ol><li>Step one</li></ol>
+      <h2>Apple Mail setup</h2><ol><li>Step one again</li></ol>
+    `;
+    const issues = writerComposeDuplicateSectionIssues(html, "how_to");
+    assert.ok(issues.some((i) => /duplicate section heading/i.test(i)));
+  });
+
+  it("flags FAQ-style question headings before the FAQ section", () => {
+    const html = `
+      <h2>Can I use HTML?</h2><p>Yes, with a file.</p>
+      <h2>Does Apple Mail support images?</h2><p>Yes.</p>
+      <h2>FAQ</h2>
+      <h3>Can I use HTML?</h3><p>Yes.</p>
+    `;
+    const issues = writerComposeDuplicateSectionIssues(html, "how_to", true);
+    assert.ok(
+      issues.some((i) => /FAQ-style question headings appear in the body/i.test(i)),
+    );
   });
 });
 

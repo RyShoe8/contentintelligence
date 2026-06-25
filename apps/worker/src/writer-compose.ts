@@ -22,6 +22,7 @@ export type WriterComposeBody = {
   article_depth?: number;
   subtopics?: string[];
   include_faq?: boolean;
+  article_type?: "editorial" | "how_to";
   skip_research?: boolean;
   research_brief?: string;
 };
@@ -40,6 +41,9 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
     include_faq: body.include_faq,
+    article_type: body.article_type,
+    skip_research: body.skip_research,
+    research_brief: body.research_brief,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -65,6 +69,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     article_depth,
     subtopics,
     include_faq,
+    article_type,
   } = parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
@@ -93,6 +98,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     articleDepth: article_depth,
     subtopics,
     includeFaq: include_faq,
+    articleType: article_type,
   });
 
   const article = await upsertWriterArticleDraft(db, {

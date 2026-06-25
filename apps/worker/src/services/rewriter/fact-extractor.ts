@@ -8,7 +8,7 @@ import {
   type ProceduralSection,
 } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
-import { isComposeHowToTopic } from "./compose-topic-mode.js";
+import type { ComposeArticleType } from "@content-resourcer/db";
 
 export type ExtractContentFactsOpts = {
   preserveInstructions?: boolean;
@@ -16,6 +16,7 @@ export type ExtractContentFactsOpts = {
   includeFaq?: boolean;
   topic?: string;
   subtopics?: string[];
+  articleType?: ComposeArticleType;
 };
 
 const FAQ_SECTION_TITLE_RE = /^(faq|frequently asked questions)/i;
@@ -271,7 +272,7 @@ export async function extractContentFacts(
   const trimmed = sourceText.trim();
 
   if (opts.composeMode) {
-    if (opts.topic && isComposeHowToTopic(opts.topic, opts.subtopics)) {
+    if (opts.articleType === "how_to") {
       const hybrid = await extractHybridProceduralFacts(trimmed, opts.topic, opts.subtopics);
       if (hybrid) return hybrid;
     }

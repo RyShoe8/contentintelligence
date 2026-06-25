@@ -67,6 +67,7 @@ function parseComposeBody(body: WriterComposeBody) {
     article_depth: body.article_depth,
     subtopics: body.subtopics ?? [],
     include_faq: body.include_faq,
+    article_type: body.article_type,
     skip_research: body.skip_research,
     research_brief: body.research_brief,
   });
@@ -104,6 +105,7 @@ async function runComposeGeneration(
     article_depth,
     subtopics,
     include_faq,
+    article_type,
     skip_research,
     research_brief,
   } = parsed.data;
@@ -123,6 +125,7 @@ async function runComposeGeneration(
     articleDepth: article_depth,
     subtopics,
     includeFaq: include_faq,
+    articleType: article_type,
     skipResearch: skip_research,
     existingResearchBrief: research_brief,
   });
@@ -185,6 +188,7 @@ export async function startWriterComposeJob(
     links: parsed.data.links,
     subtopics: parsed.data.subtopics,
     article_depth: parsed.data.article_depth,
+    article_type: parsed.data.article_type,
     created_by: createdBy,
     compose_phase: parsed.data.skip_research ? "write_only" : "full",
     preserve_compose_meta: parsed.data.skip_research,

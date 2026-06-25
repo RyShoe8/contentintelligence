@@ -1,6 +1,8 @@
 import type { Db } from "mongodb";
 import {
   listWriterStyleExamplesForVoice,
+  resolveComposeArticleType,
+  type ComposeArticleType,
   type Voice,
   type WriterLink,
   REWRITER_COMPOSE_GENERICITY_MAX,
@@ -43,7 +45,6 @@ import {
 } from "./writer-web-search.js";
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
 import { preprocessResearchBriefForVoice } from "./services/rewriter/compose-voice-brief.js";
-import { isComposeHowToTopic } from "./services/rewriter/compose-topic-mode.js";
 import {
   extractComposeStyleKitDeterministic,
   summarizeComposeStyleKits,
@@ -75,6 +76,7 @@ export type GenerateArticleComposeOpts = {
   articleDepth?: number;
   subtopics?: string[];
   includeFaq?: boolean;
+  articleType?: ComposeArticleType;
   skipResearch?: boolean;
   existingResearchBrief?: string;
 };
@@ -178,6 +180,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   const depthGuidance = writerArticleDepthGuidance(articleDepth);
   const subtopics = opts.subtopics ?? [];
   const includeFaq = opts.includeFaq === true;
+  const articleType = resolveComposeArticleType(opts.articleType, opts.topic, subtopics);
 
   let researchBrief: string;
   let referencesFetched = 0;
@@ -236,6 +239,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
             articleDepth,
             subtopics,
             includeFaq,
+            articleType,
           })
         : await synthesizeResearchBrief({
             topic: opts.topic,
@@ -243,6 +247,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
             articleDepth,
             subtopics,
             includeFaq,
+            articleType,
           });
 
     referencesFetched = corpus.fetched;
@@ -277,7 +282,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     researchBrief: rawResearchBrief,
     styleKitSummary,
     includeFaq,
-    howToTopic: isComposeHowToTopic(opts.topic, subtopics),
+    howToTopic: articleType === "how_to",
     subtopics,
   });
 
@@ -295,6 +300,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     composeMode: true,
     topic: opts.topic,
     includeFaq,
+    articleType,
   });
 
   const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);

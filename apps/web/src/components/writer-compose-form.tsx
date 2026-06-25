@@ -19,6 +19,8 @@ import {
   WRITER_WEB_SEARCH_MAX_RESULTS_DEFAULT,
   WRITER_WEB_SEARCH_MAX_RESULTS_LIMIT,
   writerArticleDisplayHtml,
+  resolveComposeArticleType,
+  type ComposeArticleType,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
 import { saveWriterArticleAction, deleteWriterArticleAction, deleteUnsavedWriterDraftAction } from "@/app/writer/actions";
@@ -65,6 +67,7 @@ export type WriterComposeArticleDetail = WriterComposeArticleListItem & {
   reference_urls: string[];
   subtopics: string[];
   article_depth: number;
+  article_type?: ComposeArticleType;
   source_text: string;
   links: WriterLink[];
   generated_html: string;
@@ -170,16 +173,11 @@ function confirmDeleteArticle(title: string, e: FormEvent<HTMLFormElement>) {
 }
 
 function initialExpandedVoiceIds(
-  voices: WriterComposeVoiceOption[],
-  articles: WriterComposeArticleListItem[],
-  selectedArticle: WriterComposeArticleDetail | null,
+  _voices: WriterComposeVoiceOption[],
+  _articles: WriterComposeArticleListItem[],
+  _selectedArticle: WriterComposeArticleDetail | null,
 ): Set<string> {
-  const ids = new Set<string>();
-  const focus =
-    selectedArticle?.voice_id ?? voices.find((v) => v.ready)?.id ?? voices[0]?.id ?? "";
-  if (focus) ids.add(focus);
-  for (const a of articles) ids.add(a.voice_id);
-  return ids;
+  return new Set();
 }
 
 function initialPendingComposeState(selectedArticle: WriterComposeArticleDetail | null): {
@@ -241,9 +239,7 @@ export function WriterComposeForm({
     linksToRows(selectedArticle?.links ?? []),
   );
   const [outputHtml, setOutputHtml] = useState(() => writerArticleDisplayHtml(selectedArticle));
-  const [showHtmlPreview, setShowHtmlPreview] = useState(
-    () => !writerArticleDisplayHtml(selectedArticle).trim(),
-  );
+  const [showHtmlPreview, setShowHtmlPreview] = useState(true);
   const [writing, setWriting] = useState(pendingComposeInitial.writing);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [referencesFetched, setReferencesFetched] = useState<number | null>(null);
@@ -282,6 +278,14 @@ export function WriterComposeForm({
   const [subtopicsText, setSubtopicsText] = useState(() =>
     (selectedArticle?.subtopics ?? []).join("\n"),
   );
+  const [articleType, setArticleType] = useState<ComposeArticleType>(() =>
+    resolveComposeArticleType(
+      selectedArticle?.article_type,
+      selectedArticle?.topic ?? "",
+      selectedArticle?.subtopics ?? [],
+    ),
+  );
+  const articleTypeTouchedRef = useRef(false);
   const [composeProgress, setComposeProgress] = useState<string | null>(
     pendingComposeInitial.composeProgress,
   );
@@ -619,6 +623,8 @@ export function WriterComposeForm({
     setResearchMode(null);
     setArticleDepth(WRITER_ARTICLE_DEPTH_DEFAULT);
     setSubtopicsText("");
+    setArticleType("editorial");
+    articleTypeTouchedRef.current = false;
     if (draftId && draftStatus === "draft") {
       void deleteUnsavedWriterDraftAction(draftId);
     }
@@ -645,6 +651,17 @@ export function WriterComposeForm({
     setVoiceId(id);
     setExpandedVoiceIds((prev) => new Set(prev).add(id));
   }, []);
+
+  useEffect(() => {
+    if (articleTypeTouchedRef.current) return;
+    setArticleType(
+      resolveComposeArticleType(
+        undefined,
+        topic,
+        parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
+      ),
+    );
+  }, [topic, subtopicsText]);
 
   useEffect(() => {
     if (readyVoices.length === 0) return;
@@ -777,6 +794,7 @@ export function WriterComposeForm({
           article_depth: articleDepth,
           subtopics: parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
           include_faq: includeFaq,
+          article_type: articleType,
           skip_research: skipResearch,
           ...(skipResearch ? { research_brief: trimmedResearchBrief } : {}),
         }),
@@ -1021,6 +1039,26 @@ export function WriterComposeForm({
             Research scoping only — what to investigate. Separate from voice keywords on the Voices page.
           </span>
         </label>
+
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="text-[var(--muted)]">Article type</span>
+          <select
+            value={articleType}
+            onChange={(e) => {
+              articleTypeTouchedRef.current = true;
+              setArticleType(e.target.value as ComposeArticleType);
+            }}
+            className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          >
+            <option value="editorial">Editorial</option>
+            <option value="how_to">How-to</option>
+          </select>
+          {articleType === "how_to" ? (
+            <span className="text-xs text-[var(--muted)]">
+              Step-by-step tutorial with platform-specific instructions
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex items-center justify-between gap-2">
@@ -1377,6 +1415,16 @@ export function WriterComposeForm({
                 <input type="hidden" name="final_html" value={outputHtml} />
               ) : null}
 
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[var(--muted)]">Title</span>
+                <input
+                  name="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2"
+                />
+              </label>
+
               <div className={cn(articlePaneClass, "flex min-h-0 flex-col overflow-hidden")}>
                 {showHtmlPreview ? (
                   <div className="flex-1 overflow-y-auto p-4">
@@ -1402,16 +1450,6 @@ export function WriterComposeForm({
                   ? "Switch to HTML source to edit markup, then Save."
                   : "Edit in HTML source, then Save. Paste into your blog WYSIWYG (HTML mode)."}
               </p>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-[var(--muted)]">Title</span>
-                <input
-                  name="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="rounded border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2"
-                />
-              </label>
             </form>
           ) : (
             <div

@@ -6,6 +6,7 @@ import {
   type BrandInterpretation,
   type BrandMemory,
   type ComposeArticleArchetype,
+  type ComposeArticleType,
   type ContentFacts,
   type WriterLink,
 } from "@content-resourcer/db";
@@ -65,14 +66,23 @@ function hasProceduralSections(facts: ContentFacts): boolean {
   );
 }
 
-function proceduralRulesBlock(facts: ContentFacts): string {
-  if (!hasProceduralSections(facts)) return "";
-  return `
+function proceduralRulesBlock(facts: ContentFacts, howToArticle?: boolean): string {
+  if (hasProceduralSections(facts)) {
+    return `
 Procedural instructions (strict):
 - Render EVERY procedural section as its own <h2> or <h3> using the section title.
 - Render EVERY step as an ordered <ol><li> list under its section. Preserve step order.
 - Do NOT merge version-specific sections into one generic flow.
 - Rephrase for brand voice without omitting steps, menu paths, or settings names.`;
+  }
+  if (howToArticle) {
+    return `
+Procedural instructions (strict):
+- Render each platform/subtopic section as its own <h2> or <h3> with ordered <ol><li> steps.
+- Preserve step order, menu paths, button names, and settings from the facts.
+- Do NOT merge version-specific sections into one generic flow.`;
+  }
+  return "";
 }
 
 function hasNarrativeSections(facts: ContentFacts): boolean {
@@ -87,8 +97,9 @@ function hybridRulesBlock(
   facts: ContentFacts,
   composeMode?: boolean,
   subtopics?: string[],
+  howToArticle?: boolean,
 ): string {
-  if (composeMode && hasProceduralSections(facts)) {
+  if (composeMode && (hasProceduralSections(facts) || howToArticle)) {
     const subtopicsBlock = subtopics?.length
       ? `\nRequired subtopics (each needs its own section or clear subsection with ordered steps):\n${subtopics.map((s) => `- ${s}`).join("\n")}`
       : "";
@@ -98,7 +109,10 @@ Compose how-to article (tutorial in brand voice — not a generic industry guide
 - Cover the article subject and every required subtopic with platform-specific steps from the facts.
 - Do NOT generalize to "email clients", "best practices", or survey-style headings unless those exact ideas are in the facts.
 - Preserve menu paths, button names, file types, and settings from the facts.
-- Short intro/outro in brand voice is fine; the body must be step-by-step.${subtopicsBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
+- Short intro/outro in brand voice is fine; the body must be step-by-step.
+- Cap the intro to 1–2 short paragraphs before the first procedural heading.
+- Do not add thought-leadership angle sections unless those exact themes are in the facts.
+- When FAQ is enabled, do not repeat FAQ Q&A as narrative H2 blocks before the structured FAQ section.${subtopicsBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
   }
   if (composeMode && (hasNarrativeSections(facts) || isComposeFactPool(facts, composeMode))) {
     return `
@@ -185,6 +199,7 @@ export type ReconstructArticleOpts = {
   composeOutline?: ComposeOutline;
   composeArchetype?: ComposeArticleArchetype;
   concreteLens?: string;
+  articleType?: ComposeArticleType;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -207,8 +222,9 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
     opts.articleDepth != null
       ? `\nArticle length:\n${writerArticleDepthGuidance(opts.articleDepth).reconstructionPrompt}`
       : "";
+  const howToArticle = opts.articleType === "how_to";
   const subtopicsBlock =
-    opts.composeMode && hasProceduralSections(opts.facts) && opts.subtopics?.length
+    opts.composeMode && (hasProceduralSections(opts.facts) || howToArticle) && opts.subtopics?.length
       ? `\nRequired subtopics (each needs its own section or clear subsection with ordered steps):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
       : opts.composeMode && opts.subtopics?.length
         ? `\nResearch subtopics (weave as facts inside editorial sections — do NOT use as H2/H3 headings):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
@@ -237,11 +253,12 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       : "";
   const composeTopicBlock =
     opts.composeMode && topic
-      ? hasProceduralSections(opts.facts)
+      ? hasProceduralSections(opts.facts) || howToArticle
         ? `\nArticle subject: ${topic}
 Write a how-to tutorial ABOUT this topic in full brand voice.
 Stay specific to the platforms, apps, files, and steps in the facts — do not drift into generic "${topic.split(/\s+/).slice(-2).join(" ")}" advice for other tools.
-Do not make the brand, community, or content strategy the subject of the article.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+Do not make the brand, community, or content strategy the subject of the article.
+Cap the intro to 1–2 short paragraphs before the first procedural heading.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
         : `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
@@ -276,7 +293,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode, opts.subtopics)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode, opts.subtopics, howToArticle)}${proceduralRulesBlock(opts.facts, howToArticle)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
