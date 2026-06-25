@@ -9,7 +9,7 @@ export async function loadContentSignalGmailOAuth(
   const sources = await listSourcesByContentSignal(db, contentSignalId);
   return Promise.all(
     sources.map(async (source) => {
-      const email = source.config.email_address?.trim() || null;
+      const email = source.source_type === "email_gmail" ? source.config.email_address?.trim() || null : null;
       const oauth = email ? await getGmailOAuth(db, email) : null;
       const oauthStartUrl = `/api/gmail/oauth/start?source_id=${encodeURIComponent(source.id)}&content_signal_id=${encodeURIComponent(contentSignalId)}${email ? `&login_hint=${encodeURIComponent(email)}` : ""}`;
       return {
