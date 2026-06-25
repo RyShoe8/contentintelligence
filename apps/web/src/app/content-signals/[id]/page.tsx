@@ -39,7 +39,8 @@ export default async function ContentSignalDetailPage({
   const linkedVoice = await findVoiceForContentSignal(db, id);
   const sourcesWithOAuth = await Promise.all(
     sources.map(async (s) => {
-      const email = s.config.email_address?.trim();
+      const isEmail = s.source_type === "email_gmail";
+      const email = isEmail ? s.config.email_address?.trim() : undefined;
       const oauth = email ? await getGmailOAuth(db, email) : null;
       const oauthStartUrl = `/api/gmail/oauth/start?source_id=${encodeURIComponent(s.id)}&content_signal_id=${encodeURIComponent(id)}${email ? `&login_hint=${encodeURIComponent(email)}` : ""}`;
       return {
@@ -131,14 +132,22 @@ export default async function ContentSignalDetailPage({
               <li key={s.id} className="px-3 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-[var(--fg)]">Email</p>
-                    <p className="text-xs text-[var(--muted)]">
-                      {s.config.email_address?.trim() || "Gmail not connected"} ·{" "}
-                      {sourceDisplayLabel(s.config)}
+                    <p className="font-medium text-[var(--fg)]">
+                      {s.source_type === "website" ? "Website URLs" : "Email"}
                     </p>
+                    {s.source_type === "email_gmail" ? (
+                      <p className="text-xs text-[var(--muted)]">
+                        {s.config.email_address?.trim() || "Gmail not connected"} ·{" "}
+                        {sourceDisplayLabel(s.config)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-[var(--muted)]">
+                        {s.config.urls.length} URL{s.config.urls.length !== 1 ? "s" : ""}
+                      </p>
+                    )}
                     <p className="text-xs text-[var(--muted)]">
                       {s.enabled ? "Enabled" : "Disabled"}
-                      {s.connected ? " · Gmail connected" : " · Not connected"}
+                      {s.source_type === "email_gmail" && (s.connected ? " · Gmail connected" : " · Not connected")}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
