@@ -42,6 +42,21 @@ export async function saveWriterArticleAction(formData: FormData) {
   redirect(`/writer?article_id=${id}&saved=1`);
 }
 
+export async function deleteUnsavedWriterDraftAction(articleId: string) {
+  const session = await requireOrgMember();
+  const orgId = session.user.organizationId;
+  const id = articleId.trim();
+  if (!id) return;
+
+  const db = await connectMongo();
+  await ensureIndexes(db);
+  const existing = await getWriterArticle(db, id, orgId);
+  if (!existing || existing.status !== "draft") return;
+
+  await deleteWriterArticle(db, id, orgId);
+  revalidatePath("/writer");
+}
+
 export async function deleteWriterArticleAction(formData: FormData) {
   const session = await requireOrgMember();
   const orgId = session.user.organizationId;

@@ -1,6 +1,6 @@
 import { MongoClient, type Db } from "mongodb";
 import { COLLECTIONS } from "./collections.js";
-import { migrateLegacyCollections } from "./migrate.js";
+import { migrateLegacyCollections, migrateWriterDraftsToSaved } from "./migrate.js";
 import { migrateOrganizations } from "./org-repos.js";
 
 function mongoSocketTimeoutMs(): number {
@@ -181,6 +181,7 @@ let ensureIndexesOnce: Promise<void> | null = null;
 async function runEnsureIndexes(db: Db): Promise<void> {
   await migrateLegacyCollections(db);
   await migrateOrganizations(db);
+  await migrateWriterDraftsToSaved(db);
 
   await db.collection(COLLECTIONS.organizations).createIndexes([{ key: { id: 1 }, unique: true }]);
   await db.collection(COLLECTIONS.org_invites).createIndexes([

@@ -60,6 +60,69 @@ export async function listWriterArticlesByOrgAndMode(
   return docs.map((d) => writerArticleSchema.parse(d));
 }
 
+export async function listSavedWriterArticlesByOrg(
+  db: Db,
+  organizationId: string,
+  mode?: WriterArticleMode,
+): Promise<WriterArticle[]> {
+  const filter: Record<string, unknown> = {
+    organization_id: organizationId,
+    status: "saved",
+  };
+  if (mode) {
+    filter.$or = [{ mode }, ...(mode === "rewrite" ? [{ mode: { $exists: false } }] : [])];
+  }
+  const docs = await writerArticles(db).find(filter).sort({ voice_id: 1, updated_at: -1 }).toArray();
+  return docs.map((d) => writerArticleSchema.parse(d));
+}
+
+export type CreateWriterArticleSavedInput = {
+  organization_id: string;
+  voice_id: string;
+  mode?: WriterArticleMode;
+  topic?: string;
+  reference_urls?: string[];
+  source_text: string;
+  links: WriterLink[];
+  generated_html: string;
+  final_html: string;
+  title?: string;
+  created_by: string;
+};
+
+export async function createWriterArticleSaved(
+  db: Db,
+  data: CreateWriterArticleSavedInput,
+): Promise<WriterArticle> {
+  const now = new Date();
+  const mode = data.mode ?? "rewrite";
+  const defaultTitle =
+    mode === "compose" && data.topic?.trim()
+      ? defaultComposeTitle(data.topic.trim())
+      : defaultWriterTitle(data.source_text);
+
+  const row: WriterArticle = writerArticleSchema.parse({
+    id: randomUUID(),
+    organization_id: data.organization_id,
+    voice_id: data.voice_id,
+    mode,
+    topic: data.topic?.trim(),
+    reference_urls: data.reference_urls ?? [],
+    title: data.title?.trim() || defaultTitle,
+    source_text: data.source_text,
+    links: data.links,
+    generated_html: data.generated_html,
+    final_html: data.final_html,
+    status: "saved" as WriterArticleStatus,
+    created_by: data.created_by,
+    created_at: now,
+    updated_at: now,
+  });
+
+  await writerArticles(db).insertOne(row);
+  return row;
+}
+
 const WRITER_STYLE_EXAMPLE_MODES: WriterArticleMode[] = ["compose", "style_example"];
 
 export async function listSavedWriterExamplesForVoice(

@@ -29,6 +29,7 @@ export type WriterImportSource = {
   voice_id: string;
   title?: string;
   source_text: string;
+  source_html?: string;
 };
 
 export type WriterVoiceOption = {
@@ -120,10 +121,17 @@ export function WriterForm({
   const [sourceText, setSourceText] = useState(
     selectedArticle?.source_text ?? importSource?.source_text ?? "",
   );
+  const [sourceHtml, setSourceHtml] = useState(importSource?.source_html ?? "");
+  const [showSourcePreview, setShowSourcePreview] = useState(
+    () => Boolean(importSource?.source_html?.trim()),
+  );
   const [linkRows, setLinkRows] = useState<LinkRow[]>(() =>
     linksToRows(selectedArticle?.links ?? []),
   );
   const [outputHtml, setOutputHtml] = useState(() => writerArticleDisplayHtml(selectedArticle));
+  const [generatedHtml, setGeneratedHtml] = useState(
+    () => selectedArticle?.generated_html ?? "",
+  );
   const [showHtmlPreview, setShowHtmlPreview] = useState(
     () => !writerArticleDisplayHtml(selectedArticle).trim(),
   );
@@ -178,8 +186,11 @@ export function WriterForm({
     setArticleId("");
     setTitle("");
     setSourceText("");
+    setSourceHtml("");
+    setShowSourcePreview(false);
     setLinkRows([emptyLinkRow()]);
     setOutputHtml("");
+    setGeneratedHtml("");
     setWriteError(null);
     setTruncatedNotice(false);
     setLinksPresent(null);
@@ -328,7 +339,10 @@ export function WriterForm({
         setWriteError(data.error ?? "Rewrite failed");
         return;
       }
-      if (data.generated_html) setOutputHtml(data.generated_html);
+      if (data.generated_html) {
+        setOutputHtml(data.generated_html);
+        setGeneratedHtml(data.generated_html);
+      }
       if (data.source_truncated) setTruncatedNotice(true);
       if (typeof data.links_requested === "number") setLinksRequested(data.links_requested);
       if (typeof data.links_present === "number") setLinksPresent(data.links_present);
@@ -371,11 +385,6 @@ export function WriterForm({
       }
       if (typeof data.humanization_attempts === "number") {
         setHumanizationAttempts(data.humanization_attempts);
-      }
-      if (data.writer_article_id) {
-        setArticleId(data.writer_article_id);
-        router.push(`/rewriter?article_id=${encodeURIComponent(data.writer_article_id)}`);
-        router.refresh();
       }
     } catch {
       setWriteError("Rewrite failed");
@@ -731,14 +740,56 @@ export function WriterForm({
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="flex min-h-[360px] flex-col gap-2">
-          <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
-          <textarea
-            value={sourceText}
-            onChange={(e) => setSourceText(e.target.value)}
-            rows={16}
-            placeholder="Paste the full source article…"
-            className={cn(articlePaneClass, "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]")}
-          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-[var(--fg)]">Original article</h2>
+            <div className="flex rounded-md border border-[var(--border)] p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowSourcePreview(true)}
+                className={cn(
+                  "rounded px-2 py-1",
+                  showSourcePreview
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted)] hover:text-[var(--fg)]",
+                )}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSourcePreview(false)}
+                className={cn(
+                  "rounded px-2 py-1",
+                  !showSourcePreview
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted)] hover:text-[var(--fg)]",
+                )}
+              >
+                Edit
+              </button>
+            </div>
+          </div>
+          {showSourcePreview ? (
+            <div className={cn(articlePaneClass, "flex-1 overflow-y-auto p-4")}>
+              {sourceHtml.trim() ? (
+                <WriterHtmlPreview html={sourceHtml} />
+              ) : sourceText.trim() ? (
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--fg)]">
+                  {sourceText}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--muted)]">Paste the full source article in Edit mode.</p>
+              )}
+            </div>
+          ) : (
+            <textarea
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)}
+              rows={16}
+              placeholder="Paste the full source article…"
+              className={cn(articlePaneClass, "resize-y px-3 py-2 font-mono text-sm text-[var(--fg)]")}
+            />
+          )}
         </div>
 
         <div className="flex min-h-[360px] flex-col gap-2">
@@ -781,6 +832,14 @@ export function WriterForm({
               className="flex min-h-0 flex-1 flex-col gap-4"
             >
               <input type="hidden" name="writer_article_id" value={articleId} />
+              <input type="hidden" name="voice_id" value={voiceId} />
+              <input type="hidden" name="source_text" value={sourceText} />
+              <input
+                type="hidden"
+                name="links"
+                value={JSON.stringify(rowsToLinks(linkRows))}
+              />
+              <input type="hidden" name="generated_html" value={generatedHtml || outputHtml} />
               {showHtmlPreview ? (
                 <input type="hidden" name="final_html" value={outputHtml} />
               ) : null}
@@ -833,27 +892,27 @@ export function WriterForm({
             </div>
           )}
 
-          {articleId ? (
+          {showRewriteColumn && outputHtml.trim() ? (
             <div className="flex flex-wrap gap-2">
-              {showRewriteColumn ? (
-                <Button
-                  type="submit"
-                  form="writer-save-form"
-                  variant="primary"
-                  disabled={!articleId}
-                >
-                  Save article
-                </Button>
-              ) : null}
-              <form
-                action={deleteRewriterArticleAction}
-                onSubmit={(e) => confirmDeleteArticle(title, e)}
+              <Button
+                type="submit"
+                form="writer-save-form"
+                variant="primary"
+                disabled={!outputHtml.trim()}
               >
-                <input type="hidden" name="writer_article_id" value={articleId} />
-                <Button type="submit" variant="danger" size="sm">
-                  Delete article
-                </Button>
-              </form>
+                Save article
+              </Button>
+              {articleId ? (
+                <form
+                  action={deleteRewriterArticleAction}
+                  onSubmit={(e) => confirmDeleteArticle(title, e)}
+                >
+                  <input type="hidden" name="writer_article_id" value={articleId} />
+                  <Button type="submit" variant="danger" size="sm">
+                    Delete article
+                  </Button>
+                </form>
+              ) : null}
             </div>
           ) : null}
         </div>

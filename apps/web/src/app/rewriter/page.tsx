@@ -2,7 +2,7 @@ import {
   ensureIndexes,
   getWriterArticle,
   listVoices,
-  listWriterArticlesByOrg,
+  listSavedWriterArticlesByOrg,
 } from "@content-resourcer/db";
 import {
   stripHtmlToPlainText,
@@ -54,7 +54,7 @@ export default async function RewriterPage({
 
   const [voices, articles] = await Promise.all([
     listVoices(db, orgId),
-    listWriterArticlesByOrg(db, orgId),
+    listSavedWriterArticlesByOrg(db, orgId),
   ]);
 
   const workerConfigured = !!process.env.WORKER_URL;
@@ -93,13 +93,15 @@ export default async function RewriterPage({
 
   let importSource: WriterImportSource | null = null;
   if (importRaw && !selectedArticle) {
-    const sourceText = stripHtmlToPlainText(writerArticleDisplayHtml(importRaw));
+    const sourceHtml = writerArticleDisplayHtml(importRaw);
+    const sourceText = stripHtmlToPlainText(sourceHtml);
     if (sourceText.length >= WRITER_SOURCE_MIN_CHARS) {
       importSource = {
         article_id: importRaw.id,
         voice_id: importRaw.voice_id,
         title: importRaw.title,
         source_text: sourceText,
+        source_html: sourceHtml,
       };
     }
   }
@@ -131,7 +133,7 @@ export default async function RewriterPage({
     <div className="space-y-8">
       <PageHeader
         title="ReWriter"
-        description="Reconstruct articles from extracted facts in a voice persona, weave in your links, edit, and save. Saved articles guide future rewrites for that voice."
+        description="Reconstruct articles from extracted facts in a voice persona, weave in your links, edit, and save. Write generates output in this session; Save adds the article to your library as a style example for that voice."
       />
 
       {sp.saved === "1" ? (

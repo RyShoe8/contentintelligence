@@ -2,7 +2,7 @@ import {
   ensureIndexes,
   getWriterArticle,
   listVoices,
-  listWriterArticlesByOrgAndMode,
+  listSavedWriterArticlesByOrg,
   resolveWriterComposeStatus,
 } from "@content-resourcer/db";
 import { WRITER_ARTICLE_DEPTH_DEFAULT } from "@content-resourcer/db/writer-validation";
@@ -45,7 +45,7 @@ export default async function WriterPage({
 
   const [voices, articles] = await Promise.all([
     listVoices(db, orgId),
-    listWriterArticlesByOrgAndMode(db, orgId, "compose"),
+    listSavedWriterArticlesByOrg(db, orgId, "compose"),
   ]);
 
   const workerConfigured = !!process.env.WORKER_URL;
@@ -103,7 +103,7 @@ export default async function WriterPage({
     <div className="space-y-8">
       <PageHeader
         title="Writer"
-        description="Generate researched articles from a topic and optional reference URLs. Weave in your links, edit, and save."
+        description="Generate researched articles from a topic and optional reference URLs. Write generates output in this session; Save adds the article to your library as a style example for that voice."
       />
 
       {sp.saved === "1" ? (

@@ -146,3 +146,23 @@ export async function migrateLegacyCollections(db: Db): Promise<{ migrated: bool
 
   return { migrated: true };
 }
+
+/** Promote legacy draft rows so existing articles stay visible after saved-only sidebar filtering. */
+const WRITER_DRAFTS_TO_SAVED_MIGRATION_ID = "writer_drafts_to_saved_v1";
+
+export async function migrateWriterDraftsToSaved(db: Db): Promise<void> {
+  const migrations = db.collection("_migrations");
+  const done = await migrations.findOne({ id: WRITER_DRAFTS_TO_SAVED_MIGRATION_ID, done: true });
+  if (done) return;
+
+  await db.collection(COLLECTIONS.writer_articles).updateMany(
+    { status: "draft" },
+    { $set: { status: "saved" } },
+  );
+
+  await migrations.updateOne(
+    { id: WRITER_DRAFTS_TO_SAVED_MIGRATION_ID },
+    { $set: { id: WRITER_DRAFTS_TO_SAVED_MIGRATION_ID, done: true, completed_at: new Date() } },
+    { upsert: true },
+  );
+}

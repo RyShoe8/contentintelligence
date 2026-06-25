@@ -21,7 +21,7 @@ import {
   writerArticleDisplayHtml,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
-import { saveWriterArticleAction, deleteWriterArticleAction } from "@/app/writer/actions";
+import { saveWriterArticleAction, deleteWriterArticleAction, deleteUnsavedWriterDraftAction } from "@/app/writer/actions";
 import {
   COMPOSE_STALL_MESSAGE,
   composeGenerationStartedAt,
@@ -227,6 +227,9 @@ export function WriterComposeForm({
     initialExpandedVoiceIds(voices, articles, selectedArticle),
   );
   const [articleId, setArticleId] = useState(selectedArticle?.id ?? "");
+  const [articleStatus, setArticleStatus] = useState<"draft" | "saved">(
+    selectedArticle?.status ?? "draft",
+  );
   const [title, setTitle] = useState(selectedArticle?.title ?? "");
   const [topic, setTopic] = useState(selectedArticle?.topic ?? "");
   const [referenceUrlRows, setReferenceUrlRows] = useState<string[]>(() =>
@@ -584,7 +587,10 @@ export function WriterComposeForm({
   const showOutputColumn = Boolean(outputHtml.trim() || articleId);
 
   const resetComposer = useCallback(() => {
+    const draftId = articleId;
+    const draftStatus = articleStatus;
     setArticleId("");
+    setArticleStatus("draft");
     setTitle("");
     setTopic("");
     setReferenceUrlRows([emptyReferenceUrlRow()]);
@@ -611,8 +617,11 @@ export function WriterComposeForm({
     setResearchMode(null);
     setArticleDepth(WRITER_ARTICLE_DEPTH_DEFAULT);
     setSubtopicsText("");
+    if (draftId && draftStatus === "draft") {
+      void deleteUnsavedWriterDraftAction(draftId);
+    }
     router.push("/writer");
-  }, [router]);
+  }, [articleId, articleStatus, router]);
 
   const loadArticle = useCallback(
     (id: string) => {
@@ -794,6 +803,7 @@ export function WriterComposeForm({
         const nextId = data.writer_article_id ?? articleId;
         if (nextId) {
           setArticleId(nextId);
+          setArticleStatus("draft");
           let readyGateAtMs = composeGenerationStartedAt({
             compose_requested_at: data.compose_requested_at,
           });
@@ -814,6 +824,7 @@ export function WriterComposeForm({
       applyComposeStatusData(data);
       if (data.writer_article_id) {
         setArticleId(data.writer_article_id);
+        setArticleStatus("draft");
         router.push(`/writer?article_id=${encodeURIComponent(data.writer_article_id)}`);
         router.refresh();
       }
@@ -1411,27 +1422,27 @@ export function WriterComposeForm({
             </div>
           )}
 
-          {articleId ? (
+          {showOutputColumn && outputHtml.trim() ? (
             <div className="flex flex-wrap gap-2">
-              {showOutputColumn ? (
-                <Button
-                  type="submit"
-                  form="writer-compose-save-form"
-                  variant="primary"
-                  disabled={!articleId}
-                >
-                  Save article
-                </Button>
-              ) : null}
-              <form
-                action={deleteWriterArticleAction}
-                onSubmit={(e) => confirmDeleteArticle(title, e)}
+              <Button
+                type="submit"
+                form="writer-compose-save-form"
+                variant="primary"
+                disabled={!outputHtml.trim() || !articleId}
               >
-                <input type="hidden" name="writer_article_id" value={articleId} />
-                <Button type="submit" variant="danger" size="sm">
-                  Delete article
-                </Button>
-              </form>
+                Save article
+              </Button>
+              {articleId ? (
+                <form
+                  action={deleteWriterArticleAction}
+                  onSubmit={(e) => confirmDeleteArticle(title, e)}
+                >
+                  <input type="hidden" name="writer_article_id" value={articleId} />
+                  <Button type="submit" variant="danger" size="sm">
+                    Delete article
+                  </Button>
+                </form>
+              ) : null}
             </div>
           ) : null}
         </div>

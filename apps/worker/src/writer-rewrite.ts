@@ -2,7 +2,6 @@ import type { Db } from "mongodb";
 import {
   getVoice,
   getWriterArticle,
-  upsertWriterArticleDraft,
   writerRewriteInputSchema,
 } from "@content-resourcer/db";
 import { generateArticleRewriteHtml } from "./generate-article-rewrite.js";
@@ -90,19 +89,8 @@ export async function runWriterRewrite(db: Db, body: WriterRewriteBody) {
     preserveInstructions: preserve_instructions,
   });
 
-  const article = await upsertWriterArticleDraft(db, {
-    id: writer_article_id,
-    organization_id: organizationId,
-    voice_id,
-    mode: "rewrite",
-    source_text,
-    links,
-    generated_html: html,
-    created_by: createdBy,
-  });
-
   return {
-    writer_article_id: article.id,
+    writer_article_id,
     generated_html: html,
     source_truncated: sourceTruncated,
     links_requested: linksRequested,
