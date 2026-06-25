@@ -87,6 +87,11 @@ export function shouldPollCompose(
   return nowMs - started <= COMPOSE_STALE_MS;
 }
 
+/** HTTP statuses where poll clients should retry instead of stopping. */
+export function isPollStatusRetryable(httpStatus: number): boolean {
+  return httpStatus === 503 || httpStatus === 502 || httpStatus === 504;
+}
+
 /** Ignore stale ready from a prior compose run when polling a new generation. */
 export function isComposeReadyForPoll(
   article: ComposePollArticleFields & { compose_status?: string },

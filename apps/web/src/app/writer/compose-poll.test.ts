@@ -14,6 +14,7 @@ import {
   isComposePendingOrphan,
   isComposePendingStale,
   isComposeReadyForPoll,
+  isPollStatusRetryable,
   loadComposePollSession,
   parseServerNowMs,
   resolveComposePollMode,
@@ -382,5 +383,19 @@ describe("shouldShowComposeLinkReworkNotices", () => {
     assert.equal(shouldShowComposeLinkReworkNotices("full"), true);
     assert.equal(shouldShowComposeLinkReworkNotices("write_only"), false);
     assert.equal(shouldShowComposeLinkReworkNotices(undefined), false);
+  });
+});
+
+describe("isPollStatusRetryable", () => {
+  it("retries on transient database gateway statuses", () => {
+    assert.equal(isPollStatusRetryable(503), true);
+    assert.equal(isPollStatusRetryable(502), true);
+    assert.equal(isPollStatusRetryable(504), true);
+  });
+
+  it("does not retry on client or auth errors", () => {
+    assert.equal(isPollStatusRetryable(401), false);
+    assert.equal(isPollStatusRetryable(403), false);
+    assert.equal(isPollStatusRetryable(500), false);
   });
 });

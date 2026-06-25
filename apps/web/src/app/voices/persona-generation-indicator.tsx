@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VoicePersonaStatus } from "@content-resourcer/db";
 import { isPersonaPendingStale } from "./persona-poll";
+import { isPollStatusRetryable } from "@/app/writer/compose-poll";
 import { formatPersonaErrorForDisplay } from "./persona-error-display";
 
 const POLL_INTERVAL_MS = 3000;
@@ -125,6 +126,7 @@ export function PersonaGenerationIndicator({
         const r = await fetch(`/api/voices/${voiceId}/persona-status`, { cache: "no-store" });
         const data = (await r.json().catch(() => ({}))) as PersonaStatusResponse;
         if (!r.ok) {
+          if (isPollStatusRetryable(r.status)) return;
           stopPolling();
           setMessage("");
           setError(data.error ?? `Status check failed (${r.status})`);

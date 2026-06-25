@@ -35,6 +35,7 @@ import {
   saveComposePollMode,
   saveComposePollSession,
   shouldAcceptComposePollReady,
+  isPollStatusRetryable,
   shouldPollCompose,
   shouldShowComposeLinkReworkNotices,
   shouldShowComposeResearchStats,
@@ -428,6 +429,7 @@ export function WriterComposeForm({
           );
           const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse;
           if (!r.ok) {
+            if (isPollStatusRetryable(r.status)) return;
             stopComposePolling();
             setWriteError(data.error ?? `Status check failed (${r.status})`);
             return;
