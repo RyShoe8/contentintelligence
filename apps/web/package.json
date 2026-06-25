@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test src/lib/auth-jwt.test.ts src/lib/deal-display.test.ts src/lib/invite-email.test.ts src/lib/schedule-tick-fetch.test.ts src/lib/writer-style-example-html.test.ts src/app/voices/persona-poll.test.ts src/app/voices/persona-error-display.test.ts src/app/writer/compose-poll.test.ts"
+    "test": "node --import tsx --test src/lib/auth-jwt.test.ts src/lib/deal-display.test.ts src/lib/invite-email.test.ts src/lib/ingest-status-poll.test.ts src/lib/schedule-tick-fetch.test.ts src/lib/writer-style-example-html.test.ts src/app/voices/persona-poll.test.ts src/app/voices/persona-error-display.test.ts src/app/writer/compose-poll.test.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.7.0",

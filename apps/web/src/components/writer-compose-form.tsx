@@ -21,13 +21,11 @@ import {
   writerArticleDisplayHtml,
   resolveComposeArticleType,
   hasEditorialResearchBriefHeaders,
+  resolveComposeResearchedAtIso,
+  resolveComposeWrittenAtIso,
   type ComposeArticleType,
   type WriterLink,
 } from "@content-resourcer/db/writer-validation";
-import {
-  resolveComposeResearchedAtIso,
-  resolveComposeWrittenAtIso,
-} from "@content-resourcer/db";
 import { saveWriterArticleAction, deleteWriterArticleAction, deleteUnsavedWriterDraftAction } from "@/app/writer/actions";
 import {
   COMPOSE_STALL_MESSAGE,

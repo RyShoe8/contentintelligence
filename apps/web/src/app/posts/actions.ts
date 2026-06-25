@@ -90,7 +90,7 @@ export async function savePostSettingsAction(formData: FormData) {
   }
 
   revalidatePath("/posts");
-  redirect(`/posts?content_signal_id=${contentSignalId}&saved=1`);
+  redirect(`/posts?content_signal_id=${contentSignalId}&saved=1&sync_pending=1`);
 }
 
 export async function archivePostAction(formData: FormData) {

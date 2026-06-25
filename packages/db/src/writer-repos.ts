@@ -682,35 +682,11 @@ export function writerComposeStatusPayload(article: WriterArticle) {
   };
 }
 
-type ComposeTimestampFields = {
-  compose_researched_at?: Date | null;
-  compose_written_at?: Date | null;
-  source_text?: string;
-  generated_html?: string;
-  updated_at: Date;
-};
-
-/** ISO timestamp for last research, with legacy fallback when brief exists. */
-export function resolveComposeResearchedAtIso(article: ComposeTimestampFields): string | undefined {
-  if (article.compose_researched_at) {
-    return article.compose_researched_at.toISOString();
-  }
-  if (article.source_text?.trim()) {
-    return article.updated_at.toISOString();
-  }
-  return undefined;
-}
-
-/** ISO timestamp for last article generation, with legacy fallback when HTML exists. */
-export function resolveComposeWrittenAtIso(article: ComposeTimestampFields): string | undefined {
-  if (article.compose_written_at) {
-    return article.compose_written_at.toISOString();
-  }
-  if (article.generated_html?.trim()) {
-    return article.updated_at.toISOString();
-  }
-  return undefined;
-}
+export {
+  resolveComposeResearchedAtIso,
+  resolveComposeWrittenAtIso,
+  type ComposeTimestampFields,
+} from "./writer-validation.js";
 
 export async function updateWriterArticle(
   db: Db,

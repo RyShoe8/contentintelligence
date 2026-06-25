@@ -26,6 +26,7 @@ import {
 } from "@/lib/posts-data";
 import { archivePostAction, savePostSettingsAction } from "@/app/posts/actions";
 import { SCHEDULE_OPTIONS } from "@/app/posts/constants";
+import { usePostsSyncWatcher } from "@/lib/use-posts-sync-watcher";
 
 function scheduleLabel(minutes: number | null | undefined): string {
   if (minutes == null) return "Off";
@@ -44,7 +45,7 @@ function scheduleStatusText(minutes: number | null | undefined): string {
 }
 
 type Props = {
-  searchParams: PostsSearchParams;
+  searchParams: PostsSearchParams & { sync_pending?: string };
   workerIngestConfigured: boolean;
 };
 
@@ -55,8 +56,10 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
     | { status: "ready"; data: PostsDataLoaded }
   >({ status: "loading" });
 
-  const load = useCallback(async () => {
-    setState({ status: "loading" });
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setState({ status: "loading" });
+    }
     const result = await fetchPostsData(searchParams);
     if (!result.ok) {
       setState({ status: "error", message: result.error });
@@ -73,6 +76,13 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
   const contentSignals = data?.contentSignals ?? [];
   const selectedId =
     data?.selectedId ?? searchParams.content_signal_id ?? contentSignals[0]?.id ?? "";
+
+  const postsSyncWatcher = usePostsSyncWatcher({
+    contentSignalId: selectedId,
+    enabled: workerIngestConfigured && Boolean(selectedId),
+    syncPending: searchParams.sync_pending === "1",
+    onComplete: () => void load({ silent: true }),
+  });
   const selectedSignal = data?.selectedSignal ?? null;
   const linkedVoice = data?.linkedVoice ?? null;
   const posts = data?.posts ?? [];
@@ -262,6 +272,16 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
           </section>
 
           <section>
+            {postsSyncWatcher.watching && postsSyncWatcher.message ? (
+              <Alert variant="info" className="mb-3">
+                {postsSyncWatcher.message}
+              </Alert>
+            ) : null}
+            {postsSyncWatcher.error ? (
+              <Alert variant="error" className="mb-3">
+                {postsSyncWatcher.error}
+              </Alert>
+            ) : null}
             <p className="mb-3 text-sm text-[var(--muted)]">
               {posts.length} draft {posts.length === 1 ? "post" : "posts"} · threshold{" "}
               {selectedSignal.post_min_deal_pct ?? 50}%

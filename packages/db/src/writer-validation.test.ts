@@ -49,6 +49,8 @@ import {
   writerRewriteInputSchema,
   writerComposeInputSchema,
   parseWriterReferenceUrls,
+  resolveComposeResearchedAtIso,
+  resolveComposeWrittenAtIso,
   writerUrlInSourceText,
   WRITER_ARTICLE_DEPTH_DEFAULT,
   WRITER_SOURCE_MIN_CHARS,
@@ -1327,5 +1329,47 @@ describe("writerNonRequestedLinksInHtml", () => {
       writerNonRequestedLinksInHtml(html, [{ url: "https://requested.example" }]),
       1,
     );
+  });
+});
+
+describe("resolveComposeResearchedAtIso", () => {
+  it("prefers compose_researched_at when set", () => {
+    const researched = new Date("2026-05-27T10:00:00Z");
+    const iso = resolveComposeResearchedAtIso({
+      compose_researched_at: researched,
+      source_text: "Brief",
+      updated_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(iso, researched.toISOString());
+  });
+
+  it("falls back to updated_at when brief exists without explicit timestamp", () => {
+    const updated = new Date("2026-05-27T12:00:00Z");
+    const iso = resolveComposeResearchedAtIso({
+      source_text: "Legacy brief",
+      updated_at: updated,
+    });
+    assert.equal(iso, updated.toISOString());
+  });
+});
+
+describe("resolveComposeWrittenAtIso", () => {
+  it("prefers compose_written_at when set", () => {
+    const written = new Date("2026-05-27T11:00:00Z");
+    const iso = resolveComposeWrittenAtIso({
+      compose_written_at: written,
+      generated_html: "<p>Draft</p>",
+      updated_at: new Date("2026-05-27T12:00:00Z"),
+    });
+    assert.equal(iso, written.toISOString());
+  });
+
+  it("falls back to updated_at when HTML exists without explicit timestamp", () => {
+    const updated = new Date("2026-05-27T12:00:00Z");
+    const iso = resolveComposeWrittenAtIso({
+      generated_html: "<p>Legacy draft</p>",
+      updated_at: updated,
+    });
+    assert.equal(iso, updated.toISOString());
   });
 });

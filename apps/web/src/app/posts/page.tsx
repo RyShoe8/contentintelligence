@@ -14,6 +14,7 @@ export default async function PostsPage({
     archived?: string;
     sync_failed?: string;
     sync_in_progress?: string;
+    sync_pending?: string;
     error?: string;
   }>;
 }) {
@@ -45,14 +46,19 @@ export default async function PostsPage({
             ? " Post refresh failed — try Refresh posts."
             : sp.sync_in_progress === "1"
               ? " Post refresh already in progress — drafts will update shortly."
-              : " Posts refreshed."}
+              : sp.sync_pending === "1"
+                ? " Rebuilding drafts…"
+                : null}
         </Alert>
       ) : null}
       {sp.archived === "1" ? <Alert variant="info">Post dismissed.</Alert> : null}
       {errorMsg ? <Alert variant="error">{errorMsg}</Alert> : null}
 
       <PostsPageClient
-        searchParams={{ content_signal_id: sp.content_signal_id }}
+        searchParams={{
+          content_signal_id: sp.content_signal_id,
+          sync_pending: sp.sync_pending,
+        }}
         workerIngestConfigured={workerIngestConfigured}
       />
     </div>

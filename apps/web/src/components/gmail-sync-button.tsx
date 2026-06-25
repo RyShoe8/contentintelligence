@@ -5,44 +5,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { sanitizeIngestError } from "@/lib/ingest-response";
-
-const POLL_INTERVAL_MS = 3000;
-const POLL_TIMEOUT_MS = 15 * 60 * 1000;
-
-type IngestSourceError = {
-  sourceId?: string;
-  email_address?: string;
-  error?: string;
-};
-
-type IngestStats = {
-  messagesListed?: number;
-  storedFull?: number;
-  storedMinimal?: number;
-  updatedFull?: number;
-  sourceErrors?: IngestSourceError[];
-  signalErrors?: IngestSourceError[];
-};
-
-type PostsSyncResult = {
-  created?: number;
-  updated?: number;
-  skipped?: number;
-  archived?: number;
-};
-
-type IngestStatusResponse = {
-  running?: boolean;
-  content_signal_id?: string | null;
-  started_at?: string | null;
-  finished_at?: string | null;
-  stats?: IngestStats | null;
-  error?: string | null;
-  posts_sync_running?: boolean;
-  posts_sync_content_signal_id?: string | null;
-  posts_sync_error?: string | null;
-  posts_sync_result?: PostsSyncResult | null;
-};
+import {
+  INGEST_POLL_INTERVAL_MS,
+  INGEST_POLL_TIMEOUT_MS,
+  isSyncComplete,
+  postsSyncAppliesToSignal,
+  type IngestStats,
+  type IngestStatusResponse,
+  type PostsSyncResult,
+} from "@/lib/ingest-status-poll";
 
 type Props = {
   contentSignalId: string;
@@ -127,26 +98,6 @@ function formatSyncResult(
   return { status: "ok", message };
 }
 
-function statusAppliesToSignal(data: IngestStatusResponse, contentSignalId: string): boolean {
-  if (data.content_signal_id == null) return true;
-  return data.content_signal_id === contentSignalId;
-}
-
-function postsSyncAppliesToSignal(data: IngestStatusResponse, contentSignalId: string): boolean {
-  const id = data.posts_sync_content_signal_id;
-  if (id == null) return true;
-  return id === contentSignalId;
-}
-
-function isSyncComplete(data: IngestStatusResponse, contentSignalId: string): boolean {
-  if (data.running) return false;
-  if (!statusAppliesToSignal(data, contentSignalId)) return false;
-  if (data.posts_sync_running && postsSyncAppliesToSignal(data, contentSignalId)) {
-    return false;
-  }
-  return true;
-}
-
 export function GmailSyncButton({
   contentSignalId,
   disabled,
@@ -214,7 +165,7 @@ export function GmailSyncButton({
       pollStartedRef.current = Date.now();
 
       const tick = async () => {
-        if (Date.now() - pollStartedRef.current > POLL_TIMEOUT_MS) {
+        if (Date.now() - pollStartedRef.current > INGEST_POLL_TIMEOUT_MS) {
           stopPolling();
           setStatus("err");
           setMessage("Sync is taking longer than expected — refresh manually.");
@@ -239,7 +190,7 @@ export function GmailSyncButton({
       };
 
       void tick();
-      pollRef.current = setInterval(() => void tick(), POLL_INTERVAL_MS);
+      pollRef.current = setInterval(() => void tick(), INGEST_POLL_INTERVAL_MS);
     },
     [contentSignalId, finishPolling, progressMessage, stopPolling],
   );
