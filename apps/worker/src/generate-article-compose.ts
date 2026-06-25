@@ -43,6 +43,7 @@ import {
 } from "./writer-web-search.js";
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
 import { preprocessResearchBriefForVoice } from "./services/rewriter/compose-voice-brief.js";
+import { isComposeHowToTopic } from "./services/rewriter/compose-topic-mode.js";
 import {
   extractComposeStyleKitDeterministic,
   summarizeComposeStyleKits,
@@ -276,6 +277,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     researchBrief: rawResearchBrief,
     styleKitSummary,
     includeFaq,
+    howToTopic: isComposeHowToTopic(opts.topic, subtopics),
+    subtopics,
   });
 
   let humanized = await runHumanizationEngine({

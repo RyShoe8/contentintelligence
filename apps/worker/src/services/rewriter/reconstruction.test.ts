@@ -237,4 +237,41 @@ describe("buildReconstructionSystemPrompt", () => {
     assert.match(prompt, /Do NOT add a "Related links" section/);
     assert.match(prompt, /not in the final paragraph/i);
   });
+
+  it("includes compose how-to rules when compose mode has procedural sections", () => {
+    const prompt = buildReconstructionSystemPrompt({
+      voice: {} as Voice,
+      ctx: minimalCtx(),
+      facts: contentFactsSchema.parse({
+        contentType: "hybrid",
+        narrativeSections: [{ title: "Why signatures matter", points: ["Brand consistency"] }],
+        sections: [
+          {
+            title: "Apple Mail",
+            steps: ["Open Mail > Settings > Signatures", "Drag the HTML file into the preview"],
+          },
+        ],
+        keyDetails: ["Apple Mail supports HTML signatures"],
+      }),
+      interpretation: brandInterpretationSchema.parse({
+        assessment: "Useful guide",
+        qualityScore: 8,
+        bestFor: "Apple Mail users",
+        risks: [],
+        caveats: [],
+        opportunities: [],
+      }),
+      examples: [],
+      links: [],
+      composeMode: true,
+      topic: "How to setup your email signature in Apple Mail",
+      subtopics: ["Import a custom HTML signature file"],
+    });
+
+    assert.match(prompt, /Compose how-to article \(tutorial in brand voice/i);
+    assert.match(prompt, /how-to tutorial ABOUT this topic/i);
+    assert.match(prompt, /Import a custom HTML signature file/);
+    assert.match(prompt, /Do NOT generalize to "email clients"/i);
+    assert.doesNotMatch(prompt, /author-first editorial voice — not a research summary/i);
+  });
 });

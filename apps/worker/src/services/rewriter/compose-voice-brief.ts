@@ -15,6 +15,8 @@ export type PreprocessResearchBriefForVoiceOpts = {
   researchBrief: string;
   styleKitSummary?: string;
   includeFaq?: boolean;
+  howToTopic?: boolean;
+  subtopics?: string[];
 };
 
 export async function preprocessResearchBriefForVoice(
@@ -37,6 +39,16 @@ export async function preprocessResearchBriefForVoice(
     ? `\nBrand style reference (rhythm only — do not copy titles):\n${opts.styleKitSummary.trim()}`
     : "";
   const faqBlock = composeFaqPromptRules(opts.includeFaq);
+  const howToBlock = opts.howToTopic
+    ? `\nHow-to tutorial rules:
+- Preserve step order, menu paths (e.g. Mail > Preferences), button names, file types, and platform/app names from the brief.
+- Do not abstract platform-specific steps into generic advice for other email clients or tools.
+- Keep subtopic-specific procedures distinct — do not merge into one generic flow.${
+        opts.subtopics?.length
+          ? `\nRequired subtopics (preserve their steps and platform details):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+          : ""
+      }`
+    : "";
 
   const systemPrompt = `Rewrite a neutral research brief into editorial briefing notes in the brand operator voice.
 Rules:
@@ -45,7 +57,7 @@ Rules:
 - Remove research-brief section labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions).
 - Write as flowing editorial notes and short bullet clusters in first-person plural "we" where natural.
 - Do not write the finished article — only voice-shaped briefing notes for a writer.
-- Avoid neutral industry-guide tone and survey structure.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${faqBlock}
+- Avoid neutral industry-guide tone and survey structure.${howToBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}`;
 
   const userPrompt = [

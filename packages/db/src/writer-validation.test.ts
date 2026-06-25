@@ -22,6 +22,7 @@ import {
   writerComposeOperatorVoiceIssues,
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
+  writerComposeTopicSpecificityIssues,
   collectComposeHardVoiceRetryIssues,
   hasComposeHardVoiceFailures,
   writerComposeHardVoiceIssues,
@@ -557,6 +558,45 @@ describe("writerComposeTopicDriftIssues", () => {
       html,
       "Tax implications of online casino winnings",
       "Frugal Gambler",
+    );
+    assert.equal(issues.length, 0);
+  });
+});
+
+describe("writerComposeTopicSpecificityIssues", () => {
+  it("flags generic Apple Mail how-to missing platform and HTML subtopic terms", () => {
+    const html = `
+      <h2>Understanding email signatures</h2>
+      <p>Email signatures help recipients know who you are.</p>
+      <h2>Best practices for signatures</h2>
+      <p>Keep your signature concise and professional.</p>
+    `;
+    const issues = writerComposeTopicSpecificityIssues(
+      html,
+      "How to setup your email signature in Apple Mail",
+      ["Import a custom HTML signature file"],
+    );
+    assert.ok(issues.some((i) => /apple/i.test(i)));
+    assert.ok(issues.some((i) => /html|subtopic/i.test(i)));
+  });
+
+  it("returns no issues when platform and subtopic steps are present", () => {
+    const html = `
+      <h2>Apple Mail signature setup</h2>
+      <ol>
+        <li>Open Mail &gt; Settings &gt; Signatures.</li>
+        <li>Choose your account and click the + button.</li>
+      </ol>
+      <h3>Import a custom HTML signature file</h3>
+      <ol>
+        <li>Save your .html signature file to disk.</li>
+        <li>In Apple Mail, drag the HTML file into the signature preview.</li>
+      </ol>
+    `;
+    const issues = writerComposeTopicSpecificityIssues(
+      html,
+      "How to setup your email signature in Apple Mail",
+      ["Import a custom HTML signature file"],
     );
     assert.equal(issues.length, 0);
   });

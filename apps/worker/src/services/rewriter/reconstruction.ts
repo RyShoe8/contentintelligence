@@ -83,7 +83,23 @@ function isComposeFactPool(facts: ContentFacts, composeMode?: boolean): boolean 
   return composeMode === true && facts.keyDetails.length > 0;
 }
 
-function hybridRulesBlock(facts: ContentFacts, composeMode?: boolean): string {
+function hybridRulesBlock(
+  facts: ContentFacts,
+  composeMode?: boolean,
+  subtopics?: string[],
+): string {
+  if (composeMode && hasProceduralSections(facts)) {
+    const subtopicsBlock = subtopics?.length
+      ? `\nRequired subtopics (each needs its own section or clear subsection with ordered steps):\n${subtopics.map((s) => `- ${s}`).join("\n")}`
+      : "";
+    return `
+Compose how-to article (tutorial in brand voice — not a generic industry guide):
+- Render EVERY procedural section with its title as <h2> or <h3> and steps as ordered <ol><li>.
+- Cover the article subject and every required subtopic with platform-specific steps from the facts.
+- Do NOT generalize to "email clients", "best practices", or survey-style headings unless those exact ideas are in the facts.
+- Preserve menu paths, button names, file types, and settings from the facts.
+- Short intro/outro in brand voice is fine; the body must be step-by-step.${subtopicsBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
+  }
   if (composeMode && (hasNarrativeSections(facts) || isComposeFactPool(facts, composeMode))) {
     return `
 Compose article (author-first editorial voice — not a research summary):
@@ -192,11 +208,13 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nArticle length:\n${writerArticleDepthGuidance(opts.articleDepth).reconstructionPrompt}`
       : "";
   const subtopicsBlock =
-    opts.composeMode && opts.subtopics?.length
-      ? `\nResearch subtopics (weave as facts inside editorial sections — do NOT use as H2/H3 headings):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
-      : !opts.composeMode && opts.subtopics?.length
-        ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
-        : "";
+    opts.composeMode && hasProceduralSections(opts.facts) && opts.subtopics?.length
+      ? `\nRequired subtopics (each needs its own section or clear subsection with ordered steps):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+      : opts.composeMode && opts.subtopics?.length
+        ? `\nResearch subtopics (weave as facts inside editorial sections — do NOT use as H2/H3 headings):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+        : !opts.composeMode && opts.subtopics?.length
+          ? `\nRequired subtopics (cover each with its own H2 or H3 section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
+          : "";
 
   const faqRole = opts.composeArchetype ? faqHeadingRole(opts.composeArchetype) : undefined;
   const faqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq, faqRole) : "";
@@ -219,7 +237,12 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       : "";
   const composeTopicBlock =
     opts.composeMode && topic
-      ? `\nArticle subject: ${topic}
+      ? hasProceduralSections(opts.facts)
+        ? `\nArticle subject: ${topic}
+Write a how-to tutorial ABOUT this topic in full brand voice.
+Stay specific to the platforms, apps, files, and steps in the facts — do not drift into generic "${topic.split(/\s+/).slice(-2).join(" ")}" advice for other tools.
+Do not make the brand, community, or content strategy the subject of the article.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+        : `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
 Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${lensBlock}${openingBlock}${rhythmBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
@@ -253,7 +276,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode, opts.subtopics)}${proceduralRulesBlock(opts.facts)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 

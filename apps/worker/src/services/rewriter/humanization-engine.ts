@@ -14,6 +14,7 @@ import {
   rewriterComposeQualityGatePassed,
   rewriterHybridQualityGatePassed,
   rewriterInstructionPreserveCompletenessIssues,
+  rewriterProceduralCompletenessIssues,
   rewriterProceduralQualityGatePassed,
   rewriterQualityCompositeScore,
   rewriterQualityGatePassed,
@@ -25,6 +26,7 @@ import {
   writerComposeRhythmIssues,
   writerComposeReferenceLeakIssues,
   writerComposeTopicDriftIssues,
+  writerComposeTopicSpecificityIssues,
   writerComposeVoiceStyleIssues,
   writerComposeStyleIssueCounts,
   type ContentFacts,
@@ -54,7 +56,7 @@ import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import { buildVoiceQualityWarning } from "./compose-voice-quality.js";
-import { pickConcreteLens } from "./compose-topic-mode.js";
+import { pickConcreteLens, isComposeHowToTopic } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
 export { buildComposeStyleExampleExcerpt } from "./compose-style-excerpt.js";
@@ -129,6 +131,12 @@ function qualityGatePassed(
   composeMode: boolean,
   composeGateOpts?: { includeFaq?: boolean; knownExampleTitles?: string[]; faqItems?: { question: string; answer: string }[] },
 ): boolean {
+  if (composeMode && isHybridContentFacts(facts)) {
+    return rewriterHybridQualityGatePassed(facts, html, critique);
+  }
+  if (composeMode && isProceduralContentFacts(facts)) {
+    return rewriterProceduralQualityGatePassed(facts, html, critique);
+  }
   if (composeMode && isComposeNarrativeFacts(facts)) {
     return rewriterComposeQualityGatePassed(facts, html, critique, genericity, composeGateOpts);
   }
@@ -169,7 +177,12 @@ export async function runHumanizationEngine(
     preserveInstructions: opts.preserveInstructions,
     composeMode,
     includeFaq: opts.includeFaq,
+    topic: opts.topic,
+    subtopics: opts.subtopics,
   });
+  const composeHowTo =
+    composeMode && Boolean(opts.topic?.trim()) && isComposeHowToTopic(opts.topic!, opts.subtopics);
+  const hasProceduralCompose = (facts.sections?.length ?? 0) > 0;
   const hybrid = isHybridContentFacts(facts);
   const composeNarrative = isComposeNarrativeFacts(facts);
   const proceduralOnly = isProceduralContentFacts(facts);
@@ -208,15 +221,33 @@ export async function runHumanizationEngine(
   let concreteLens: string | undefined;
   if (composeMode && opts.topic?.trim()) {
     concreteLens = await pickConcreteLens(opts.topic, facts.keyDetails);
-    composeOutline = await planComposeOutline({
-      topic: opts.topic,
-      subtopics: opts.subtopics,
-      keyDetails: facts.keyDetails,
-      faqItems: facts.faqItems,
-      includeFaq: opts.includeFaq,
-      examples,
-      concreteLens,
-    });
+    if (composeHowTo && hasProceduralCompose) {
+      const proceduralSections = facts.sections ?? [];
+      const narrativeSections = facts.narrativeSections ?? [];
+      composeOutline = {
+        title: opts.topic.trim(),
+        sections: [
+          ...narrativeSections.map((section) => ({
+            heading: section.title,
+            factSummary: section.points.slice(0, 4).join("; ") || "Cover key ideas in brand voice",
+          })),
+          ...proceduralSections.map((section) => ({
+            heading: section.title,
+            factSummary: section.steps.slice(0, 4).join("; ") || "Ordered setup steps",
+          })),
+        ],
+      };
+    } else {
+      composeOutline = await planComposeOutline({
+        topic: opts.topic,
+        subtopics: opts.subtopics,
+        keyDetails: facts.keyDetails,
+        faqItems: facts.faqItems,
+        includeFaq: opts.includeFaq,
+        examples,
+        concreteLens,
+      });
+    }
   }
 
   let best: AttemptSnapshot | null = null;
@@ -274,13 +305,21 @@ export async function runHumanizationEngine(
       knownExampleTitles,
     });
     const completenessIssues = preserveMode
-      ? composeMode && composeNarrative
-        ? rewriterComposeCompletenessIssues(facts, html)
-        : rewriterInstructionPreserveCompletenessIssues(facts, html)
+      ? composeMode && isHybridContentFacts(facts)
+        ? rewriterInstructionPreserveCompletenessIssues(facts, html)
+        : composeMode && isProceduralContentFacts(facts)
+          ? rewriterProceduralCompletenessIssues(facts, html)
+          : composeMode && composeNarrative
+            ? rewriterComposeCompletenessIssues(facts, html)
+            : rewriterInstructionPreserveCompletenessIssues(facts, html)
       : [];
     const topicDriftIssues =
       composeMode && opts.topic
         ? writerComposeTopicDriftIssues(html, opts.topic, ctx.brandName)
+        : [];
+    const topicSpecificityIssues =
+      composeMode && composeHowTo && opts.topic
+        ? writerComposeTopicSpecificityIssues(html, opts.topic, opts.subtopics)
         : [];
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
@@ -311,6 +350,7 @@ export async function runHumanizationEngine(
       completenessIssueCount:
         completenessIssues.length +
         topicDriftIssues.length +
+        topicSpecificityIssues.length +
         briefOutlineIssues.length +
         voiceStyleIssues.length +
         operatorVoiceIssues.length +
@@ -338,6 +378,7 @@ export async function runHumanizationEngine(
       composeGenericityScore(genericity, critique) <= REWRITER_COMPOSE_GENERICITY_MAX;
     const noDrift =
       topicDriftIssues.length === 0 &&
+      topicSpecificityIssues.length === 0 &&
       briefOutlineIssues.length === 0 &&
       voiceStyleIssues.length === 0 &&
       operatorVoiceIssues.length === 0 &&
@@ -364,6 +405,7 @@ export async function runHumanizationEngine(
     retryIssues = mergeRetryIssues(genericity, critique, [
       ...completenessIssues,
       ...topicDriftIssues,
+      ...topicSpecificityIssues,
       ...briefOutlineIssues,
       ...voiceStyleIssues,
       ...operatorVoiceIssues,

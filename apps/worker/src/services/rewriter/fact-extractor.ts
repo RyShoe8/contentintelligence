@@ -8,11 +8,14 @@ import {
   type ProceduralSection,
 } from "@content-resourcer/db";
 import { completeJson } from "../llm/json-completion.js";
+import { isComposeHowToTopic } from "./compose-topic-mode.js";
 
 export type ExtractContentFactsOpts = {
   preserveInstructions?: boolean;
   composeMode?: boolean;
   includeFaq?: boolean;
+  topic?: string;
+  subtopics?: string[];
 };
 
 const FAQ_SECTION_TITLE_RE = /^(faq|frequently asked questions)/i;
@@ -202,6 +205,65 @@ function resolvePreserveContentType(
   return "general";
 }
 
+function buildHybridProceduralExtractSystemPrompt(topic?: string, subtopics?: string[]): string {
+  const topicBlock = topic?.trim() ? `\nArticle topic: ${topic.trim()}` : "";
+  const subtopicBlock = subtopics?.length
+    ? `\nRequired subtopics (ensure procedural sections cover each):\n${subtopics.map((s) => `- ${s}`).join("\n")}`
+    : "";
+  return `Extract structured content from a hybrid article or how-to research brief as JSON only.
+Schema:
+{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"sections":[{"title":string,"steps":string[]}],"keyDetails":string[]}
+Rules:
+- narrativeSections: editorial blocks (intro themes, why it matters, troubleshooting, best practices, FAQ Q+A as points, closing). One object per major heading.
+- sections: procedural how-to blocks only. One object per version/platform/topic (e.g. Apple Mail, Outlook for Windows).
+- steps: ordered actions with menu paths (Mail > Preferences), button names, file types, and settings preserved verbatim where possible.
+- points: key ideas to cover in each narrative block (not verbatim copy).
+- Do NOT merge platforms into one procedural flow.
+- Do NOT drop editorial blocks because they are not steps.
+- Do NOT collapse FAQ into a single bullet.
+- keyDetails: 4–12 short topic summary bullets for the whole article.
+- Section titles must reflect the stated topic and subtopics — not generic category labels (e.g. prefer "Apple Mail" over "Email clients").${topicBlock}${subtopicBlock}
+- Omit promotional tone.`;
+}
+
+async function extractHybridProceduralFacts(
+  trimmed: string,
+  topic?: string,
+  subtopics?: string[],
+): Promise<ContentFacts | null> {
+  const raw = await completeJson<unknown>({
+    system: buildHybridProceduralExtractSystemPrompt(topic, subtopics),
+    user: trimmed,
+    temperature: 0.15,
+    maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
+  });
+
+  const parsed = parseContentFacts(raw);
+  const proceduralSections = parseProceduralSections(
+    raw && typeof raw === "object" && "sections" in raw
+      ? (raw as { sections?: unknown }).sections
+      : parsed?.sections,
+  );
+  const narrativeSections = parseNarrativeSections(
+    raw && typeof raw === "object" && "narrativeSections" in raw
+      ? (raw as { narrativeSections?: unknown }).narrativeSections
+      : parsed?.narrativeSections,
+  );
+
+  if (proceduralSections.length === 0 && narrativeSections.length === 0) {
+    return null;
+  }
+
+  const contentType = resolvePreserveContentType(narrativeSections, proceduralSections);
+  return contentFactsSchema.parse({
+    ...parsed,
+    contentType,
+    narrativeSections: narrativeSections.length ? narrativeSections : undefined,
+    sections: proceduralSections.length ? proceduralSections : undefined,
+    keyDetails: parsed?.keyDetails ?? [],
+  });
+}
+
 export async function extractContentFacts(
   sourceText: string,
   opts: ExtractContentFactsOpts = {},
@@ -209,51 +271,16 @@ export async function extractContentFacts(
   const trimmed = sourceText.trim();
 
   if (opts.composeMode) {
+    if (opts.topic && isComposeHowToTopic(opts.topic, opts.subtopics)) {
+      const hybrid = await extractHybridProceduralFacts(trimmed, opts.topic, opts.subtopics);
+      if (hybrid) return hybrid;
+    }
     return extractComposeResearchFacts(trimmed, opts.includeFaq);
   }
 
   if (opts.preserveInstructions) {
-    const raw = await completeJson<unknown>({
-      system: `Extract structured content from a hybrid article as JSON only.
-Schema:
-{"contentType":"hybrid","narrativeSections":[{"title":string,"points":string[]}],"sections":[{"title":string,"steps":string[]}],"keyDetails":string[]}
-Rules:
-- narrativeSections: editorial blocks (intro themes, why it matters, checklists, HTML/troubleshooting, best practices, FAQ Q+A as points, closing). One object per major heading.
-- sections: procedural how-to blocks only. One object per version/platform/topic (e.g. Outlook for Windows, Outlook on the web).
-- steps: ordered actions with menu paths (File > Options > Mail), button names, and settings preserved verbatim where possible.
-- points: key ideas to cover in each narrative block (not verbatim copy).
-- Do NOT merge platforms into one procedural flow.
-- Do NOT drop editorial blocks because they are not steps.
-- Do NOT collapse FAQ into a single bullet.
-- keyDetails: 4–12 short topic summary bullets for the whole article.
-- Omit promotional tone.`,
-      user: trimmed,
-      temperature: 0.15,
-      maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
-    });
-
-    const parsed = parseContentFacts(raw);
-    const proceduralSections = parseProceduralSections(
-      raw && typeof raw === "object" && "sections" in raw
-        ? (raw as { sections?: unknown }).sections
-        : parsed?.sections,
-    );
-    const narrativeSections = parseNarrativeSections(
-      raw && typeof raw === "object" && "narrativeSections" in raw
-        ? (raw as { narrativeSections?: unknown }).narrativeSections
-        : parsed?.narrativeSections,
-    );
-
-    if (proceduralSections.length > 0 || narrativeSections.length > 0) {
-      const contentType = resolvePreserveContentType(narrativeSections, proceduralSections);
-      return contentFactsSchema.parse({
-        ...parsed,
-        contentType,
-        narrativeSections: narrativeSections.length ? narrativeSections : undefined,
-        sections: proceduralSections.length ? proceduralSections : undefined,
-        keyDetails: parsed?.keyDetails ?? [],
-      });
-    }
+    const hybrid = await extractHybridProceduralFacts(trimmed);
+    if (hybrid) return hybrid;
   }
 
   const raw = await completeJson<unknown>({

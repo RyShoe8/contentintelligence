@@ -145,12 +145,12 @@ export default async function DashboardPage() {
   const [topics, voices, articles] = await Promise.all([
     listContentSignals(db, { organizationId: orgId }),
     listVoices(db, orgId),
-    listSavedWriterArticlesByOrg(db, orgId, "compose"),
+    listSavedWriterArticlesByOrg(db, orgId),
   ]);
 
   const activeTopics  = topics.filter((t) => t.active).length;
   const voicesReady   = voices.filter((v) => v.persona_status === "ready").length;
-  const articlesDraft = articles.filter((a) => a.status === "draft").length;
+  const articlesSaved = articles.length;
 
   // Show launch banner if user hasn't fully set up yet
   const isNewUser = voices.length === 0 || topics.length === 0;
@@ -184,7 +184,7 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Articles"
-          value={articlesDraft}
+          value={articlesSaved}
           icon="✍️"
           href="/studio"
           color="success"

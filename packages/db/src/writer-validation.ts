@@ -193,6 +193,106 @@ export function writerComposeTopicDriftIssues(
   return [...new Set(issues)].slice(0, 6);
 }
 
+const COMPOSE_TOPIC_SPECIFICITY_STOPWORDS = new Set([
+  "your",
+  "email",
+  "signature",
+  "signatures",
+  "setup",
+  "guide",
+  "how",
+  "with",
+  "the",
+  "and",
+  "for",
+  "from",
+  "into",
+  "using",
+  "create",
+  "add",
+  "that",
+  "this",
+  "about",
+  "step",
+  "steps",
+]);
+
+const COMPOSE_GENERIC_HOWTO_HEADING_RES = [
+  /^understanding (the )?/i,
+  /^what (is|are) /i,
+  /^why (you should|your)/i,
+  /^best practices/i,
+  /^introduction to/i,
+  /^email (client|signature)/i,
+  /^getting started with email/i,
+] as const;
+
+function extractComposeSpecificityTerms(topic: string, subtopics?: string[]): string[] {
+  const terms = new Set<string>();
+  const sources = [topic, ...(subtopics ?? [])];
+
+  for (const src of sources) {
+    const lower = src.toLowerCase();
+    for (const compound of lower.match(/\b(html file|apple mail|\.html)\b/g) ?? []) {
+      terms.add(compound);
+    }
+    for (const word of lower.split(/\W+/)) {
+      if (word.length > 3 && !COMPOSE_TOPIC_SPECIFICITY_STOPWORDS.has(word)) {
+        terms.add(word);
+      }
+    }
+  }
+
+  return [...terms];
+}
+
+/** Flags when compose how-to output drifts generic or omits platform/subtopic terms. */
+export function writerComposeTopicSpecificityIssues(
+  html: string,
+  topic: string,
+  subtopics?: string[],
+): string[] {
+  const plain = stripHtmlToPlainText(html).toLowerCase();
+  const requiredTerms = extractComposeSpecificityTerms(topic, subtopics);
+  const issues: string[] = [];
+
+  for (const term of requiredTerms) {
+    if (!plain.includes(term)) {
+      issues.push(`Article missing topic-specific term "${term}" from the subject or subtopics`);
+    }
+  }
+
+  for (const sub of subtopics ?? []) {
+    const subTerms = sub
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((w) => w.length > 3 && !COMPOSE_TOPIC_SPECIFICITY_STOPWORDS.has(w));
+    if (subTerms.length > 0 && !subTerms.some((term) => plain.includes(term))) {
+      issues.push(`Article does not cover subtopic "${sub}"`);
+    }
+  }
+
+  const headingRe = /<h[23]\b[^>]*>([\s\S]*?)<\/h[23]>/gi;
+  let genericHeadingCount = 0;
+  let match: RegExpExecArray | null;
+  while ((match = headingRe.exec(html)) !== null) {
+    const text = stripHtmlToPlainText(match[1] ?? "").trim();
+    if (text && COMPOSE_GENERIC_HOWTO_HEADING_RES.some((re) => re.test(text))) {
+      genericHeadingCount++;
+    }
+  }
+
+  const platformTerms = requiredTerms.filter((t) => !COMPOSE_TOPIC_SPECIFICITY_STOPWORDS.has(t));
+  const hasPlatformMention = platformTerms.some((term) => plain.includes(term));
+  if (genericHeadingCount >= 2 && !hasPlatformMention) {
+    issues.push(
+      "Article reads as a generic guide with survey-style headings instead of platform-specific steps",
+    );
+  }
+
+  return [...new Set(issues)].slice(0, 6);
+}
+
 const COMPOSE_BRIEF_HEADING_RE =
   /^(topic overview|key facts|angles to cover|angles|caveats|faq|open questions|weak evidence|caveats and counterpoints|frequently asked questions)$/i;
 

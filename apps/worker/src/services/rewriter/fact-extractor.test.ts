@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { isComposeHowToTopic } from "./compose-topic-mode.js";
 import {
   filterFaqNarrativeSections,
   flattenBriefToKeyDetails,
@@ -134,5 +135,16 @@ describe("filterFaqNarrativeSections", () => {
     ]);
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0]?.title, "Key facts");
+  });
+});
+
+describe("compose how-to extraction routing", () => {
+  it("routes how-to topics to procedural hybrid extraction", () => {
+    assert.equal(
+      isComposeHowToTopic("How to setup your email signature in Apple Mail", [
+        "Import a custom HTML signature file",
+      ]),
+      true,
+    );
   });
 });
