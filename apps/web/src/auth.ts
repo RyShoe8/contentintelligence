@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const email = (user?.email ?? token.email) as string | undefined;
       if (!email) return token;
 
-      if (!shouldRefreshJwtFromDb({ token, user, trigger })) {
+      if (!shouldRefreshJwtFromDb({ organizationId: token.organizationId, user, trigger })) {
         return token;
       }
 
