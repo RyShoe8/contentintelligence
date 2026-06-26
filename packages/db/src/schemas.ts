@@ -835,7 +835,10 @@ export const writerArticleSchema = z.object({
   voice_id: z.string().uuid(),
   mode: writerArticleModeSchema.default("rewrite"),
   title: z.string().min(1).max(200),
-  topic: z.string().trim().max(500).optional(),
+  topic: z.preprocess(
+    (v) => (v == null || v === "" ? undefined : v),
+    z.string().trim().max(500).optional(),
+  ),
   reference_urls: z.array(z.string().url()).max(15).default([]),
   subtopics: z
     .array(z.string().trim().min(WRITER_SUBTOPIC_MIN_CHARS).max(WRITER_SUBTOPIC_MAX_CHARS))
