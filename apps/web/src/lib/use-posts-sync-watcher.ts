@@ -117,23 +117,29 @@ export function usePostsSyncWatcher({
     }
 
     let cancelled = false;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
 
-    void (async () => {
-      if (syncPending) {
-        if (!cancelled) startPolling("Settings saved — rebuilding drafts…");
-        return;
-      }
-
+    const checkStatus = async () => {
       const data = await fetchIngestStatus();
       if (cancelled || !data) return;
 
       if (isSyncInProgressForSignal(data, contentSignalId)) {
+        if (checkInterval) clearInterval(checkInterval);
         startPolling(progressMessage(data, contentSignalId));
       }
-    })();
+    };
+
+    if (syncPending) {
+      startPolling("Settings saved — rebuilding drafts…");
+    } else {
+      void checkStatus();
+      // Check every 10 seconds to see if a background sync started
+      checkInterval = setInterval(() => void checkStatus(), 10000);
+    }
 
     return () => {
       cancelled = true;
+      if (checkInterval) clearInterval(checkInterval);
       stopPolling();
     };
   }, [contentSignalId, enabled, startPolling, stopPolling, syncPending]);

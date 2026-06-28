@@ -61,9 +61,9 @@ export type IngestStats = {
   storedMinimal: number;
   storedFull: number;
   updatedFull: number;
-  purgedItems: number;
   archivedPosts: number;
   sourceErrors: IngestSourceError[];
+  completedSignalIds?: string[];
 };
 
 const verbose = () => ingestVerbose();
@@ -481,7 +481,11 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
   }
 
   const attemptAt = new Date();
+  const completedSignalIds: string[] = [];
   for (const [signalId, state] of ingestAttempts) {
+    if (state.completed) {
+      completedSignalIds.push(signalId);
+    }
     try {
       await recordContentSignalIngestAttempt(db, signalId, {
         attemptedAt: attemptAt,
@@ -492,7 +496,8 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
     }
   }
 
-  console.log("[ingest] stats", stats);
-  ingestLog("ingest_done", { ...stats });
-  return stats;
+  const finalStats: IngestStats = { ...stats, completedSignalIds };
+  console.log("[ingest] stats", finalStats);
+  ingestLog("ingest_done", { ...finalStats });
+  return finalStats;
 }

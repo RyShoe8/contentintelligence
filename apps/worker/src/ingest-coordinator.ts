@@ -66,42 +66,48 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
     posts_sync_result: status.posts_sync_result,
   });
 
-  const runPostsSyncInBackground = (contentSignalId: string, regeneratePosts: boolean) => {
+  const runPostsSyncInBackgroundBatch = async (contentSignalIds: string[], regeneratePosts: boolean) => {
     ingestStatus = {
       ...ingestStatus,
       posts_sync_running: true,
-      posts_sync_content_signal_id: contentSignalId,
       posts_sync_error: null,
       posts_sync_result: null,
     };
-    void deps
-      .runPostsSync(contentSignalId, regeneratePosts)
-      .then((postStats) => {
+    for (const id of contentSignalIds) {
+      ingestStatus = {
+        ...ingestStatus,
+        posts_sync_content_signal_id: id,
+      };
+      try {
+        const postStats = await deps.runPostsSync(id, regeneratePosts);
         const result = parsePostsSyncResult(postStats);
         deps.log("posts_sync_after_ingest", {
-          contentSignalId,
+          contentSignalId: id,
           ...(result ?? {}),
         });
         ingestStatus = {
           ...ingestStatus,
-          posts_sync_running: false,
-          posts_sync_content_signal_id: null,
-          posts_sync_error: null,
           posts_sync_result: result,
         };
-      })
-      .catch((e) => {
+      } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        deps.log("posts_sync_error", { contentSignalId, message });
+        deps.log("posts_sync_error", { contentSignalId: id, message });
         deps.onError(e);
         ingestStatus = {
           ...ingestStatus,
-          posts_sync_running: false,
-          posts_sync_content_signal_id: null,
           posts_sync_error: message,
-          posts_sync_result: null,
         };
-      });
+      }
+    }
+    ingestStatus = {
+      ...ingestStatus,
+      posts_sync_running: false,
+      posts_sync_content_signal_id: null,
+    };
+  };
+
+  const runPostsSyncInBackground = (contentSignalId: string, regeneratePosts: boolean) => {
+    void runPostsSyncInBackgroundBatch([contentSignalId], regeneratePosts);
   };
 
   const startIngest = (
@@ -134,8 +140,9 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
           error: null,
           ...postsSyncFields(ingestStatus),
         };
-        if (contentSignalId && !ingestStatus.posts_sync_running) {
-          runPostsSyncInBackground(contentSignalId, regeneratePosts);
+        const idsToSync = contentSignalId ? [contentSignalId] : (stats.completedSignalIds ?? []);
+        if (idsToSync.length > 0 && !ingestStatus.posts_sync_running) {
+          void runPostsSyncInBackgroundBatch(idsToSync, regeneratePosts);
         }
         return stats;
       })
