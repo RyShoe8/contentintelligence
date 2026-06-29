@@ -131,6 +131,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
       .runIngest(contentSignalId)
       .then((stats) => {
         deps.log("ingest_response", { source, contentSignalId: contentSignalId ?? null, ...stats });
+        const currentPostsSyncRunning = ingestStatus.posts_sync_running;
         ingestStatus = {
           running: false,
           content_signal_id: contentSignalId ?? null,
@@ -141,7 +142,7 @@ export function createIngestCoordinator(deps: IngestCoordinatorDeps) {
           ...postsSyncFields(ingestStatus),
         };
         const idsToSync = contentSignalId ? [contentSignalId] : (stats.completedSignalIds ?? []);
-        if (idsToSync.length > 0 && !ingestStatus.posts_sync_running) {
+        if (idsToSync.length > 0 && !currentPostsSyncRunning) {
           void runPostsSyncInBackgroundBatch(idsToSync, regeneratePosts);
         }
         return stats;
