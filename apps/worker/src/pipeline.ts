@@ -6,10 +6,10 @@ import type {
   ContentSignal,
   DealMetrics,
   EmailImage,
+  GmailSource,
   GmailSourceConfig,
   KeyPoint,
   SignalItem,
-  Source,
 } from "@content-resourcer/db";
 import { SOURCE_TYPE_EMAIL_GMAIL, sourceDisplayLabel } from "@content-resourcer/db";
 import { env } from "./env.js";
@@ -268,7 +268,7 @@ function resolveOriginalUrl(
 
 export function buildMinimalSignalItem(
   contentSignal: ContentSignal,
-  source: Source,
+  source: GmailSource,
   normalized: NormalizedMessage,
   skipReason: string,
   emailHtmlPreview?: string | null,
@@ -311,7 +311,7 @@ export function buildMinimalSignalItem(
 
 export function buildFullSignalItem(
   contentSignal: ContentSignal,
-  source: Source,
+  source: GmailSource,
   normalized: NormalizedMessage,
   extractedText: string,
   aiSummary: string,

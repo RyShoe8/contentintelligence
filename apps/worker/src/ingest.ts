@@ -61,6 +61,8 @@ export type IngestStats = {
   storedMinimal: number;
   storedFull: number;
   updatedFull: number;
+  /** Signal items deleted by the retention purge. */
+  purgedItems: number;
   archivedPosts: number;
   sourceErrors: IngestSourceError[];
   completedSignalIds?: string[];
@@ -176,7 +178,7 @@ export async function runIngest(contentSignalId?: string): Promise<IngestStats> 
     // Route website sources to the website ingest pipeline
     if (source.source_type === "website") {
       try {
-        await runWebsiteIngest(db, source, source.content_signal_id, stats, env.openaiApiKey);
+        await runWebsiteIngest(db, source, source.content_signal_id, stats);
         noteSignalIngestCompleted(ingestAttempts, contentSignal.id);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
