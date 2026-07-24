@@ -60,6 +60,11 @@
       "types": "./dist/compose-article-type.d.ts",
       "import": "./dist/compose-article-type.js",
       "default": "./dist/compose-article-type.js"
+    },
+    "./product-update": {
+      "types": "./dist/product-update.d.ts",
+      "import": "./dist/product-update.js",
+      "default": "./dist/product-update.js"
     }
   },
   "scripts": {
