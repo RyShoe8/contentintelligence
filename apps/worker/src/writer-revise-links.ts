@@ -1,6 +1,7 @@
 import { formatWriterLinksForPrompt, type Voice, type WriterLink } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "./env.js";
+import { writerModel } from "./services/llm/model-registry.js";
 
 const REVISE_SOURCE_MAX_CHARS = 12_000;
 
@@ -73,7 +74,7 @@ export async function reviseWriterLinksInHtml(opts: ReviseWriterLinksOpts): Prom
     ? `${REVISE_SYSTEM}${REVISE_COMPOSE_EXTRA}`
     : REVISE_SYSTEM;
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.35,
     messages: [

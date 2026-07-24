@@ -1125,11 +1125,29 @@ describe("writerComposeReferenceLeakIssues", () => {
 });
 
 describe("writerComposeOperatorVoiceIssues", () => {
-  it("flags low we-voice density in long articles", () => {
-    const words = Array.from({ length: 200 }, () => "designers").join(" ");
-    const html = `<p>${words}</p>`;
-    const issues = writerComposeOperatorVoiceIssues(html);
-    assert.ok(issues.some((i) => i.includes("Low first-person operator voice")));
+  const lowPersonHtml = `<p>${Array.from({ length: 200 }, () => "designers").join(" ")}</p>`;
+
+  it("flags low first-person density when the brand writes in first-person plural", () => {
+    const issues = writerComposeOperatorVoiceIssues(lowPersonHtml, { person: "first_plural" });
+    assert.ok(issues.some((i) => i.includes("Low first-person voice")));
+  });
+
+  it("flags low second-person density when the brand addresses the reader", () => {
+    const issues = writerComposeOperatorVoiceIssues(lowPersonHtml, { person: "second" });
+    assert.ok(issues.some((i) => i.includes("Low first-person voice")));
+  });
+
+  it("stays silent for third-person brands", () => {
+    assert.deepEqual(writerComposeOperatorVoiceIssues(lowPersonHtml, { person: "third" }), []);
+  });
+
+  it("stays silent when the brand's person is unknown, rather than assuming we-voice", () => {
+    assert.deepEqual(writerComposeOperatorVoiceIssues(lowPersonHtml), []);
+  });
+
+  it("passes an article that matches the brand's person", () => {
+    const html = `<p>${Array.from({ length: 60 }, () => "we build our work and our team ships it").join(" ")}</p>`;
+    assert.deepEqual(writerComposeOperatorVoiceIssues(html, { person: "first_plural" }), []);
   });
 });
 

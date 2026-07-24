@@ -15,6 +15,7 @@ import {
   type ContentFacts,
   type GenericityAnalysis,
   type SelfCritiqueResult,
+  type VoiceFidelityResult,
 } from "@content-resourcer/db";
 
 export type ComposeVoiceQualityOpts = {
@@ -25,6 +26,8 @@ export type ComposeVoiceQualityOpts = {
   brandMentionLevel?: number;
   articleType?: ComposeArticleType;
   topic?: string;
+  /** Grammatical person measured from this brand's style examples. */
+  person?: "first_plural" | "first_singular" | "second" | "third";
 };
 
 export function composeStyleIssueTotal(counts: ComposeStyleIssueCounts): number {
@@ -59,7 +62,9 @@ export function shouldRunComposeFinalPolish(opts: {
   return (
     opts.genericityScore > REWRITER_COMPOSE_GENERICITY_MAX ||
     composeStyleIssueTotal(styleIssueCounts) > 0 ||
-    writerComposeOperatorVoiceIssues(opts.html).length > 0 ||
+    writerComposeOperatorVoiceIssues(opts.html, {
+      person: opts.composeGateOpts?.person,
+    }).length > 0 ||
     writerComposeConcretenessIssues(opts.html).length > 0 ||
     writerComposeRhythmIssues(opts.html).length > 0
   );
@@ -73,9 +78,21 @@ export function buildVoiceQualityWarning(opts: {
   genericityScore: number;
   styleIssueCounts: ComposeStyleIssueCounts;
   completenessIssues: string[];
+  voiceFidelity?: VoiceFidelityResult;
+  voiceFidelityMin?: number;
 }): string | undefined {
-  if (opts.gateOk && opts.noDrift && opts.genericityOk) return undefined;
+  const fidelityMin = opts.voiceFidelityMin ?? 0;
+  const fidelityLow =
+    opts.voiceFidelity?.measured === true && opts.voiceFidelity.score < fidelityMin;
+
+  if (opts.gateOk && opts.noDrift && opts.genericityOk && !fidelityLow) return undefined;
   const parts: string[] = [];
+  if (fidelityLow && opts.voiceFidelity) {
+    parts.push(`Voice fidelity ${opts.voiceFidelity.score}/100 below target ${fidelityMin}`);
+    if (opts.voiceFidelity.issues[0]) {
+      parts.push(opts.voiceFidelity.issues[0].replace(/^Voice fidelity: /, ""));
+    }
+  }
   if (!opts.genericityOk) {
     parts.push(
       `Genericity ${opts.genericityScore} exceeds max ${REWRITER_COMPOSE_GENERICITY_MAX}`,
@@ -103,6 +120,8 @@ export function evaluateComposeVoiceQuality(opts: {
   critique: SelfCritiqueResult;
   genericity: GenericityAnalysis;
   composeGateOpts?: ComposeVoiceQualityOpts;
+  voiceFidelity?: VoiceFidelityResult;
+  voiceFidelityMin?: number;
 }): {
   genericityScore: number;
   brandConsistencyScore: number;
@@ -134,6 +153,8 @@ export function evaluateComposeVoiceQuality(opts: {
     genericityScore,
     styleIssueCounts,
     completenessIssues,
+    voiceFidelity: opts.voiceFidelity,
+    voiceFidelityMin: opts.voiceFidelityMin,
   });
   return {
     genericityScore,

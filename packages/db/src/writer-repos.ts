@@ -435,7 +435,7 @@ export type UpsertWriterComposePendingInput = {
   links: WriterLink[];
   subtopics: string[];
   article_depth: number;
-  article_type?: "editorial" | "how_to";
+  article_type?: "editorial" | "how_to" | "product_update";
   created_by: string;
   compose_phase: "full" | "write_only";
   preserve_compose_meta?: boolean;

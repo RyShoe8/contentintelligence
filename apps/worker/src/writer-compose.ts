@@ -4,6 +4,7 @@ import {
   getWriterArticle,
   upsertWriterArticleDraft,
   writerComposeInputSchema,
+  type ProductUpdateBrief,
 } from "@content-resourcer/db";
 import { generateArticleComposeHtml } from "./generate-article-compose.js";
 
@@ -22,7 +23,8 @@ export type WriterComposeBody = {
   article_depth?: number;
   subtopics?: string[];
   include_faq?: boolean;
-  article_type?: "editorial" | "how_to";
+  article_type?: "editorial" | "how_to" | "product_update";
+  product_brief?: ProductUpdateBrief;
   skip_research?: boolean;
   research_brief?: string;
 };
@@ -44,6 +46,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     article_type: body.article_type,
     skip_research: body.skip_research,
     research_brief: body.research_brief,
+    product_brief: body.product_brief,
   });
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => i.message).join("; ") || "invalid_input";
@@ -70,6 +73,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     subtopics,
     include_faq,
     article_type,
+    product_brief,
   } = parsed.data;
   const voice = await getVoice(db, voice_id);
   if (!voice || voice.organization_id !== organizationId) {
@@ -99,6 +103,7 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     subtopics,
     includeFaq: include_faq,
     articleType: article_type,
+    productBrief: product_brief,
   });
 
   const article = await upsertWriterArticleDraft(db, {
@@ -140,5 +145,8 @@ export async function runWriterCompose(db: Db, body: WriterComposeBody) {
     brand_consistency_score: result.brandConsistencyScore,
     genericity_score: result.genericityScore,
     humanization_attempts: result.humanizationAttempts,
+    voice_fidelity_score: result.voiceFidelityScore,
+    voice_fidelity_measured: result.voiceFidelityMeasured,
+    compose_rewrite_passes_used: result.composeRewritePassesUsed,
   };
 }

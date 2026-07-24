@@ -34,6 +34,7 @@ import {
   isVoicePersonaGenerateInFlight,
   runVoicePersonaGenerateExclusive,
 } from "./voice-generate-lock.js";
+import { refreshModelSettings } from "./services/llm/model-registry.js";
 import { runWriterFingerprintsExtract } from "./writer-fingerprints.js";
 import { runWriterRewrite } from "./writer-rewrite.js";
 import { startWriterComposeJob } from "./writer-compose-job.js";
@@ -576,6 +577,7 @@ async function main(): Promise<void> {
   try {
     const db = await getDb();
     await ensureIndexes(db);
+    await refreshModelSettings(db, { force: true });
     const { recovered, articleIds } = await recoverOrphanedComposeJobs(db, {
       failAllPending: false,
       graceMs: COMPOSE_ORPHAN_RECOVERY_GRACE_MS,

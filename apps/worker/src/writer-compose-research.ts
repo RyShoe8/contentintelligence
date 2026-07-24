@@ -6,6 +6,7 @@ import {
   writerComposeResearchConfig,
 } from "@content-resourcer/db";
 import { env } from "./env.js";
+import { researchModel } from "./services/llm/model-registry.js";
 import {
   formatReferenceCorpusForPrompt,
   type ReferenceCorpusSection,
@@ -118,7 +119,7 @@ export async function synthesizeResearchBrief(
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: researchModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.35,
     messages: [
@@ -259,7 +260,7 @@ async function callOpenAiText(
 ): Promise<string> {
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: researchModel(),
     max_tokens: maxTokens,
     temperature: 0.35,
     messages: [

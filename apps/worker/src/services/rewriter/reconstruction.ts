@@ -1,6 +1,8 @@
 import {
   formatWriterLinksForPrompt,
   isHybridContentFacts,
+  PRODUCT_UPDATE_PROMPT_RULES,
+  isProductUpdateArticleType,
   rewriterBlacklistPromptBlock,
   writerArticleDepthGuidance,
   type BrandInterpretation,
@@ -14,16 +16,17 @@ import type { Voice } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { formatConstraintsForPrompt } from "../constraints/assemble-generation-constraints.js";
 import { env } from "../../env.js";
+import { writerModel } from "../llm/model-registry.js";
 import type { VoiceGenerationContext } from "../../voice-generation-context.js";
 import {
   buildVoiceStylePromptLines,
   type VoiceStylePromptOpts,
 } from "../../voice-style-rules.js";
 import {
-  COMPOSE_SBD_RHETORIC_RULES,
-  COMPOSE_VOICE_RULES,
+  COMPOSE_EDITORIAL_BASELINE_RULES,
   composeFaqPromptRules,
   composeRhythmPromptRules,
+  composeVoiceRules,
 } from "./compose-voice-rules.js";
 import { resolvePrimaryKitRhythm } from "./compose-article-archetype.js";
 import { buildRichExampleExcerpt } from "./compose-style-excerpt.js";
@@ -37,6 +40,7 @@ import type { ArticleRewriteExample } from "./types.js";
 
 const EXAMPLE_EXCERPT_CHARS = 1500;
 const COMPOSE_EXAMPLE_EXCERPT_CHARS = 7000;
+const COMPOSE_SOURCE_PROSE_CHARS = 9000;
 
 function fingerprintsBlock(memory?: BrandMemory): string {
   if (!memory) return "";
@@ -98,6 +102,8 @@ function hybridRulesBlock(
   composeMode?: boolean,
   subtopics?: string[],
   howToArticle?: boolean,
+  voiceRules = "",
+  productUpdate = false,
 ): string {
   if (composeMode && (hasProceduralSections(facts) || howToArticle)) {
     const subtopicsBlock = subtopics?.length
@@ -112,19 +118,20 @@ Compose how-to article (tutorial in brand voice — not a generic industry guide
 - Short intro/outro in brand voice is fine; the body must be step-by-step.
 - Cap the intro to 1–2 short paragraphs before the first procedural heading.
 - Do not add thought-leadership angle sections unless those exact themes are in the facts.
-- When FAQ is enabled, do not repeat FAQ Q&A as narrative H2 blocks before the structured FAQ section.${subtopicsBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
+- When FAQ is enabled, do not repeat FAQ Q&A as narrative H2 blocks before the structured FAQ section.${subtopicsBlock}${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}`;
   }
+  if (productUpdate) return "";
   if (composeMode && (hasNarrativeSections(facts) || isComposeFactPool(facts, composeMode))) {
     return `
-Compose article (author-first editorial voice — not a research summary):
+Compose article (write as the brand's own author — not a research summary):
 - Facts are a pool in keyDetails — weave them into editorial sections; do NOT mirror research brief structure.
 - Do NOT use research-brief section titles as headings (Topic overview, Key facts, Angles to cover, Caveats, Open questions, FAQ).
-- Do NOT default to topical survey headings (e.g. "What Active Adult Living Looks Like", "Memory Care: A Focus on…") unless the editorial outline specifies them.
+- Do NOT default to topical survey headings that simply name a subcategory of the topic unless the editorial outline specifies them.
 - Write editorial <h2>/<h3> headings matching brand examples and the editorial outline below.
 - Weave facts into flowing prose in full brand voice — not a labeled brief or bullet dump.
 - Include procedural sections with full ordered steps when present (see procedural rules above).
 - Do not add filler closings like "What are your thoughts?"
-- No duplicate H2 topics; no meta "open questions remain" endings.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`;
+- No duplicate H2 topics; no meta "open questions remain" endings.${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}`;
   }
   if (!isHybridContentFacts(facts)) return "";
   return `
@@ -200,6 +207,12 @@ export type ReconstructArticleOpts = {
   composeArchetype?: ComposeArticleArchetype;
   concreteLens?: string;
   articleType?: ComposeArticleType;
+  /**
+   * Voice-shaped briefing prose. Passed alongside the JSON facts so the writer has continuous
+   * language to work from rather than only a flat list of extracted statements — writing from
+   * a bag of facts is what produced encyclopaedic, voiceless drafts.
+   */
+  sourceProse?: string;
 };
 
 export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): string {
@@ -211,6 +224,11 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
     preferredPhrases: opts.ctx.preferredPhrases,
   };
   const styleLines = buildVoiceStylePromptLines(style);
+  /**
+   * Rules describing this brand's measured voice. Empty outside compose mode, where the
+   * rewrite path supplies its own source-fidelity constraints instead.
+   */
+  const voiceRules = opts.composeMode ? composeVoiceRules(opts.voice, opts.examples) : "";
   const personaBlock = opts.ctx.persona?.trim()
     ? `\nBrand persona:\n${opts.ctx.persona.trim()}`
     : "";
@@ -223,6 +241,7 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nArticle length:\n${writerArticleDepthGuidance(opts.articleDepth).reconstructionPrompt}`
       : "";
   const howToArticle = opts.articleType === "how_to";
+  const productUpdate = isProductUpdateArticleType(opts.articleType);
   const subtopicsBlock =
     opts.composeMode && (hasProceduralSections(opts.facts) || howToArticle) && opts.subtopics?.length
       ? `\nRequired subtopics (each needs its own section or clear subsection with ordered steps):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
@@ -238,11 +257,11 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
   const topic = opts.topic?.trim();
   const manifestoBlock =
     opts.composeMode && topic && isGuidelinesManifestoTopic(topic)
-      ? "\nWrite as an operator manifesto on what we test, reject, and specify — not a neutral industry design guide."
+      ? "\nWrite as a manifesto of the brand's own standards and refusals — not a neutral industry design guide."
       : "";
   const openingBlock =
     opts.composeMode && opts.composeArchetype?.openingPattern?.trim()
-      ? `\nOpening requirement: first or second paragraph must adapt this operator conviction (rhythm only, do not copy verbatim): ${opts.composeArchetype.openingPattern.trim()}`
+      ? `\nOpening requirement: first or second paragraph must adapt this opening pattern from the brand's own writing (rhythm only, do not copy verbatim): ${opts.composeArchetype.openingPattern.trim()}`
       : "";
   const rhythmBlock = opts.composeMode
     ? composeRhythmPromptRules(resolvePrimaryKitRhythm(opts.examples))
@@ -252,22 +271,26 @@ export function buildReconstructionSystemPrompt(opts: ReconstructArticleOpts): s
       ? `\nConcrete lens: anchor the article through "${opts.concreteLens.trim()}" — open with it, return to it, use it to make abstract guidelines tangible.`
       : "";
   const composeTopicBlock =
-    opts.composeMode && topic
+    opts.composeMode && topic && productUpdate
+      ? `\nArticle subject: ${topic}${PRODUCT_UPDATE_PROMPT_RULES}${voiceRules}`
+      : opts.composeMode && topic
       ? hasProceduralSections(opts.facts) || howToArticle
         ? `\nArticle subject: ${topic}
 Write a how-to tutorial ABOUT this topic in full brand voice.
 Stay specific to the platforms, apps, files, and steps in the facts — do not drift into generic "${topic.split(/\s+/).slice(-2).join(" ")}" advice for other tools.
 Do not make the brand, community, or content strategy the subject of the article.
-Cap the intro to 1–2 short paragraphs before the first procedural heading.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+Cap the intro to 1–2 short paragraphs before the first procedural heading.${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}`
         : `\nArticle subject: ${topic}
 Write an authoritative editorial article ABOUT this topic in full brand voice (perspective, rhetorical patterns, fingerprints).
 Do not make the brand, community, or content strategy the subject of the article.
-Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${lensBlock}${openingBlock}${rhythmBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}`
+Do not add sections about community engagement, creating content, or promoting the brand.${manifestoBlock}${lensBlock}${openingBlock}${rhythmBlock}${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}`
       : "";
 
-  const viewpointRule = opts.composeMode
-    ? "- Apply full brand voice (perspective, caveats, rhetorical patterns) while keeping the topic as the article subject — not brand-as-subject sections."
-    : "- Include the brand's viewpoint and caveats where relevant.";
+  const viewpointRule = productUpdate
+    ? "- Write in full brand voice about our own product. First-person description of what we built is expected here."
+    : opts.composeMode
+      ? "- Apply full brand voice (perspective, caveats, rhetorical patterns) while keeping the topic as the article subject — not brand-as-subject sections."
+      : "- Include the brand's viewpoint and caveats where relevant.";
 
   const linkRulesBlock =
     opts.links.length > 0
@@ -293,7 +316,7 @@ ${viewpointRule}
 - Do not invent statistics, quotes, or offers not in the facts.
 - Avoid generic AI and affiliate marketing language.
 - Do not use these phrases:
-${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode, opts.subtopics, howToArticle)}${proceduralRulesBlock(opts.facts, howToArticle)}${depthBlock}${subtopicsBlock}${faqBlock}
+${rewriterBlacklistPromptBlock()}${composeTopicBlock}${linkRulesBlock}${hybridRulesBlock(opts.facts, opts.composeMode, opts.subtopics, howToArticle, voiceRules, productUpdate)}${proceduralRulesBlock(opts.facts, howToArticle)}${depthBlock}${subtopicsBlock}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${personaBlock}${constraintsBlock}${fingerprintsBlock(memory)}`;
 }
 
@@ -312,9 +335,17 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
       ? `\nFix these issues from the prior attempt:\n${opts.retryIssues.map((i) => `- ${i}`).join("\n")}`
       : "";
 
+  const proseBlock =
+    opts.composeMode && opts.sourceProse?.trim()
+      ? `\nBriefing notes in the brand's voice (source of language and phrasing — do not copy sentences verbatim, and do not treat its paragraph order as the article outline):\n${opts.sourceProse
+          .trim()
+          .slice(0, COMPOSE_SOURCE_PROSE_CHARS)}\n`
+      : "";
+
   const userPrompt = [
     opts.composeMode && opts.topic?.trim() ? `Topic: ${opts.topic.trim()}` : "",
-    "Extracted facts (JSON):",
+    proseBlock,
+    "Extracted facts (JSON — the claims to cover; not a structure to mirror):",
     JSON.stringify(opts.facts, null, 2),
     formatNarrativeSectionsForPrompt(opts.facts),
     formatSectionsForPrompt(opts.facts),
@@ -335,7 +366,7 @@ export async function reconstructArticleHtml(opts: ReconstructArticleOpts): Prom
   const temperature = Math.min(0.85, 0.45 + ((opts.attempt ?? 1) - 1) * 0.12);
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature,
     messages: [

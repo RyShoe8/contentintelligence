@@ -23,7 +23,14 @@ export const env = {
   gmailClientSecret: process.env.GMAIL_CLIENT_SECRET ?? "",
   gmailRedirectUri: process.env.GMAIL_REDIRECT_URI ?? "",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  /**
+   * Fallback model when no platform settings are saved. Per-tier model choice now lives in
+   * the database and is edited at /admin/settings — see services/llm/model-registry.ts.
+   */
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+  /** Optional env overrides for the writer/research tiers before settings are configured. */
+  openaiWriterModel: process.env.OPENAI_WRITER_MODEL ?? "",
+  openaiResearchModel: process.env.OPENAI_RESEARCH_MODEL ?? "",
   ingestCron: process.env.INGEST_CRON ?? "*/15 * * * *",
   ingestSecret: process.env.INGEST_SECRET ?? "",
   minBodyChars: num("MIN_BODY_CHARS", 80),

@@ -1,12 +1,17 @@
 import type { Db } from "mongodb";
 import {
   listWriterStyleExamplesForVoice,
+  buildProductUpdateBrief,
+  isProductUpdateArticleType,
   resolveComposeArticleType,
   updateWriterComposeResearchCheckpoint,
   type ComposeArticleType,
+  type ProductUpdateBrief,
   type Voice,
   type WriterLink,
   REWRITER_COMPOSE_GENERICITY_MAX,
+  hasComposeHardVoiceFailures,
+  scoreVoiceFidelity,
   stripLeadingComposeChrome,
   writerArticleDepthGuidance,
   writerComposeResearchConfig,
@@ -47,6 +52,8 @@ import {
 import { applyWriterLinkPipeline } from "./writer-link-pipeline.js";
 import { preprocessResearchBriefForVoice } from "./services/rewriter/compose-voice-brief.js";
 import { resolveVoiceGenerationContext } from "./voice-generation-context.js";
+import { composeRewritePassBudget, voiceFidelityMin } from "./services/llm/model-registry.js";
+import { resolveComposeVoiceProfile } from "./services/rewriter/compose-voice-rules.js";
 import {
   extractComposeStyleKitDeterministic,
   summarizeComposeStyleKits,
@@ -81,6 +88,8 @@ export type GenerateArticleComposeOpts = {
   articleType?: ComposeArticleType;
   skipResearch?: boolean;
   existingResearchBrief?: string;
+  /** Structured facts for product_update articles — replaces web research entirely. */
+  productBrief?: ProductUpdateBrief;
 };
 
 async function postExpandComposeVoicePolish(opts: {
@@ -88,6 +97,7 @@ async function postExpandComposeVoicePolish(opts: {
   html: string;
   topic: string;
   includeFaq: boolean;
+  voicePerson?: "first_plural" | "first_singular" | "second" | "third";
   styleExampleExcerpt?: string;
   knownExampleTitles?: string[];
   faqItems?: { question: string; answer: string }[];
@@ -106,7 +116,7 @@ async function postExpandComposeVoicePolish(opts: {
 
   const voiceIssues = [
     ...writerComposeVoiceStyleIssues(html),
-    ...writerComposeOperatorVoiceIssues(html),
+    ...writerComposeOperatorVoiceIssues(html, { person: opts.voicePerson }),
     ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
     ...(opts.includeFaq ? writerComposeFaqStyleIssues(html, opts.faqItems ?? []) : []),
   ];
@@ -161,13 +171,24 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   genericityScore: number;
   humanizationAttempts: number;
   voiceQualityWarning?: string;
+  voiceFidelityScore: number;
+  voiceFidelityMeasured: boolean;
+  composeRewritePassesUsed: number;
 }> {
   if (opts.voice.persona_status !== "ready") {
     throw new Error("voice_persona_not_ready");
   }
 
-  const skipResearch = opts.skipResearch === true;
-  if (skipResearch) {
+  /**
+   * Product updates never run external research: the facts are supplied by the author, and web
+   * search on "our new feature" returns nothing relevant at best and unrelated vendors at worst.
+   */
+  const isProductUpdate = isProductUpdateArticleType(opts.articleType);
+  if (isProductUpdate && !opts.productBrief) {
+    throw new Error("product_brief_required");
+  }
+  const skipResearch = isProductUpdate || opts.skipResearch === true;
+  if (skipResearch && !isProductUpdate) {
     const brief = opts.existingResearchBrief?.trim() ?? "";
     if (brief.length === 0) {
       throw new Error("research_brief_empty");
@@ -194,7 +215,10 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   let researchMode: "deep" | "standard" = "standard";
   let sourceTruncated = false;
 
-  if (skipResearch) {
+  if (isProductUpdate) {
+    researchBrief = buildProductUpdateBrief(opts.productBrief!);
+    sourceTruncated = false;
+  } else if (skipResearch) {
     researchBrief = opts.existingResearchBrief!.trim();
     sourceTruncated = researchBrief.length > env.maxWriterInputChars;
   } else {
@@ -207,6 +231,13 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
       maxResults: opts.webSearchMaxResults,
     });
 
+    /**
+     * Research only produces editorial or how-to briefs. Product updates never reach this
+     * branch — they supply their own facts — so the narrower type is safe here.
+     */
+    const researchArticleType: "editorial" | "how_to" =
+      articleType === "how_to" ? "how_to" : "editorial";
+
     const needPlan = deepResearch || webSearchEnabled || subtopics.length > 0;
     const researchConfig = writerComposeResearchConfig(articleDepth);
     const plan = needPlan
@@ -216,7 +247,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
           maxSearchQueries: Math.min(webSearchLimits.maxQueries, researchConfig.maxSearchQueries),
           userSubtopics: subtopics,
           articleDepth,
-          articleType,
+          articleType: researchArticleType,
         })
       : null;
 
@@ -242,7 +273,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
             articleDepth,
             subtopics,
             includeFaq,
-            articleType,
+            articleType: researchArticleType,
           })
         : await synthesizeResearchBrief({
             topic: opts.topic,
@@ -250,7 +281,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
             articleDepth,
             subtopics,
             includeFaq,
-            articleType,
+            articleType: researchArticleType,
           });
 
     referencesFetched = corpus.fetched;
@@ -288,15 +319,22 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   }).filter((kit): kit is NonNullable<typeof kit> => kit != null);
   const styleKitSummary = summarizeComposeStyleKits(styleKits);
 
-  const voiceResearchBrief = await preprocessResearchBriefForVoice({
-    voice: opts.voice,
-    topic: opts.topic,
-    researchBrief: rawResearchBrief,
-    styleKitSummary,
-    includeFaq,
-    howToTopic: articleType === "how_to",
-    subtopics,
-  });
+  /**
+   * Product update briefs are already the author's own words and are short, so the voice
+   * preprocessing pass would only paraphrase them and strip the labelled structure the writer
+   * relies on. Skipping it also saves a lossy rewrite.
+   */
+  const voiceResearchBrief = isProductUpdate
+    ? rawResearchBrief
+    : await preprocessResearchBriefForVoice({
+        voice: opts.voice,
+        topic: opts.topic,
+        researchBrief: rawResearchBrief,
+        styleKitSummary,
+        includeFaq,
+        howToTopic: articleType === "how_to",
+        subtopics,
+      });
 
   let humanized = await runHumanizationEngine({
     db: opts.db,
@@ -313,11 +351,17 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     topic: opts.topic,
     includeFaq,
     articleType,
+    sourceProse: voiceResearchBrief,
+    voiceProfile: resolveComposeVoiceProfile(opts.voice),
+    voiceFidelityMin: voiceFidelityMin(),
   });
 
   const styleExampleExcerpt = buildComposeStyleExampleExcerpt(humanized.examples);
   const knownExampleTitles = humanized.examples.map((ex) => ex.title).filter(Boolean);
   const voiceCtx = resolveVoiceGenerationContext(opts.voice);
+  const voiceProfileForGates = resolveComposeVoiceProfile(opts.voice, humanized.examples);
+  const voicePerson =
+    voiceProfileForGates.sampleCount > 0 ? voiceProfileForGates.person : undefined;
   const composeGateOpts = {
     includeFaq,
     knownExampleTitles,
@@ -326,6 +370,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     brandMentionLevel: voiceCtx.brandMentionLevel,
     articleType,
     topic: opts.topic,
+    person: voicePerson,
   };
   const composeArchetype = applyManifestoArchetypeOverride(
     resolveComposeArticleArchetype(humanized.examples),
@@ -343,6 +388,22 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
   let html = pipeline.html;
   let expanded = false;
 
+  /**
+   * Budget for whole-article rewrite passes after the first draft.
+   *
+   * The pipeline previously ran polish, hard-voice repair, a second polish and a style transfer
+   * unconditionally-ish, so a single article could be rewritten end to end six or more times.
+   * Each rewrite is a lossy re-encode that regresses prose toward the model's average, which is
+   * a large part of why output read generic regardless of voice configuration. Passes are now
+   * spent in order of value and stop when the budget runs out.
+   */
+  let passesRemaining = composeRewritePassBudget();
+  const spendPass = (): boolean => {
+    if (passesRemaining <= 0) return false;
+    passesRemaining--;
+    return true;
+  };
+
   const wordCount = writerHtmlWordCount(html);
   if (wordCount < depthGuidance.minWords * 0.85) {
     try {
@@ -355,6 +416,7 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         subtopics,
         topic: opts.topic,
         includeFaq,
+        voice: opts.voice,
       });
       pipeline = await applyWriterLinkPipeline(expandedHtml, {
         sourceText: voiceResearchBrief,
@@ -370,36 +432,88 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     }
   }
 
-  if (expanded) {
-    html = await postExpandComposeVoicePolish({
+  // Expansion already rewrote the whole article, so it costs a pass.
+  if (expanded) passesRemaining = Math.max(0, passesRemaining - 1);
+
+  const voiceProfile = voiceProfileForGates;
+  const fidelityFloor = voiceFidelityMin();
+
+  /**
+   * Pass 1 — hard voice failures.
+   *
+   * Highest value repair: structural voice breaks (leaked reference titles, forbidden FAQ
+   * headings, brand-as-subject drift) that a reader would notice immediately.
+   */
+  if (hasComposeHardVoiceFailures(html, composeGateOpts) && spendPass()) {
+    html = await runComposeHardVoiceFixLoop({
       voice: opts.voice,
       html,
       topic: opts.topic,
       includeFaq,
+      facts: humanized.facts,
+      examples: humanized.examples,
+      links: opts.links,
+      articleDepth,
+      subtopics,
       styleExampleExcerpt,
       knownExampleTitles,
-      faqItems: humanized.facts.faqItems,
-      composeArchetype,
-      composeRhythm,
+      articleType,
     });
-  } else {
-    const prePolishStyleCounts = writerComposeStyleIssueCounts(html, composeGateOpts);
-    let needsPolish = shouldRunComposeVoicePolish({
-      linksWoven: pipeline.linksWoven,
-      linksRevised: pipeline.linksRevised,
-      styleIssueCounts: prePolishStyleCounts,
-      genericityScore: 0,
-    });
-    if (!needsPolish) {
-      const prePolishGenericity = await analyzeGenericity(html);
-      needsPolish = shouldRunComposeVoicePolish({
+    html = stripLeadingComposeChrome(html);
+  }
+
+  /**
+   * Pass 2 — voice fidelity.
+   *
+   * Style transfer against the brand's own primary example is the only pass that reliably
+   * moves fidelity, so it is preferred over generic polish whenever fidelity is short.
+   */
+  const midFidelity = scoreVoiceFidelity(html, voiceProfile);
+  const fidelityShort = midFidelity.measured && midFidelity.score < fidelityFloor;
+  if (fidelityShort) {
+    const primaryStyle = await loadPrimaryStyleExampleForTransfer(
+      opts.db,
+      opts.organizationId,
+      opts.voice,
+    );
+    if (shouldRunStyleTransfer(primaryStyle?.html) && spendPass()) {
+      html = await runStyleTransferPass({
+        voice: opts.voice,
+        html,
+        referenceHtml: primaryStyle!.html,
+        referenceTitle: primaryStyle!.title,
+        composeStyleKit: primaryStyle!.composeStyleKit,
+        topic: opts.topic,
+        includeFaq,
+        knownExampleTitles,
+        links: opts.links,
+        composeMode: true,
+      });
+      html = stripLeadingComposeChrome(html);
+    }
+  }
+
+  /**
+   * Pass 3 — generic polish.
+   *
+   * Lowest value and the most homogenising, so it only runs with budget left over and only
+   * when link weaving or a style/genericity check actually flagged something.
+   */
+  if (passesRemaining > 0) {
+    const polishGenericity = await analyzeGenericity(html);
+    const needsPolish =
+      shouldRunComposeVoicePolish({
         linksWoven: pipeline.linksWoven,
         linksRevised: pipeline.linksRevised,
-        styleIssueCounts: prePolishStyleCounts,
-        genericityScore: prePolishGenericity.score,
+        styleIssueCounts: writerComposeStyleIssueCounts(html, composeGateOpts),
+        genericityScore: polishGenericity.score,
+      }) ||
+      shouldRunComposeFinalPolish({
+        html,
+        genericityScore: polishGenericity.score,
+        composeGateOpts,
       });
-    }
-    if (needsPolish) {
+    if (needsPolish && spendPass()) {
       html = await postExpandComposeVoicePolish({
         voice: opts.voice,
         html,
@@ -410,70 +524,16 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
         faqItems: humanized.facts.faqItems,
         composeArchetype,
         composeRhythm,
+        voicePerson,
       });
+      html = stripLeadingComposeChrome(html);
     }
   }
 
-  html = await runComposeHardVoiceFixLoop({
-    voice: opts.voice,
-    html,
-    topic: opts.topic,
-    includeFaq,
-    facts: humanized.facts,
-    examples: humanized.examples,
-    links: opts.links,
-    articleDepth,
-    subtopics,
-    styleExampleExcerpt,
-    knownExampleTitles,
-    articleType,
-  });
-
   html = stripLeadingComposeChrome(html);
-  const postHardGenericity = await analyzeGenericity(html);
-  if (
-    shouldRunComposeFinalPolish({
-      html,
-      genericityScore: postHardGenericity.score,
-      composeGateOpts,
-    })
-  ) {
-    html = await postExpandComposeVoicePolish({
-      voice: opts.voice,
-      html,
-      topic: opts.topic,
-      includeFaq,
-      styleExampleExcerpt,
-      knownExampleTitles,
-      faqItems: humanized.facts.faqItems,
-      composeArchetype,
-      composeRhythm,
-    });
-    html = stripLeadingComposeChrome(html);
-  }
-
-  const primaryStyle = await loadPrimaryStyleExampleForTransfer(
-    opts.db,
-    opts.organizationId,
-    opts.voice,
-  );
-  if (shouldRunStyleTransfer(primaryStyle?.html)) {
-    html = await runStyleTransferPass({
-      voice: opts.voice,
-      html,
-      referenceHtml: primaryStyle!.html,
-      referenceTitle: primaryStyle!.title,
-      composeStyleKit: primaryStyle!.composeStyleKit,
-      topic: opts.topic,
-      includeFaq,
-      knownExampleTitles,
-      links: opts.links,
-      composeMode: true,
-    });
-    html = stripLeadingComposeChrome(html);
-  }
 
   const finalGenericity = await analyzeGenericity(html);
+  const finalFidelity = scoreVoiceFidelity(html, voiceProfile);
   const finalQuality = evaluateComposeVoiceQuality({
     facts: humanized.facts,
     html,
@@ -485,6 +545,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     },
     genericity: finalGenericity,
     composeGateOpts,
+    voiceFidelity: finalFidelity,
+    voiceFidelityMin: fidelityFloor,
   });
 
   const sourceTrimmed = rawResearchBrief.trim();
@@ -515,5 +577,8 @@ export async function generateArticleComposeHtml(opts: GenerateArticleComposeOpt
     genericityScore: finalQuality.genericityScore,
     humanizationAttempts: humanized.humanizationAttempts,
     voiceQualityWarning: finalQuality.voiceQualityWarning,
+    voiceFidelityScore: finalFidelity.score,
+    voiceFidelityMeasured: finalFidelity.measured,
+    composeRewritePassesUsed: composeRewritePassBudget() - passesRemaining,
   };
 }

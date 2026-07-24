@@ -45,7 +45,7 @@ export async function runVoicePersonaGeneration(
     await ingestVoiceRssStyleExamplesAndRecordSync(db, voice);
     const voiceForAnalysis = (await getVoice(db, voiceId)) ?? voice;
 
-    const { profile, persona, corpusHash, cached } = await withTimeout(
+    const { profile, persona, corpusHash, cached, composeVoiceProfile } = await withTimeout(
       analyzeBrandProfile(db, voiceForAnalysis, {
         forceRebuild: options?.forceRebuild,
       }),
@@ -64,6 +64,7 @@ export async function runVoicePersonaGeneration(
       persona_status: "ready",
       persona_generated_at: new Date(),
       persona_error: undefined,
+      compose_voice_profile: composeVoiceProfile,
     });
   } catch (e) {
     const message = formatJobErrorMessage(e);

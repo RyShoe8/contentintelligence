@@ -10,6 +10,7 @@ export const COLLECTIONS = {
   writer_articles: "writer_articles",
   gmail_oauth: "gmail_oauth",
   users: "users",
+  platform_settings: "platform_settings",
   /** Legacy collections migrated on startup */
   verticals: "verticals",
   input_signals: "input_signals",

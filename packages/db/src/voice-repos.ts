@@ -109,6 +109,7 @@ export async function updateVoiceBrandProfile(
     persona_status: Voice["persona_status"];
     persona_generated_at?: Date;
     persona_error?: string;
+    compose_voice_profile?: Voice["compose_voice_profile"];
   },
 ): Promise<Voice | null> {
   const existing = await voices(db).findOne({ id });
@@ -123,6 +124,8 @@ export async function updateVoiceBrandProfile(
     persona_status: update.persona_status,
     persona_error: update.persona_error ?? undefined,
     persona_generated_at: update.persona_generated_at ?? existing.persona_generated_at,
+    compose_voice_profile:
+      update.compose_voice_profile ?? existing.compose_voice_profile,
     updated_at: now,
   });
   await voices(db).replaceOne({ id }, row);

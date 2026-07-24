@@ -3,6 +3,7 @@ import { expandKeyPoints, normalizeKeyPointCategory } from "@content-resourcer/d
 import OpenAI from "openai";
 import type { DealMetricsLlmPartial } from "./deal-metrics.js";
 import { env } from "./env.js";
+import { utilityModel } from "./services/llm/model-registry.js";
 
 const DEAL_MODES = new Set<string>(["retail_list_vs_sale", "pay_vs_credited_value", "unknown"]);
 
@@ -17,7 +18,7 @@ export async function summarizeEmailBody(cleanText: string): Promise<string> {
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const input = cleanText.slice(0, env.maxAiInputChars);
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: utilityModel(),
     max_tokens: env.maxTokensSummary,
     temperature: 0.3,
     messages: [
@@ -51,7 +52,7 @@ export async function extractDealMetricsWithLlm(
       ? `User-defined amount units (tokens/suffixes near numbers, including $ if listed): ${dealUnitTokens.join(", ")}. Prefer interpreting numeric offers using these units when they appear beside amounts.`
       : "No custom units provided; infer USD ($) or generic promotional amounts.";
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: utilityModel(),
     max_tokens: env.maxTokensDeal,
     temperature: 0.1,
     response_format: { type: "json_object" },
@@ -183,7 +184,7 @@ export async function extractKeyPointsWithLlm(
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const input = `${subject ? `Subject: ${subject}\n\n` : ""}${cleanText}`.slice(0, env.maxAiInputChars);
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: utilityModel(),
     max_tokens: 500,
     temperature: 0.2,
     response_format: { type: "json_object" },

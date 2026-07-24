@@ -3,6 +3,7 @@ import { getSocialPlatform, primarySocialCopy, truncateForPlatform } from "@cont
 import OpenAI from "openai";
 import { formatConstraintsForPrompt } from "./services/constraints/assemble-generation-constraints.js";
 import { env } from "./env.js";
+import { writerModel } from "./services/llm/model-registry.js";
 import {
   buildVoiceStylePromptLines,
   formatPreferredPhrasesForUserMessage,
@@ -204,7 +205,7 @@ export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Prom
     : buildDefaultSystemPrompt(contentOnly, style, opts.platform, opts.persona);
 
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensSocialPost,
     temperature: opts.constraints?.sharedIdentity ? 0.3 : opts.constraints ? 0.35 : 0.5,
     messages: [

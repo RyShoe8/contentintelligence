@@ -36,6 +36,8 @@ export async function runSelfCritique(
     includeFaq?: boolean;
     knownExampleTitles?: string[];
     articleType?: ComposeArticleType;
+    /** Grammatical person measured from this brand's style examples. */
+    person?: "first_plural" | "first_singular" | "second" | "third";
   } = {},
 ): Promise<SelfCritiqueResult> {
   const plain = stripHtmlToPlainText(html);
@@ -52,14 +54,14 @@ export async function runSelfCritique(
           ...writerComposeHowToStructureIssues(html, topic),
           ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
           ...writerComposeVoiceStyleIssues(html),
-          ...writerComposeOperatorVoiceIssues(html),
+          ...writerComposeOperatorVoiceIssues(html, { person: opts.person }),
         ]
       : opts.composeMode && composeNarrative
       ? [
           ...rewriterComposeCompletenessIssues(facts, html),
           ...writerComposeReferenceLeakIssues(html, opts.knownExampleTitles),
           ...writerComposeVoiceStyleIssues(html),
-          ...writerComposeOperatorVoiceIssues(html),
+          ...writerComposeOperatorVoiceIssues(html, { person: opts.person }),
         ]
       : hybrid
         ? rewriterInstructionPreserveCompletenessIssues(facts, html)

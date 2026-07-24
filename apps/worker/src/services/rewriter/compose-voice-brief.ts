@@ -1,12 +1,13 @@
 import type { Voice } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../../env.js";
+import { researchModel } from "../llm/model-registry.js";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { buildVoiceStylePromptLines } from "../../voice-style-rules.js";
 import {
-  COMPOSE_SBD_RHETORIC_RULES,
-  COMPOSE_VOICE_RULES,
+  COMPOSE_EDITORIAL_BASELINE_RULES,
   composeFaqPromptRules,
+  composeVoiceRules,
 } from "./compose-voice-rules.js";
 
 export type PreprocessResearchBriefForVoiceOpts = {
@@ -39,6 +40,7 @@ export async function preprocessResearchBriefForVoice(
     ? `\nBrand style reference (rhythm only — do not copy titles):\n${opts.styleKitSummary.trim()}`
     : "";
   const faqBlock = composeFaqPromptRules(opts.includeFaq);
+  const voiceRules = composeVoiceRules(opts.voice);
   const howToBlock = opts.howToTopic
     ? `\nHow-to tutorial rules:
 - Preserve step order, menu paths (e.g. Mail > Preferences), button names, file types, and platform/app names from the brief.
@@ -51,23 +53,23 @@ export async function preprocessResearchBriefForVoice(
     : "";
 
   const systemPrompt = opts.howToTopic
-    ? `Rewrite a neutral research brief into procedural briefing notes in the brand operator voice.
+    ? `Rewrite a neutral research brief into procedural briefing notes in the brand's voice.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - Preserve ALL facts, ordered steps, menu paths, caveats, and FAQ Q/A from the input — do not invent or drop claims.
 - Remove research-brief section labels (Topic overview, Key facts, Angles to cover, Setup steps headers, etc.).
-- Write as voice-shaped procedural notes: ordered steps and platform-specific actions in first-person plural "we" where natural.
+- Write as voice-shaped procedural notes: ordered steps and platform-specific actions in the brand's own person and register.
 - Do not write the finished article — only briefing notes for a how-to writer.
-- Do not add editorial angles, thought-leadership framing, or brand-essay sections.${howToBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${faqBlock}
+- Do not add editorial angles, thought-leadership framing, or brand-essay sections.${howToBlock}${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}`
-    : `Rewrite a neutral research brief into editorial briefing notes in the brand operator voice.
+    : `Rewrite a neutral research brief into editorial briefing notes in the brand's voice.
 Rules:
 - Output plain text only (no markdown fences, no HTML).
 - Preserve ALL facts, stats, caveats, and FAQ Q/A content from the input — do not invent or drop claims.
 - Remove research-brief section labels (Topic overview, Key facts, Angles to cover, Caveats, Open questions).
-- Write as flowing editorial notes and short bullet clusters in first-person plural "we" where natural.
+- Write as flowing editorial notes and short bullet clusters in the brand's own person and register.
 - Do not write the finished article — only voice-shaped briefing notes for a writer.
-- Avoid neutral industry-guide tone and survey structure.${howToBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${faqBlock}
+- Avoid neutral industry-guide tone and survey structure.${howToBlock}${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}${faqBlock}
 ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}`;
 
   const userPrompt = [
@@ -83,7 +85,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}`;
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: researchModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.4,
     messages: [

@@ -47,6 +47,13 @@ import {
   shouldStallComposePoll,
   type ComposeResultPhase,
 } from "@/app/writer/compose-poll";
+import {
+  ProductUpdateBriefFields,
+  emptyProductBrief,
+  isProductBriefReady,
+  toProductBriefPayload,
+  type ProductBriefForm,
+} from "@/components/product-update-brief-fields";
 import { Button } from "@/components/ui/button";
 import { LocalDateTime } from "@/components/local-date-time";
 import { WriterHtmlPreview } from "@/components/writer-html-preview";
@@ -325,6 +332,7 @@ export function WriterComposeForm({
     ),
   );
   const articleTypeTouchedRef = useRef(false);
+  const [productBrief, setProductBrief] = useState<ProductBriefForm>(emptyProductBrief);
   const [composeProgress, setComposeProgress] = useState<string | null>(
     pendingComposeInitial.composeProgress,
   );
@@ -639,6 +647,12 @@ export function WriterComposeForm({
       articleId &&
       trimmedResearchBrief.length >= WRITER_SOURCE_MIN_CHARS,
   );
+  /**
+   * Product updates take their facts from the structured brief rather than research, so the
+   * write action stays disabled until the author has described what shipped.
+   */
+  const productBriefIncomplete =
+    articleType === "product_update" && !isProductBriefReady(productBrief);
   const showOutputColumn = Boolean(outputHtml.trim() || articleId);
 
   const resetComposer = useCallback(() => {
@@ -705,6 +719,7 @@ export function WriterComposeForm({
 
   useEffect(() => {
     if (articleTypeTouchedRef.current) return;
+    if (articleType === "product_update") return;
     setArticleType(
       resolveComposeArticleType(
         undefined,
@@ -712,7 +727,7 @@ export function WriterComposeForm({
         parseWriterSubtopics(subtopicsText.split(/\r?\n/)),
       ),
     );
-  }, [topic, subtopicsText]);
+  }, [topic, subtopicsText, articleType]);
 
   useEffect(() => {
     if (readyVoices.length === 0) return;
@@ -848,6 +863,9 @@ export function WriterComposeForm({
           article_type: articleType,
           skip_research: skipResearch,
           ...(skipResearch ? { research_brief: trimmedResearchBrief } : {}),
+          ...(articleType === "product_update"
+            ? { product_brief: toProductBriefPayload(productBrief) }
+            : {}),
         }),
       });
       const data = (await r.json().catch(() => ({}))) as ComposeStatusResponse & {
@@ -1103,10 +1121,17 @@ export function WriterComposeForm({
           >
             <option value="editorial">Editorial</option>
             <option value="how_to">How-to</option>
+            <option value="product_update">Product update</option>
           </select>
           {articleType === "how_to" ? (
             <span className="text-xs text-[var(--muted)]">
               Step-by-step tutorial with platform-specific instructions
+            </span>
+          ) : null}
+          {articleType === "product_update" ? (
+            <span className="text-xs text-[var(--muted)]">
+              Announcement about something you shipped. Uses the brief below instead of web
+              research, and lets the product be the subject of the article.
             </span>
           ) : null}
           {staleEditorialResearchBrief ? (
@@ -1115,6 +1140,14 @@ export function WriterComposeForm({
             </span>
           ) : null}
         </div>
+
+        {articleType === "product_update" ? (
+          <ProductUpdateBriefFields
+            value={productBrief}
+            onChange={setProductBrief}
+            disabled={writing}
+          />
+        ) : null}
 
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex items-center justify-between gap-2">
@@ -1313,22 +1346,41 @@ export function WriterComposeForm({
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
-          <Button
-            type="button"
-            disabled={writing || !canWrite}
-            onClick={() => void handleWrite({ skipResearch: false })}
-          >
-            {writing && composeWriteMode === "full" ? "Researching and writing…" : "Research and Write"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={writing || !canWriteFromBrief}
-            onClick={() => void handleWrite({ skipResearch: true })}
-          >
-            {writing && composeWriteMode === "write_only" ? "Writing…" : "Write"}
-          </Button>
+          {articleType === "product_update" ? (
+            <Button
+              type="button"
+              disabled={writing || !canWrite || productBriefIncomplete}
+              onClick={() => void handleWrite({ skipResearch: false })}
+            >
+              {writing ? "Writing…" : "Write update"}
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                disabled={writing || !canWrite}
+                onClick={() => void handleWrite({ skipResearch: false })}
+              >
+                {writing && composeWriteMode === "full"
+                  ? "Researching and writing…"
+                  : "Research and Write"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={writing || !canWriteFromBrief}
+                onClick={() => void handleWrite({ skipResearch: true })}
+              >
+                {writing && composeWriteMode === "write_only" ? "Writing…" : "Write"}
+              </Button>
+            </>
+          )}
         </div>
+        {articleType === "product_update" && productBriefIncomplete ? (
+          <p className="text-xs text-[var(--muted)]">
+            Describe what shipped in the update brief to enable writing.
+          </p>
+        ) : null}
         {composeProgress ? (
           <p className="text-sm text-[var(--muted)]" role="status" aria-live="polite">
             {composeProgress}

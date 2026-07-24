@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import {
   brandProfileSchema,
   type BrandProfile,
+  type ComposeVoiceProfile,
   type Voice,
 } from "@content-resourcer/db";
 import { env } from "../env.js";
@@ -22,6 +23,7 @@ import { extractContradictions } from "../services/contradictions/extract-contra
 import { extractVisualCorpusHints } from "../services/corpus/extract-visual-corpus-hints.js";
 import { deriveWriterPersonaSummary } from "../services/derive-persona-summary.js";
 import { buildComposeEditorialPersonaBlock } from "../services/rewriter/compose-editorial-persona.js";
+import { deriveVoiceComposeProfile } from "../services/rewriter/derive-voice-profile.js";
 import {
   extractVisualPersonality,
   fallbackVisualPersonality,
@@ -33,6 +35,8 @@ export type AnalyzeBrandProfileResult = {
   persona: string;
   corpusHash: string;
   cached: boolean;
+  /** Voice characteristics measured from this brand's own style examples. */
+  composeVoiceProfile: ComposeVoiceProfile;
 };
 
 async function buildStoredWriterPersona(
@@ -65,6 +69,9 @@ export async function analyzeBrandProfile(
       persona: await buildStoredWriterPersona(db, voice.brand_profile, voice),
       corpusHash: hash,
       cached: true,
+      // Re-measured even on the cached path: style examples can change without the brand
+      // corpus hash changing, and a stale voice profile silently mis-describes the brand.
+      composeVoiceProfile: await deriveVoiceComposeProfile(db, voice),
     };
   }
 
@@ -148,8 +155,9 @@ export async function analyzeBrandProfile(
   });
 
   const persona = await buildStoredWriterPersona(db, profile, voice);
+  const composeVoiceProfile = await deriveVoiceComposeProfile(db, voice);
 
-  return { profile, persona, corpusHash: hash, cached: false };
+  return { profile, persona, corpusHash: hash, cached: false, composeVoiceProfile };
 }
 
 function mergeMemoryLists(existing: string[] | undefined, incoming: string[]): string[] {

@@ -145,6 +145,7 @@ export async function planTopicResearch(opts: PlanTopicResearchOpts): Promise<To
     user: userPrompt,
     maxTokens: env.maxTokensWriterResearchPlan,
     temperature: 0.3,
+    tier: "research",
   });
 
   if (!raw) {

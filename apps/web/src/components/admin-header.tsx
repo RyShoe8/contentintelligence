@@ -12,6 +12,11 @@ type Props = {
 const navItems = [
   { href: "/admin/orgs", label: "Organizations", match: (p: string) => p.startsWith("/admin/orgs") },
   { href: "/admin/users", label: "Users", match: (p: string) => p.startsWith("/admin/users") },
+  {
+    href: "/admin/settings",
+    label: "Settings",
+    match: (p: string) => p.startsWith("/admin/settings"),
+  },
 ] as const;
 
 export function AdminHeader({ email, isOrgOwner }: Props) {

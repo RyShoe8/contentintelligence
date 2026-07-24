@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { composeArticleTypeSchema, type ComposeArticleType } from "./compose-article-type.js";
+import { productUpdateBriefSchema } from "./product-update.js";
 import { composeReferenceLeakPlainTextIssues } from "./sanitize-article-html.js";
 
 export { composeArticleTypeSchema, type ComposeArticleType } from "./compose-article-type.js";
@@ -619,9 +620,12 @@ export function writerComposeHardVoiceIssues(
   ].slice(0, 14);
 }
 
-/** Operator voice gaps — retried in engine loop but not post-link reconstruct blockers alone. */
-export function writerComposeSoftVoiceIssues(html: string): string[] {
-  return writerComposeOperatorVoiceIssues(html);
+/** Person/voice gaps — retried in engine loop but not post-link reconstruct blockers alone. */
+export function writerComposeSoftVoiceIssues(
+  html: string,
+  opts: ComposeVoiceIssueOpts = {},
+): string[] {
+  return writerComposeOperatorVoiceIssues(html, opts);
 }
 
 export function hasComposeHardVoiceFailures(
@@ -641,28 +645,48 @@ export function collectComposeHardVoiceRetryIssues(
 const COMPOSE_MIN_WE_PER_500_WORDS = 3;
 
 /** Flags missing operator first-person voice in compose output. */
-export function writerComposeOperatorVoiceIssues(html: string): string[] {
+export type ComposeVoiceIssueOpts = {
+  /**
+   * The grammatical person this brand actually writes in, measured from its style examples.
+   * When absent the check is skipped rather than defaulting to first-person plural.
+   */
+  person?: "first_plural" | "first_singular" | "second" | "third";
+};
+
+const PERSON_PRONOUN_RE: Record<string, RegExp> = {
+  first_plural: /\b(?:we|our|us)\b/gi,
+  first_singular: /\b(?:i|my|me)\b/g,
+  second: /\b(?:you|your)\b/gi,
+};
+
+/**
+ * Flags output whose narrating person is weaker than the brand's own.
+ *
+ * This previously hard-required first-person-plural "we" density for every voice and inspected
+ * the opening for a fixed list of subject nouns from one client's sector, which pushed unrelated
+ * brands into a "we"-heavy house style. It now checks against the brand's measured person and
+ * does nothing when that is third person or unknown.
+ */
+export function writerComposeOperatorVoiceIssues(
+  html: string,
+  opts: ComposeVoiceIssueOpts = {},
+): string[] {
+  const person = opts.person;
+  if (!person || person === "third") return [];
+  const pronounRe = PERSON_PRONOUN_RE[person];
+  if (!pronounRe) return [];
+
   const plain = stripHtmlToPlainText(html);
   const words = plain.split(/\s+/).filter(Boolean);
   if (words.length < 120) return [];
 
   const issues: string[] = [];
-  const weCount = (plain.match(/\b(?:we|our|us)\b/gi) ?? []).length;
-  const per500 = (weCount / words.length) * 500;
+  const count = (plain.match(pronounRe) ?? []).length;
+  const per500 = (count / words.length) * 500;
   if (per500 < COMPOSE_MIN_WE_PER_500_WORDS) {
     issues.push(
-      `Low first-person operator voice (${weCount} we/our/us in ${words.length} words) — match brand examples`,
+      `Low first-person voice for this brand (${count} matches in ${words.length} words) — match the person used in brand examples`,
     );
-  }
-
-  const paragraphs = writerHtmlParagraphs(html);
-  const opening = stripHtmlToPlainText(paragraphs[0] ?? "").trim();
-  if (
-    opening.length >= 40 &&
-    !/\b(?:we|our|us)\b/i.test(opening) &&
-    /\b(?:designers?|communities|facilities|seniors?|residents?|it is|they)\b/i.test(opening)
-  ) {
-    issues.push("Opening paragraph reads like neutral third-person overview — lead with operator we-voice");
   }
 
   return issues.slice(0, 2);
@@ -921,7 +945,21 @@ export const writerComposeInputSchema = z.object({
   article_type: composeArticleTypeSchema.default("editorial"),
   skip_research: z.boolean().default(false),
   research_brief: z.string().trim().optional(),
+  /** Structured facts for product_update articles, which do not use web research. */
+  product_brief: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    productUpdateBriefSchema.optional(),
+  ),
 }).superRefine((data, ctx) => {
+  if (data.article_type === "product_update" && !data.product_brief) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "product_brief is required for product update articles",
+      path: ["product_brief"],
+    });
+  }
+  // A product update supplies its own facts, so it never needs a research brief.
+  if (data.article_type === "product_update") return;
   if (!data.skip_research) return;
   if (!data.writer_article_id) {
     ctx.addIssue({

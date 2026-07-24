@@ -10,6 +10,7 @@ import {
   type WriterComposeMeta,
 } from "@content-resourcer/db";
 import { generateArticleComposeHtml } from "./generate-article-compose.js";
+import { refreshModelSettings } from "./services/llm/model-registry.js";
 import {
   isWriterComposeJobInFlight,
   runWriterComposeJobExclusive,
@@ -50,6 +51,9 @@ function resultToComposeMeta(
     genericity_score: result.genericityScore,
     humanization_attempts: result.humanizationAttempts,
     voice_quality_warning: result.voiceQualityWarning,
+    voice_fidelity_score: result.voiceFidelityScore,
+    voice_fidelity_measured: result.voiceFidelityMeasured,
+    compose_rewrite_passes_used: result.composeRewritePassesUsed,
   };
 }
 
@@ -70,6 +74,7 @@ function parseComposeBody(body: WriterComposeBody) {
     article_type: body.article_type,
     skip_research: body.skip_research,
     research_brief: body.research_brief,
+    product_brief: body.product_brief,
   });
 }
 
@@ -94,6 +99,9 @@ async function runComposeGeneration(
     throw new Error("voice_not_found");
   }
 
+  // Pick up any model/pass-budget changes made in /admin/settings since the last job.
+  await refreshModelSettings(db);
+
   const {
     topic,
     reference_urls,
@@ -108,6 +116,7 @@ async function runComposeGeneration(
     article_type,
     skip_research,
     research_brief,
+    product_brief,
   } = parsed.data;
 
   const result = await generateArticleComposeHtml({
@@ -128,6 +137,7 @@ async function runComposeGeneration(
     articleType: article_type,
     skipResearch: skip_research,
     existingResearchBrief: research_brief,
+    productBrief: product_brief,
   });
 
   const composeMeta = mergeComposeMeta(
@@ -171,7 +181,7 @@ export async function startWriterComposeJob(
       throw new Error("writer_article_not_found");
     }
     existingComposeMeta = existing.compose_meta;
-  } else if (parsed.data.skip_research) {
+  } else if (parsed.data.skip_research && parsed.data.article_type !== "product_update") {
     throw new Error("writer_article_not_found");
   }
 
@@ -190,7 +200,10 @@ export async function startWriterComposeJob(
     article_depth: parsed.data.article_depth,
     article_type: parsed.data.article_type,
     created_by: createdBy,
-    compose_phase: parsed.data.skip_research ? "write_only" : "full",
+    compose_phase:
+      parsed.data.skip_research || parsed.data.article_type === "product_update"
+        ? "write_only"
+        : "full",
     preserve_compose_meta: parsed.data.skip_research,
   });
 

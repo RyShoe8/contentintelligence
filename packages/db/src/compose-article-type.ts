@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const composeArticleTypeSchema = z.enum(["editorial", "how_to"]);
+export const composeArticleTypeSchema = z.enum(["editorial", "how_to", "product_update"]);
 export type ComposeArticleType = z.infer<typeof composeArticleTypeSchema>;
 
 const HOW_TO_TOPIC_RE =
@@ -27,7 +27,13 @@ export function resolveComposeArticleType(
   subtopics?: string[],
 ): ComposeArticleType {
   if (explicit) return explicit;
+  // product_update is never inferred: it depends on the author supplying a structured brief,
+  // not on how the topic happens to be worded.
   return isComposeHowToTopic(topic, subtopics) ? "how_to" : "editorial";
+}
+
+export function isProductUpdateArticleType(type: ComposeArticleType | undefined): boolean {
+  return type === "product_update";
 }
 
 /** Editorial deep-research brief section labels that should not appear in how-to briefs. */

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { brandProfileSchema, sanitizeBrandProfileInput } from "./brand-profile.js";
+import { composeVoiceProfileSchema } from "./compose-voice-profile.js";
 import { keyPointsFieldSchema } from "./key-points.js";
 import {
   WRITER_ARTICLE_DEPTH_DEFAULT,
@@ -424,6 +425,14 @@ export const voiceSchema = z.preprocess(
     (v) => (v == null ? undefined : sanitizeBrandProfileInput(v)),
     brandProfileSchema.optional(),
   ),
+  /**
+   * Voice characteristics measured from this brand's own style examples. Drives per-brand
+   * compose prompt rules instead of the former global voice-rule constants.
+   */
+  compose_voice_profile: z.preprocess(
+    (v) => (v == null ? undefined : v),
+    composeVoiceProfileSchema.optional(),
+  ),
   corpus_hash: z.preprocess(
     (v) => (v == null || v === "" ? undefined : String(v)),
     z.string().optional(),
@@ -769,6 +778,11 @@ export const writerComposeMetaSchema = z.object({
   genericity_score: z.number().optional(),
   humanization_attempts: z.number().int().optional(),
   voice_quality_warning: z.string().max(2000).optional(),
+  /** 0-100 match against the voice's own style examples. Absent when the voice has none. */
+  voice_fidelity_score: z.number().optional(),
+  voice_fidelity_measured: z.boolean().optional(),
+  /** Whole-article rewrite passes actually spent on this draft. */
+  compose_rewrite_passes_used: z.number().int().optional(),
 });
 
 export type WriterComposeMeta = z.infer<typeof writerComposeMetaSchema>;
@@ -846,7 +860,7 @@ export const writerArticleSchema = z.object({
     .default([]),
   article_depth: z.coerce.number().int().min(0).max(100).default(WRITER_ARTICLE_DEPTH_DEFAULT),
   article_type: z
-    .enum(["editorial", "how_to"])
+    .enum(["editorial", "how_to", "product_update"])
     .optional(),
   source_text: z.string(),
   links: z.array(writerArticleLinkSchema).max(5).default([]),

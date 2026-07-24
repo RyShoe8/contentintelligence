@@ -4,6 +4,7 @@ import {
   writerComposeBrandMentionIssues,
   writerComposeFaqStyleIssues,
   writerComposeOperatorVoiceIssues,
+  type ComposeVoiceIssueOpts,
   writerComposeReferenceLeakIssues,
   writerComposeVoiceStyleIssues,
 } from "./writer-validation.js";
@@ -349,10 +350,12 @@ export function writerComposeStyleIssueCounts(
     faqItems?: { question: string; answer: string }[];
     brandName?: string;
     brandMentionLevel?: number;
+    /** Grammatical person measured from this brand's style examples. */
+    person?: ComposeVoiceIssueOpts["person"];
   } = {},
 ): ComposeStyleIssueCounts {
   const voiceStyleIssues = writerComposeVoiceStyleIssues(html);
-  const operatorVoiceIssues = writerComposeOperatorVoiceIssues(html);
+  const operatorVoiceIssues = writerComposeOperatorVoiceIssues(html, { person: opts.person });
   const leakIssues = writerComposeReferenceLeakIssues(html, opts.knownExampleTitles);
   const faqStyleIssues = opts.includeFaq
     ? writerComposeFaqStyleIssues(html, opts.faqItems ?? [])
@@ -378,6 +381,7 @@ export function rewriterComposeQualityGatePassed(
     brandMentionLevel?: number;
     articleType?: ComposeArticleType;
     topic?: string;
+    person?: ComposeVoiceIssueOpts["person"];
   } = {},
 ): boolean {
   const completenessIssues = rewriterComposeCompletenessIssues(facts, html);

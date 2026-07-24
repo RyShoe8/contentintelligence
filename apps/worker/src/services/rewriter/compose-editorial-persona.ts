@@ -5,8 +5,8 @@ import {
   summarizeComposeStyleKits,
 } from "./extract-compose-style-kit.js";
 
-const COMPOSE_EDITORIAL_RULES = `- Single editorial thread on the topic — not a typology survey of community types
-- Open with operator conviction, not neutral industry overview
+const COMPOSE_EDITORIAL_RULES = `- Single editorial thread on the topic — not a survey of every subcategory
+- Open on the article's actual subject, not a neutral industry overview
 - Match section rhythm from style examples; do not create one H2 per research subtopic`;
 
 /** Builds the "## Editorial compose" appendix for writer persona generation. */

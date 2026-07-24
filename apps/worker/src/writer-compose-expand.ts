@@ -2,15 +2,17 @@ import {
   formatWriterLinksForPrompt,
   stripHtmlToPlainText,
   type ContentFacts,
+  type Voice,
   type WriterLink,
 } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "./env.js";
+import { writerModel } from "./services/llm/model-registry.js";
 import {
+  COMPOSE_EDITORIAL_BASELINE_RULES,
   COMPOSE_EXPAND_FORBIDDEN_PATTERNS,
-  COMPOSE_SBD_RHETORIC_RULES,
-  COMPOSE_VOICE_RULES,
   composeFaqPromptRules,
+  composeVoiceRules,
 } from "./services/rewriter/compose-voice-rules.js";
 
 export function writerHtmlWordCount(html: string): number {
@@ -19,6 +21,7 @@ export function writerHtmlWordCount(html: string): number {
 
 export type ExpandArticleComposePromptOpts = {
   facts: ContentFacts;
+  voice?: Voice;
   links: WriterLink[];
   minWords: number;
   maxWords: number;
@@ -34,13 +37,15 @@ export function buildExpandArticleComposeSystemPrompt(opts: {
   subtopics?: string[];
   topic?: string;
   includeFaq?: boolean;
+  voice?: Voice;
 }): string {
+  const voiceRules = composeVoiceRules(opts.voice);
   const subtopicsBlock = opts.subtopics?.length
     ? `\nRequired subtopics (ensure each has a dedicated section):\n${opts.subtopics.map((s) => `- ${s}`).join("\n")}`
     : "";
 
   const topicBlock = opts.topic?.trim()
-    ? `\nArticle subject: ${opts.topic.trim()}. Expand topic depth with editorial conviction — not brand/community sections or neutral industry survey.`
+    ? `\nArticle subject: ${opts.topic.trim()}. Expand topic depth in the brand's own voice — not brand/community sections or neutral industry survey.`
     : "";
 
   return `You expand an HTML article to meet a target word count while preserving facts, links, and brand editorial voice.
@@ -50,7 +55,7 @@ Rules:
 - Add depth by weaving more facts into existing sections and adding editorial H2/H3 sections — not by mirroring a research brief outline.
 - Target ${opts.minWords}–${opts.maxWords} words total.
 - When required anchor text is listed for a link, use it only when it fits naturally in a sentence; never as a parenthetical afterthought like (anchor text) or trailing See anchor.
-- Do NOT add a "Related links" section.${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${composeFaqPromptRules(opts.includeFaq)}${COMPOSE_EXPAND_FORBIDDEN_PATTERNS}${topicBlock}${subtopicsBlock}`;
+- Do NOT add a "Related links" section.${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}${composeFaqPromptRules(opts.includeFaq)}${COMPOSE_EXPAND_FORBIDDEN_PATTERNS}${topicBlock}${subtopicsBlock}`;
 }
 
 export function buildExpandArticleComposeUserPrompt(opts: ExpandArticleComposePromptOpts): string {
@@ -74,6 +79,7 @@ export function buildExpandArticleComposeUserPrompt(opts: ExpandArticleComposePr
 export async function expandArticleComposeDepth(opts: {
   html: string;
   facts: ContentFacts;
+  voice?: Voice;
   links: WriterLink[];
   minWords: number;
   maxWords: number;
@@ -99,7 +105,7 @@ export async function expandArticleComposeDepth(opts: {
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.45,
     messages: [

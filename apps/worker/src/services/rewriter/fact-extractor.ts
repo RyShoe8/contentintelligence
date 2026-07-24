@@ -27,7 +27,22 @@ function filterFaqNarrativeSections(sections: NarrativeSection[]): NarrativeSect
 
 export { filterFaqNarrativeSections };
 
-function buildComposeExtractSystemPrompt(includeFaq?: boolean): string {
+function buildComposeExtractSystemPrompt(
+  includeFaq?: boolean,
+  articleType?: ComposeArticleType,
+): string {
+  if (articleType === "product_update") {
+    return `Extract structured facts from a product update brief as JSON only.
+Schema:
+{"contentType":"hybrid","keyDetails":string[]}
+Rules:
+- keyDetails: atomic factual statements covering what shipped, why, who it is for, the previous behaviour, specifics, availability, and what is next.
+- Keep product names, feature names, numbers, limits, formats, and dates exactly as written.
+- KEEP brand and product commentary — the product is the subject of this article.
+- Do not invent metrics, dates, customer counts, or roadmap items that are not in the brief.
+- Omit faqItems entirely.`;
+  }
+
   const faqRules = includeFaq
     ? `- faqItems: array of {"question": string, "answer": string} from FAQ content in the brief. Preserve facts; answers will be rewritten in brand voice.
 - Do NOT put FAQ in keyDetails.`
@@ -104,9 +119,10 @@ export function flattenBriefToKeyDetails(brief: string, includeFaq?: boolean): C
 async function extractComposeResearchFacts(
   trimmed: string,
   includeFaq?: boolean,
+  articleType?: ComposeArticleType,
 ): Promise<ContentFacts> {
   const raw = await completeJson<unknown>({
-    system: buildComposeExtractSystemPrompt(includeFaq),
+    system: buildComposeExtractSystemPrompt(includeFaq, articleType),
     user: trimmed,
     temperature: 0.15,
     maxTokens: HYBRID_EXTRACT_MAX_TOKENS,
@@ -401,7 +417,7 @@ export async function extractContentFacts(
         opts.includeFaq,
       );
     }
-    return extractComposeResearchFacts(trimmed, opts.includeFaq);
+    return extractComposeResearchFacts(trimmed, opts.includeFaq, opts.articleType);
   }
 
   if (opts.preserveInstructions) {

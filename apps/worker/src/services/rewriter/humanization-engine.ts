@@ -35,8 +35,12 @@ import {
   type ComposeArticleType,
   type ContentFacts,
   type GenericityAnalysis,
+  type ComposeVoiceProfile,
   type SelfCritiqueResult,
+  type VoiceFidelityResult,
   type WriterLink,
+  scoreVoiceFidelity,
+  voiceFidelityRetryIssues,
 } from "@content-resourcer/db";
 import type { Voice } from "@content-resourcer/db";
 import { env } from "../../env.js";
@@ -61,6 +65,7 @@ import { humanizeArticleHtml } from "./humanizer.js";
 import { reconstructArticleHtml } from "./reconstruction.js";
 import { runSelfCritique } from "./self-critique.js";
 import { buildVoiceQualityWarning } from "./compose-voice-quality.js";
+import { composeRewritePassBudget } from "../llm/model-registry.js";
 import { pickConcreteLens } from "./compose-topic-mode.js";
 import type { ArticleRewriteExample } from "./types.js";
 
@@ -81,6 +86,12 @@ export type HumanizationEngineOpts = {
   topic?: string;
   includeFaq?: boolean;
   articleType?: ComposeArticleType;
+  /** Voice-shaped briefing prose handed to the writer alongside the JSON facts. */
+  sourceProse?: string;
+  /** Voice profile measured from this brand's style examples, for fidelity scoring. */
+  voiceProfile?: ComposeVoiceProfile;
+  /** Fidelity floor below which an attempt is treated as failing the gate. */
+  voiceFidelityMin?: number;
 };
 
 export type HumanizationEngineResult = {
@@ -94,6 +105,7 @@ export type HumanizationEngineResult = {
   humanizationAttempts: number;
   factsExtracted: boolean;
   voiceQualityWarning?: string;
+  voiceFidelity: VoiceFidelityResult;
 };
 
 type AttemptSnapshot = {
@@ -103,6 +115,7 @@ type AttemptSnapshot = {
   composite: number;
   completenessIssueCount: number;
   styleIssueCounts: ReturnType<typeof writerComposeStyleIssueCounts>;
+  voiceFidelity: VoiceFidelityResult;
 };
 
 function mergeRetryIssues(
@@ -167,11 +180,21 @@ function qualityGatePassed(
   return rewriterQualityGatePassed(genericity, critique);
 }
 
+/**
+ * Rank attempts by critique composite *and* measured voice fidelity.
+ *
+ * Ranking on the critique score alone let a bland-but-clean draft beat a distinctly on-brand
+ * one, since the critique rubric rewards the absence of problems rather than voice match.
+ */
 function snapshotScore(snapshot: AttemptSnapshot, preserveMode: boolean): number {
+  const fidelityBonus = snapshot.voiceFidelity.measured
+    ? (snapshot.voiceFidelity.score - 50) * 0.4
+    : 0;
+  const base = snapshot.composite + fidelityBonus;
   if (preserveMode) {
-    return snapshot.composite - snapshot.completenessIssueCount * 15;
+    return base - snapshot.completenessIssueCount * 15;
   }
-  return snapshot.composite;
+  return base;
 }
 
 function effectiveBrandScore(
@@ -220,6 +243,7 @@ export async function runHumanizationEngine(
   const examples = allExamples;
   const composeStyleExcerpt = composeMode ? buildComposeStyleExampleExcerpt(examples) : undefined;
   const knownExampleTitles = examples.map((ex) => ex.title).filter(Boolean);
+  const composeProductUpdate = composeMode && opts.articleType === "product_update";
   const composeGateOpts = {
     includeFaq: opts.includeFaq,
     knownExampleTitles,
@@ -228,6 +252,7 @@ export async function runHumanizationEngine(
     brandMentionLevel: ctx.brandMentionLevel,
     articleType: opts.articleType,
     topic: opts.topic,
+    person: opts.voiceProfile?.sampleCount ? opts.voiceProfile.person : undefined,
   };
 
   const composeArchetype =
@@ -265,9 +290,18 @@ export async function runHumanizationEngine(
   let best: AttemptSnapshot | null = null;
   let retryIssues: string[] = [];
   let attempts = 0;
+  /**
+   * Attempts are capped by the platform rewrite-pass budget: every extra attempt is another
+   * full reconstruct + humanize cycle, and each one pulls the prose further toward the model's
+   * average. The hard ceiling stays as an upper bound.
+   */
+  const budgetedAttempts = Math.max(1, composeRewritePassBudget() + 1);
   const maxAttempts = composeMode
-    ? REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS + (composeHowTo ? 2 : 0)
-    : REWRITER_MAX_HUMANIZATION_ATTEMPTS;
+    ? Math.min(
+        REWRITER_COMPOSE_HARD_VOICE_MAX_ATTEMPTS + (composeHowTo ? 2 : 0),
+        budgetedAttempts + (composeHowTo ? 1 : 0),
+      )
+    : Math.min(REWRITER_MAX_HUMANIZATION_ATTEMPTS, budgetedAttempts);
 
   while (attempts < maxAttempts) {
     attempts++;
@@ -290,6 +324,7 @@ export async function runHumanizationEngine(
       composeArchetype,
       concreteLens,
       articleType: opts.articleType,
+      sourceProse: opts.sourceProse,
     });
     html = await humanizeArticleHtml({
       voice: opts.voice,
@@ -317,6 +352,7 @@ export async function runHumanizationEngine(
       includeFaq: opts.includeFaq,
       knownExampleTitles,
       articleType: opts.articleType,
+      person: composeGateOpts.person,
     });
     const proceduralCompletenessIssues =
       composeMode && (isProceduralContentFacts(facts) || isHybridContentFacts(facts))
@@ -338,8 +374,12 @@ export async function runHumanizationEngine(
             ? rewriterComposeCompletenessIssues(facts, html)
             : rewriterInstructionPreserveCompletenessIssues(facts, html)
       : [];
+    /**
+     * Topic drift penalises frequent brand mentions, which is correct for editorial articles
+     * and exactly wrong for an announcement about our own product.
+     */
     const topicDriftIssues =
-      composeMode && opts.topic
+      composeMode && opts.topic && !composeProductUpdate
         ? writerComposeTopicDriftIssues(html, opts.topic, ctx.brandName)
         : [];
     const topicSpecificityIssues =
@@ -352,8 +392,11 @@ export async function runHumanizationEngine(
         : [];
     const briefOutlineIssues = composeMode ? writerComposeBriefOutlineIssues(html) : [];
     const voiceStyleIssues = composeMode ? writerComposeVoiceStyleIssues(html) : [];
-    const operatorVoiceIssues = composeMode ? writerComposeOperatorVoiceIssues(html) : [];
-    const concretenessIssues = composeMode ? writerComposeConcretenessIssues(html) : [];
+    const operatorVoiceIssues = composeMode
+      ? writerComposeOperatorVoiceIssues(html, { person: composeGateOpts.person })
+      : [];
+    const concretenessIssues =
+      composeMode && !composeProductUpdate ? writerComposeConcretenessIssues(html) : [];
     const rhythmIssues = composeMode ? writerComposeRhythmIssues(html) : [];
     const leakIssues = composeMode
       ? writerComposeReferenceLeakIssues(html, knownExampleTitles)
@@ -370,11 +413,18 @@ export async function runHumanizationEngine(
           leakIssueCount: 0,
           faqStyleIssueCount: 0,
         };
+    const voiceFidelity = composeMode
+      ? scoreVoiceFidelity(html, opts.voiceProfile)
+      : scoreVoiceFidelity(html, undefined);
+    const fidelityIssues = composeMode
+      ? voiceFidelityRetryIssues(voiceFidelity, opts.voiceFidelityMin ?? 0)
+      : [];
     const composite = rewriterQualityCompositeScore(critique);
     const snapshot: AttemptSnapshot = {
       html,
       genericity,
       critique,
+      voiceFidelity,
       composite,
       completenessIssueCount:
         completenessIssues.length +
@@ -390,7 +440,8 @@ export async function runHumanizationEngine(
         leakIssues.length +
         faqStyleIssues.length +
         concretenessIssues.length +
-        rhythmIssues.length,
+        rhythmIssues.length +
+        fidelityIssues.length,
       styleIssueCounts,
     };
 
@@ -424,6 +475,7 @@ export async function runHumanizationEngine(
       faqStyleIssues.length === 0 &&
       concretenessIssues.length === 0 &&
       rhythmIssues.length === 0 &&
+      fidelityIssues.length === 0 &&
       genericityOk;
 
     if (gateOk && noDrift) {
@@ -437,6 +489,7 @@ export async function runHumanizationEngine(
         genericityScore: composeGenericityScore(genericity, critique),
         humanizationAttempts: attempts,
         factsExtracted: factsExtracted(facts),
+        voiceFidelity,
       };
     }
 
@@ -455,6 +508,7 @@ export async function runHumanizationEngine(
       ...faqStyleIssues,
       ...concretenessIssues,
       ...rhythmIssues,
+      ...fidelityIssues,
     ]);
   }
 
@@ -482,6 +536,8 @@ export async function runHumanizationEngine(
         genericityScore: finalGenericityScore,
         styleIssueCounts: final.styleIssueCounts,
         completenessIssues: [],
+        voiceFidelity: final.voiceFidelity,
+        voiceFidelityMin: opts.voiceFidelityMin,
       })
     : undefined;
 
@@ -496,6 +552,7 @@ export async function runHumanizationEngine(
     humanizationAttempts: attempts,
     factsExtracted: factsExtracted(facts),
     voiceQualityWarning,
+    voiceFidelity: final.voiceFidelity,
   };
 }
 

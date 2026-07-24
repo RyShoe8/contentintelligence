@@ -26,13 +26,18 @@ function paragraphWordCount(html: string): number {
   return stripHtmlToPlainText(html).split(/\s+/).filter(Boolean).length;
 }
 
+/** Stance markers that are generic to opinionated writing, not to any one brand's subject. */
+const STANCE_MARKER_RE =
+  /\b(?:never|always|refuse|insist|believe|rule|principle|prefer|reject|avoid|require)\b/i;
+
 function scoreSignatureParagraph(plain: string): number {
   let score = 0;
-  if (/\b(?:we|our|us)\b/i.test(plain)) score += 3;
+  // Any consistent narrating person, not specifically first-person plural.
+  if (/\b(?:we|our|us|i|my|you|your)\b/i.test(plain)) score += 3;
   const words = plain.split(/\s+/).filter(Boolean).length;
   if (words >= 8 && words <= 45) score += 2;
   if (words <= SIGNATURE_MAX_WORDS) score += 1;
-  if (/never|always|believe|rule|test|selective|partner/i.test(plain)) score += 1;
+  if (STANCE_MARKER_RE.test(plain)) score += 1;
   return score;
 }
 
@@ -59,8 +64,7 @@ function sentenceConcreteScore(sentence: string): number {
   for (const re of CONCRETE_SIGNAL_RES) {
     if (re.test(sentence)) score += 2;
   }
-  if (/\b(?:we|our|us)\b/i.test(sentence)) score += 1;
-  if (/\b(?:test|warranty|showroom|factory|founder|rule)\b/i.test(sentence)) score += 1;
+  if (/\b(?:we|our|us|i|my)\b/i.test(sentence)) score += 1;
   return score;
 }
 
@@ -173,7 +177,7 @@ async function extractKitFieldsWithLlm(html: string): Promise<{
     system: `Extract brand voice anchors from editorial content as JSON only:
 {"signatureParagraphs": string[], "concreteDetails": string[]}
 Rules:
-- signatureParagraphs: 2–3 short conviction paragraphs (1–3 sentences) with operator "we" voice when present. Prefer strong opinions, rules, or selective stances — not generic overview.
+- signatureParagraphs: 2–3 short paragraphs (1–3 sentences) that best show this brand's voice. Prefer clear opinions, rules, or stances over neutral overview. Keep whatever grammatical person the brand uses.
 - concreteDetails: up to 8 verbatim brand-specific facts — numbers, percentages, named people, named tests or processes, places, warranties, dimensions. One sentence each.
 - Copy text verbatim from the article; do not invent.
 - Empty arrays if none found.`,

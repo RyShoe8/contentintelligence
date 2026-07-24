@@ -50,13 +50,23 @@
       "types": "./dist/writer-validation.d.ts",
       "import": "./dist/writer-validation.js",
       "default": "./dist/writer-validation.js"
+    },
+    "./platform-settings": {
+      "types": "./dist/platform-settings.d.ts",
+      "import": "./dist/platform-settings.js",
+      "default": "./dist/platform-settings.js"
+    },
+    "./compose-article-type": {
+      "types": "./dist/compose-article-type.d.ts",
+      "import": "./dist/compose-article-type.js",
+      "default": "./dist/compose-article-type.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "seed": "tsx src/seed.ts",
-    "test": "node --import tsx --test src/org-repos.test.ts src/deal-strength.test.ts src/retention.test.ts src/template-repos.test.ts src/voice-repos.test.ts src/brand-profile.test.ts src/email-from.test.ts src/key-points.test.ts src/social-platforms.test.ts src/gmail-oauth.test.ts src/compose-article-type.test.ts src/writer-validation.test.ts src/writer-schema.test.ts src/writer-repos.test.ts src/writer-style-example-html.test.ts src/sanitize-article-html.test.ts src/rewriter-types.test.ts src/client.test.ts src/repos.test.ts"
+    "test": "node --import tsx --test src/platform-settings.test.ts src/voice-fidelity.test.ts src/org-repos.test.ts src/deal-strength.test.ts src/retention.test.ts src/template-repos.test.ts src/voice-repos.test.ts src/brand-profile.test.ts src/email-from.test.ts src/key-points.test.ts src/social-platforms.test.ts src/gmail-oauth.test.ts src/compose-article-type.test.ts src/writer-validation.test.ts src/writer-schema.test.ts src/writer-repos.test.ts src/writer-style-example-html.test.ts src/sanitize-article-html.test.ts src/rewriter-types.test.ts src/client.test.ts src/repos.test.ts"
   },
   "dependencies": {
     "mongodb": "^6.12.0",

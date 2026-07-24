@@ -8,36 +8,48 @@ import {
 import { extractHeadingsFromExampleHtml } from "./compose-style-excerpt.js";
 import type { ArticleRewriteExample } from "./types.js";
 
+/**
+ * Headings that signal a typology survey ("a tour of the categories") rather than a single
+ * editorial thread. Structural only — the previous version listed one client's product
+ * categories, which meant the penalty never fired for any other brand.
+ */
 const TYPOLOGY_TOUR_RE =
-  /\b(?:active adult|memory care|assisted living|independent living|outdoor|technology|wellness)\b/i;
+  /^(?:types? of|kinds? of|categories of|the different|\d+\s+(?:types|kinds|ways|options))\b/i;
 
+/**
+ * Neutral fallback used only when a voice has no usable style example. Section labels are
+ * placeholders describing article shape, not a house style to imitate.
+ */
 export const DEFAULT_COMPOSE_ARTICLE_ARCHETYPE: ComposeArticleArchetype =
   composeArticleArchetypeSchema.parse({
     sectionCount: 4,
-    sampleHeadings: [
-      "Opening conviction",
-      "Principle in practice",
-      "What we reject",
-      "Closing stance",
-    ],
-    openingPattern: "Lead with operator conviction on the topic.",
+    sampleHeadings: ["Opening", "Main point", "Supporting detail", "Close"],
+    openingPattern: undefined,
     singleThreaded: true,
   });
 
-const OPERATOR_CONVICTION_RE = /\b(?:we never|what we reject)\b/i;
-
-function kitOperatorText(kit?: ComposeStyleKit): string {
+function kitVoiceText(kit?: ComposeStyleKit): string {
   if (!kit) return "";
   return [...kit.signatureParagraphs, ...kit.openingParagraphs].join(" ");
 }
 
-function weVoiceDensityScore(text: string): number {
+/**
+ * Reward examples with a consistent narrating person, whichever person that is. The previous
+ * version scored only first-person-plural density, which ranked every brand against one
+ * client's "we" voice.
+ */
+function personConsistencyScore(text: string): number {
   const plain = text.trim();
   if (!plain) return 0;
   const words = plain.split(/\s+/).filter(Boolean);
   if (!words.length) return 0;
-  const weCount = (plain.match(/\b(?:we|our|us)\b/gi) ?? []).length;
-  return Math.min((weCount / words.length) * 100, 8);
+  const counts = [
+    (plain.match(/\b(?:we|our|us)\b/gi) ?? []).length,
+    (plain.match(/\b(?:i|my|me)\b/g) ?? []).length,
+    (plain.match(/\b(?:you|your)\b/gi) ?? []).length,
+  ];
+  const dominant = Math.max(...counts);
+  return Math.min((dominant / words.length) * 100, 8);
 }
 
 function scoreStyleExample(ex: ArticleRewriteExample): number {
@@ -47,9 +59,8 @@ function scoreStyleExample(ex: ArticleRewriteExample): number {
   if (kit?.openingParagraphs.length) score += kit.openingParagraphs.length;
   if (kit?.headings.length) score += Math.min(kit.headings.length, 6);
 
-  const operatorText = kitOperatorText(kit);
-  if (OPERATOR_CONVICTION_RE.test(operatorText)) score += 4;
-  score += weVoiceDensityScore(operatorText);
+  const voiceText = kitVoiceText(kit);
+  score += personConsistencyScore(voiceText);
 
   if (kit?.headings.some((h) => TYPOLOGY_TOUR_RE.test(h))) score -= 3;
   if (ex.html?.length) score += Math.min(ex.html.length / 4000, 2);

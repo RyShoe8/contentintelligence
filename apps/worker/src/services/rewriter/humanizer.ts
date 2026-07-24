@@ -6,13 +6,14 @@ import {
 import type { Voice } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../../env.js";
+import { writerModel } from "../llm/model-registry.js";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { buildVoiceStylePromptLines, type VoiceStylePromptOpts } from "../../voice-style-rules.js";
 import {
-  COMPOSE_SBD_RHETORIC_RULES,
-  COMPOSE_VOICE_RULES,
+  COMPOSE_EDITORIAL_BASELINE_RULES,
   composeFaqPromptRules,
   composeRhythmPromptRules,
+  composeVoiceRules,
 } from "./compose-voice-rules.js";
 import { faqHeadingRole } from "./compose-outline.js";
 import { isGuidelinesManifestoTopic } from "./compose-topic-mode.js";
@@ -63,17 +64,18 @@ export async function humanizeArticleHtml(opts: HumanizeArticleOpts): Promise<st
   const composeFaqBlock = opts.composeMode ? composeFaqPromptRules(opts.includeFaq, faqRole) : "";
   const manifestoBlock =
     opts.composeMode && opts.topic?.trim() && isGuidelinesManifestoTopic(opts.topic)
-      ? "\n- Preserve operator manifesto voice (what we test, reject, specify) — not neutral industry guide tone."
+      ? "\n- Preserve the manifesto framing of the brand's own standards and refusals — not neutral industry guide tone."
       : "";
   const openingBlock =
     opts.composeMode && opts.composeArchetype?.openingPattern?.trim()
-      ? `\n- First or second paragraph must keep adapted operator conviction from: ${opts.composeArchetype.openingPattern.trim()}`
+      ? `\n- First or second paragraph must keep the adapted opening pattern from: ${opts.composeArchetype.openingPattern.trim()}`
       : "";
   const rhythmBlock = opts.composeMode ? composeRhythmPromptRules(opts.composeRhythm) : "";
+  const voiceRules = opts.composeMode ? composeVoiceRules(opts.voice) : "";
 
   const composeTopicBlock =
     opts.composeMode && opts.topic?.trim()
-      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${manifestoBlock}${openingBlock}${rhythmBlock}${COMPOSE_VOICE_RULES}${COMPOSE_SBD_RHETORIC_RULES}${composeFaqBlock}`
+      ? `\n- Preserve topic focus on "${opts.topic.trim()}"; do not introduce brand-as-subject or meta community sections.${manifestoBlock}${openingBlock}${rhythmBlock}${voiceRules}${COMPOSE_EDITORIAL_BASELINE_RULES}${composeFaqBlock}`
       : "";
 
   const systemPrompt = `Humanize an HTML article fragment. Remove remaining AI fingerprints while preserving facts, links, and brand voice.
@@ -97,7 +99,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.5,
     messages: [

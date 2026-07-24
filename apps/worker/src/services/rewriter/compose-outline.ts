@@ -200,7 +200,7 @@ Rules:
 - Match the structural roles of these reference headings — topic-adapted wording, do NOT copy verbatim:
 ${roles.map((h, i) => `  ${i + 1}. ${h}`).join("\n")}
 - Single editorial thread${archetype.singleThreaded ? " — NOT a typology survey" : ""}.
-- Do NOT create one section per research subtopic, community type, or brief bucket (no parallel active adult / memory care / outdoor tour unless the reference headings use that shape).
+- Do NOT create one section per research subtopic or brief bucket, and do not write a parallel tour of product/service categories unless the brand's own reference headings use that shape.
 - Headings must sound like editorial chapter titles — NOT research brief labels (Topic overview, Key facts, Angles, Caveats, FAQ).
 - Do NOT use generic survey headings ("Understanding the…", "Innovative Trends", "Nature's Embrace", "Looking Ahead").
 - Assign each section a factSummary describing which research facts to weave in (short phrase, not full bullets).
@@ -260,6 +260,7 @@ export async function planComposeOutline(opts: {
         .join("\n"),
       temperature: 0.35,
       maxTokens: 1200,
+      tier: "research",
     });
 
     const sections = (raw?.sections ?? [])

@@ -12,6 +12,7 @@ import {
 } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "../../env.js";
+import { writerModel } from "../llm/model-registry.js";
 import { resolveVoiceGenerationContext } from "../../voice-generation-context.js";
 import { buildVoiceStylePromptLines, type VoiceStylePromptOpts } from "../../voice-style-rules.js";
 import { attachArchetypeToStyleKit, pickPrimaryStyleExample } from "./compose-article-archetype.js";
@@ -232,7 +233,7 @@ async function callStyleTransferLlm(
 ): Promise<string> {
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature: 0.4,
     messages: [

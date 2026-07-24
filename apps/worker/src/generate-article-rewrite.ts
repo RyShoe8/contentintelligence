@@ -14,6 +14,7 @@ import {
 import { writerArticleHtmlForLearning, type WriterArticle } from "@content-resourcer/db";
 import OpenAI from "openai";
 import { env } from "./env.js";
+import { writerModel } from "./services/llm/model-registry.js";
 import { resolveVoiceGenerationContext } from "./voice-generation-context.js";
 import { runHumanizationEngine } from "./services/rewriter/humanization-engine.js";
 import {
@@ -163,7 +164,7 @@ ${LINK_WEAVE_RULES}`;
 
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
-    model: env.openaiModel,
+    model: writerModel(),
     max_tokens: env.maxTokensWriter,
     temperature,
     messages: [
