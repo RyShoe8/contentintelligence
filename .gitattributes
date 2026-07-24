@@ -1,0 +1,31 @@
+# Normalise line endings so a Windows checkout does not show every file as rewritten.
+# Without this, files committed with LF get checked out as CRLF and every subsequent diff
+# is a whole-file rewrite, which buries real changes.
+* text=auto eol=lf
+
+# Explicit for the file types in this repo, so intent is obvious.
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.html text eol=lf
+*.svg  text eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.eot  binary
+*.pdf  binary
