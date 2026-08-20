@@ -95,7 +95,7 @@ function formatSyncResult(
   if (!regeneratePosts && postsSyncError) {
     message += ` Posts rebuild failed (${sanitizeIngestError(postsSyncError)}). Try Refresh posts.`;
   }
-  return { status: "ok", message };
+  return { status: postsSyncError ? "err" : "ok", message };
 }
 
 export function GmailSyncButton({
@@ -150,7 +150,7 @@ export function GmailSyncButton({
         } else if (statusData.posts_sync_error) {
           okMessage += ` Posts rebuild failed (${sanitizeIngestError(statusData.posts_sync_error)}). Try Refresh posts.`;
         }
-        setStatus("ok");
+        setStatus(statusData.posts_sync_error ? "err" : "ok");
         setMessage(okMessage);
       }
     },

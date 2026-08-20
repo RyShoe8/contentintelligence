@@ -58,7 +58,7 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
 
   const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
-      setState({ status: "loading" });
+      setState((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
     }
     const result = await fetchPostsData(searchParams);
     if (!result.ok) {
@@ -255,7 +255,7 @@ export function PostsPageClient({ searchParams, workerIngestConfigured }: Props)
                 busyLabel="Refreshing…"
                 progressMessage="Fetching feed and rebuilding posts…"
                 regeneratePosts
-                onComplete={() => void load()}
+                onComplete={() => void load({ silent: true })}
               />
               {!workerIngestConfigured ? (
                 <p className="mt-2 text-xs text-[var(--muted)]">

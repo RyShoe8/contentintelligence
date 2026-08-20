@@ -39,8 +39,10 @@ export function FeedPageClient({
     | { status: "ready"; data: FeedDataLoaded }
   >({ status: "loading" });
 
-  const load = useCallback(async () => {
-    setState({ status: "loading" });
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setState((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
+    }
     const result = await fetchFeedData(searchParams);
     if (!result.ok) {
       setState({ status: "error", message: result.error });
@@ -98,9 +100,18 @@ export function FeedPageClient({
               value={searchParams.min_deal_confidence}
             />
           ) : null}
-          {searchParams.has_deal === "1" ? <input type="hidden" name="has_deal" value="1" /> : null}
-          <input type="hidden" name="sort" value={sort} />
-          <input type="hidden" name="order" value={order} />
+          {searchParams.has_deal === "1" ? (
+            <input type="hidden" name="has_deal" value="1" />
+          ) : null}
+          {searchParams.full_body === "1" ? (
+            <input type="hidden" name="full_body" value="1" />
+          ) : null}
+          {searchParams.sort ? (
+            <input type="hidden" name="sort" value={searchParams.sort} />
+          ) : null}
+          {searchParams.order ? (
+            <input type="hidden" name="order" value={searchParams.order} />
+          ) : null}
           <FieldGroup className="min-w-[200px] flex-1">
             <Label htmlFor="feed-signal-select">Content signal</Label>
             <Select
@@ -140,6 +151,7 @@ export function FeedPageClient({
                 label="Run Feed"
                 busyLabel="Running feed…"
                 progressMessage="Feed ingest in progress…"
+                onComplete={() => void load({ silent: true })}
               />
               <ClearFeedButton
                 contentSignalId={selectedId}
