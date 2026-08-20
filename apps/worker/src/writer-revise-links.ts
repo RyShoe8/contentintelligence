@@ -75,7 +75,7 @@ export async function reviseWriterLinksInHtml(opts: ReviseWriterLinksOpts): Prom
     : REVISE_SYSTEM;
   const res = await client.chat.completions.create({
     model: writerModel(),
-    max_tokens: env.maxTokensWriter,
+    max_completion_tokens: env.maxTokensWriter,
     temperature: 0.35,
     messages: [
       { role: "system", content: systemContent },

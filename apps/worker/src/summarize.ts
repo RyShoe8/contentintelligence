@@ -19,7 +19,7 @@ export async function summarizeEmailBody(cleanText: string): Promise<string> {
   const input = cleanText.slice(0, env.maxAiInputChars);
   const res = await client.chat.completions.create({
     model: utilityModel(),
-    max_tokens: env.maxTokensSummary,
+    max_completion_tokens: env.maxTokensSummary,
     temperature: 0.3,
     messages: [
       {
@@ -53,7 +53,7 @@ export async function extractDealMetricsWithLlm(
       : "No custom units provided; infer USD ($) or generic promotional amounts.";
   const res = await client.chat.completions.create({
     model: utilityModel(),
-    max_tokens: env.maxTokensDeal,
+    max_completion_tokens: env.maxTokensDeal,
     temperature: 0.1,
     response_format: { type: "json_object" },
     messages: [
@@ -185,7 +185,7 @@ export async function extractKeyPointsWithLlm(
   const input = `${subject ? `Subject: ${subject}\n\n` : ""}${cleanText}`.slice(0, env.maxAiInputChars);
   const res = await client.chat.completions.create({
     model: utilityModel(),
-    max_tokens: 500,
+    max_completion_tokens: 500,
     temperature: 0.2,
     response_format: { type: "json_object" },
     messages: [

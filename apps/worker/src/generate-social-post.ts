@@ -206,7 +206,7 @@ export async function generateSocialPostCopy(opts: GenerateSocialPostOpts): Prom
 
   const res = await client.chat.completions.create({
     model: writerModel(),
-    max_tokens: env.maxTokensSocialPost,
+    max_completion_tokens: env.maxTokensSocialPost,
     temperature: opts.constraints?.sharedIdentity ? 0.3 : opts.constraints ? 0.35 : 0.5,
     messages: [
       {

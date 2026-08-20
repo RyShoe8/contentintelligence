@@ -23,7 +23,7 @@ export async function completeJson<T>(opts: {
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: modelForTier(opts.tier ?? "utility"),
-    max_tokens: opts.maxTokens ?? env.maxTokensBrandAnalyze,
+    max_completion_tokens: opts.maxTokens ?? env.maxTokensBrandAnalyze,
     temperature: opts.temperature ?? 0.3,
     response_format: { type: "json_object" },
     messages: [

@@ -100,7 +100,7 @@ ${styleLines.length ? `\n${styleLines.join("\n")}` : ""}${retryBlock}`;
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: writerModel(),
-    max_tokens: env.maxTokensWriter,
+    max_completion_tokens: env.maxTokensWriter,
     temperature: 0.5,
     messages: [
       { role: "system", content: systemPromptWithStyle },

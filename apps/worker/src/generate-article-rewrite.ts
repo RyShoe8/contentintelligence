@@ -165,7 +165,7 @@ ${LINK_WEAVE_RULES}`;
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: writerModel(),
-    max_tokens: env.maxTokensWriter,
+    max_completion_tokens: env.maxTokensWriter,
     temperature,
     messages: [
       { role: "system", content: systemPrompt },

@@ -120,7 +120,7 @@ export async function synthesizeResearchBrief(
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: researchModel(),
-    max_tokens: env.maxTokensWriter,
+    max_completion_tokens: env.maxTokensWriter,
     temperature: 0.35,
     messages: [
       { role: "system", content: systemPrompt },
@@ -261,7 +261,7 @@ async function callOpenAiText(
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const res = await client.chat.completions.create({
     model: researchModel(),
-    max_tokens: maxTokens,
+    max_completion_tokens: maxTokens,
     temperature: 0.35,
     messages: [
       { role: "system", content: systemPrompt },
